@@ -1,0 +1,25 @@
+{
+  "documentId": "doc-merged",
+  "sheets": [
+    {
+      "sheetId": "sheet-merged",
+      "name": "Merged Sheet",
+      "tables": [
+        {
+          "tableId": "table-merged",
+          "name": "Merged Table",
+          "rowCount": 5,
+          "columnCount": 5,
+          "merges": [
+            {
+              "startRow": 0,
+              "endRow": 1,
+              "startColumn": 0,
+              "endColumn": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package swiftnumbers;
+
+message DocumentMetadata {
+  string document_id = 1;
+  repeated SheetMetadata sheets = 2;
+}
+
+message SheetMetadata {
+  string sheet_id = 1;
+  string name = 2;
+  repeated TableMetadata tables = 3;
+}
+
+message TableMetadata {
+  string table_id = 1;
+  string name = 2;
+  uint32 row_count = 3;
+  uint32 column_count = 4;
+  repeated MergeRange merges = 5;
+}
+
+message MergeRange {
+  uint32 start_row = 1;
+  uint32 end_row = 2;
+  uint32 start_column = 3;
+  uint32 end_column = 4;
+}

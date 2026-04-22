@@ -1,0 +1,38 @@
+{
+  "documentId": "doc-multi",
+  "sheets": [
+    {
+      "sheetId": "sheet-a",
+      "name": "Sheet A",
+      "tables": [
+        {
+          "tableId": "table-a1",
+          "name": "Table A1",
+          "rowCount": 3,
+          "columnCount": 3,
+          "merges": []
+        }
+      ]
+    },
+    {
+      "sheetId": "sheet-b",
+      "name": "Sheet B",
+      "tables": [
+        {
+          "tableId": "table-b1",
+          "name": "Table B1",
+          "rowCount": 2,
+          "columnCount": 2,
+          "merges": []
+        },
+        {
+          "tableId": "table-b2",
+          "name": "Table B2",
+          "rowCount": 7,
+          "columnCount": 5,
+          "merges": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "documentId": "doc-styled",
+  "sheets": [
+    {
+      "sheetId": "sheet-style",
+      "name": "Styled Sheet",
+      "tables": [
+        {
+          "tableId": "table-style",
+          "name": "Styled Table",
+          "rowCount": 6,
+          "columnCount": 4,
+          "merges": []
+        }
+      ]
+    }
+  ]
+}

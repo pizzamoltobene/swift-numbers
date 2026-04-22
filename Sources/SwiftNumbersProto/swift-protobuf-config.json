@@ -1,0 +1,12 @@
+{
+  "invocations": [
+    {
+      "protoFiles": [
+        "Protos/NumbersParser/TSPMessages.proto",
+        "Protos/NumbersParser/TSPArchiveMessages.proto",
+        "Protos/document_metadata.proto"
+      ],
+      "visibility": "public"
+    }
+  ]
+}

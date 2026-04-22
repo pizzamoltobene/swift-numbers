@@ -1,0 +1,18 @@
+{
+  "documentId": "doc-simple",
+  "sheets": [
+    {
+      "sheetId": "sheet-1",
+      "name": "Sheet 1",
+      "tables": [
+        {
+          "tableId": "table-1",
+          "name": "Table 1",
+          "rowCount": 4,
+          "columnCount": 3,
+          "merges": []
+        }
+      ]
+    }
+  ]
+}
