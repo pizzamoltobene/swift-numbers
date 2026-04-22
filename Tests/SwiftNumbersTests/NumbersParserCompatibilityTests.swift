@@ -17,6 +17,11 @@ final class NumbersParserCompatibilityTests: XCTestCase {
         let inventory = try IWAInventoryBuilder.build(from: blobs)
         XCTAssertGreaterThan(inventory.records.count, 0)
         XCTAssertTrue(inventory.unparsedBlobPaths.isEmpty)
+        XCTAssertGreaterThan(inventory.objectReferenceEdgeCount, 0)
+        XCTAssertGreaterThan(inventory.rootObjectIDs.count, 0)
+
+        let reachable = inventory.reachableObjectIDs(from: inventory.rootObjectIDs.prefix(1).map { $0 }, maxDepth: 3)
+        XCTAssertFalse(reachable.isEmpty)
     }
 
     func testDumpWorksWithoutSyntheticMetadataOnReferenceFile() throws {
@@ -26,5 +31,7 @@ final class NumbersParserCompatibilityTests: XCTestCase {
 
         XCTAssertTrue(dump.contains("Index blobs:"))
         XCTAssertTrue(dump.contains("IWA objects:"))
+        XCTAssertTrue(dump.contains("Object reference edges:"))
+        XCTAssertTrue(dump.contains("Root objects:"))
     }
 }

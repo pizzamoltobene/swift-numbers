@@ -49,7 +49,15 @@ write_fixture(
                         "name": "Table 1",
                         "rowCount": 4,
                         "columnCount": 3,
-                        "merges": []
+                        "merges": [],
+                        "cells": [
+                            {"row": 0, "column": 0, "stringValue": "Name"},
+                            {"row": 0, "column": 1, "stringValue": "Value"},
+                            {"row": 1, "column": 0, "stringValue": "Answer"},
+                            {"row": 1, "column": 1, "numberValue": 42},
+                            {"row": 2, "column": 0, "stringValue": "Enabled"},
+                            {"row": 2, "column": 1, "boolValue": True}
+                        ]
                     }
                 ]
             }
@@ -87,6 +95,9 @@ write_fixture(
                                 "startColumn": 0,
                                 "endColumn": 1
                             }
+                        ],
+                        "cells": [
+                            {"row": 0, "column": 0, "stringValue": "Merged Title"}
                         ]
                     }
                 ]
@@ -118,7 +129,14 @@ write_fixture(
                         "name": "Styled Table",
                         "rowCount": 6,
                         "columnCount": 4,
-                        "merges": []
+                        "merges": [],
+                        "cells": [
+                            {"row": 0, "column": 0, "stringValue": "Amount"},
+                            {"row": 1, "column": 0, "stringValue": "Q1"},
+                            {"row": 1, "column": 1, "numberValue": 1200.5},
+                            {"row": 2, "column": 0, "stringValue": "Q2"},
+                            {"row": 2, "column": 1, "numberValue": 1325.75}
+                        ]
                     }
                 ]
             }
@@ -150,7 +168,11 @@ write_fixture(
                         "name": "Table A1",
                         "rowCount": 3,
                         "columnCount": 3,
-                        "merges": []
+                        "merges": [],
+                        "cells": [
+                            {"row": 0, "column": 0, "stringValue": "A1"},
+                            {"row": 1, "column": 1, "numberValue": 10}
+                        ]
                     }
                 ]
             },
@@ -163,14 +185,21 @@ write_fixture(
                         "name": "Table B1",
                         "rowCount": 2,
                         "columnCount": 2,
-                        "merges": []
+                        "merges": [],
+                        "cells": [
+                            {"row": 0, "column": 0, "stringValue": "B1"}
+                        ]
                     },
                     {
                         "tableId": "table-b2",
                         "name": "Table B2",
                         "rowCount": 7,
                         "columnCount": 5,
-                        "merges": []
+                        "merges": [],
+                        "cells": [
+                            {"row": 0, "column": 0, "stringValue": "Flag"},
+                            {"row": 0, "column": 1, "boolValue": False}
+                        ]
                     }
                 ]
             }

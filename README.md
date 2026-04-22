@@ -8,6 +8,8 @@ Swift-native replacement for `numbers-parser` (macOS-first), focused on determin
 - Read `Index.zip` blobs and build object inventory
 - Read single-file `.numbers` ZIP containers (`Index/*.iwa`) and build object inventory
 - Decode `document/sheet/table` metadata with SwiftProtobuf
+- Build object-reference graph from IWA archive headers (`objectReferences`)
+- Expose read-only basic cell values via `Table.cell(at:)`
 - CLI command: `swiftnumbers dump <file.numbers>`
 - CLI command: `swiftnumbers list-sheets <file.numbers>`
 
@@ -28,7 +30,7 @@ swift run swiftnumbers list-sheets Fixtures/multi-sheet.numbers
 ## Repository Layout
 
 - `Sources/SwiftNumbersContainer`: `.numbers` container access (`Index.zip`, metadata files)
-- `Sources/SwiftNumbersIWA`: IWA inventory extraction (MVP custom fixture format)
+- `Sources/SwiftNumbersIWA`: IWA inventory extraction + object reference traversal
 - `Sources/SwiftNumbersProto`: protobuf schema + metadata loading (`document_metadata.proto` + vendored `TSP*.proto` from `numbers-parser`)
 - `Sources/SwiftNumbersCore`: public API (`NumbersDocument`, `Sheet`, `Table`, `CellValue`)
 - `Sources/swiftnumbers`: CLI

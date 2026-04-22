@@ -19,6 +19,7 @@ message TableMetadata {
   uint32 row_count = 3;
   uint32 column_count = 4;
   repeated MergeRange merges = 5;
+  repeated Cell cells = 6;
 }
 
 message MergeRange {
@@ -26,4 +27,15 @@ message MergeRange {
   uint32 end_row = 2;
   uint32 start_column = 3;
   uint32 end_column = 4;
+}
+
+message Cell {
+  uint32 row = 1;
+  uint32 column = 2;
+
+  oneof value {
+    string string_value = 3;
+    double number_value = 4;
+    bool bool_value = 5;
+  }
 }

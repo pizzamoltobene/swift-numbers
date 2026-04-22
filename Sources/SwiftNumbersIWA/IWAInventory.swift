@@ -8,12 +8,23 @@ public struct IWAObjectRecord: Sendable, Hashable {
     public let typeID: UInt32
     public let payloadSize: Int
     public let sourceBlobPath: String
+    public let objectReferences: [UInt64]
+    public let dataReferences: [UInt64]
 
-    public init(objectID: UInt64, typeID: UInt32, payloadSize: Int, sourceBlobPath: String) {
+    public init(
+        objectID: UInt64,
+        typeID: UInt32,
+        payloadSize: Int,
+        sourceBlobPath: String,
+        objectReferences: [UInt64] = [],
+        dataReferences: [UInt64] = []
+    ) {
         self.objectID = objectID
         self.typeID = typeID
         self.payloadSize = payloadSize
         self.sourceBlobPath = sourceBlobPath
+        self.objectReferences = objectReferences
+        self.dataReferences = dataReferences
     }
 }
 
@@ -32,6 +43,61 @@ public struct IWAInventory: Sendable {
             histogram[record.typeID, default: 0] += 1
         }
         return histogram
+    }
+
+    public var objectReferenceAdjacency: [UInt64: Set<UInt64>] {
+        var adjacency: [UInt64: Set<UInt64>] = [:]
+
+        for record in records {
+            if !record.objectReferences.isEmpty {
+                adjacency[record.objectID, default: []].formUnion(record.objectReferences)
+            } else if adjacency[record.objectID] == nil {
+                adjacency[record.objectID] = []
+            }
+        }
+
+        return adjacency
+    }
+
+    public var objectReferenceEdgeCount: Int {
+        objectReferenceAdjacency.values.reduce(0) { $0 + $1.count }
+    }
+
+    public var rootObjectIDs: [UInt64] {
+        var allObjectIDs = Set(records.map(\.objectID))
+        var referencedObjectIDs = Set<UInt64>()
+
+        for references in objectReferenceAdjacency.values {
+            referencedObjectIDs.formUnion(references)
+        }
+
+        allObjectIDs.subtract(referencedObjectIDs)
+        return allObjectIDs.sorted()
+    }
+
+    public func reachableObjectIDs(from roots: [UInt64], maxDepth: Int? = nil) -> Set<UInt64> {
+        let adjacency = objectReferenceAdjacency
+        var visited = Set<UInt64>()
+        var queue: [(objectID: UInt64, depth: Int)] = roots.map { ($0, 0) }
+
+        while !queue.isEmpty {
+            let current = queue.removeFirst()
+            if visited.contains(current.objectID) {
+                continue
+            }
+            visited.insert(current.objectID)
+
+            if let maxDepth, current.depth >= maxDepth {
+                continue
+            }
+
+            let neighbors = adjacency[current.objectID, default: []]
+            for neighbor in neighbors where !visited.contains(neighbor) {
+                queue.append((neighbor, current.depth + 1))
+            }
+        }
+
+        return visited
     }
 }
 
@@ -111,7 +177,9 @@ public enum IWAInventoryBuilder {
                         objectID: archiveInfo.identifier,
                         typeID: messageInfo.type,
                         payloadSize: payloadLength,
-                        sourceBlobPath: blob.path
+                        sourceBlobPath: blob.path,
+                        objectReferences: messageInfo.objectReferences,
+                        dataReferences: messageInfo.dataReferences
                     )
                 )
                 cursor += payloadLength

@@ -32,17 +32,23 @@ final class NumbersDocumentTests: XCTestCase {
         let output = document.renderDump()
 
         XCTAssertTrue(output.contains("Sheets: 2"))
+        XCTAssertTrue(output.contains("Object reference edges: 0"))
+        XCTAssertTrue(output.contains("Root objects: 5"))
         XCTAssertTrue(output.contains("Type histogram:"))
         XCTAssertTrue(output.contains("1001: 1"))
         XCTAssertTrue(output.contains("1002: 2"))
         XCTAssertTrue(output.contains("1003: 2"))
     }
 
-    func testCellLookupReturnsNilInReadOnlyMVP() throws {
+    func testCellLookupReturnsValuesFromTypedMetadata() throws {
         let fixture = FixtureLocator.fixtureURL(named: "simple-table.numbers")
         let document = try NumbersDocument.open(at: fixture)
         let table = try XCTUnwrap(document.sheets.first?.tables.first)
 
-        XCTAssertNil(table.cell(at: CellAddress(row: 0, column: 0)))
+        XCTAssertEqual(table.populatedCellCount, 6)
+        XCTAssertEqual(table.cell(at: CellAddress(row: 0, column: 0)), .string("Name"))
+        XCTAssertEqual(table.cell(at: CellAddress(row: 1, column: 1)), .number(42))
+        XCTAssertEqual(table.cell(at: CellAddress(row: 2, column: 1)), .bool(true))
+        XCTAssertNil(table.cell(at: CellAddress(row: 3, column: 2)))
     }
 }

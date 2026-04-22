@@ -59,6 +59,10 @@ public struct Table: Hashable, Sendable {
     public func cell(at address: CellAddress) -> CellValue? {
         cells[address]
     }
+
+    public var populatedCellCount: Int {
+        cells.count
+    }
 }
 
 public struct Sheet: Hashable, Sendable {
@@ -77,6 +81,8 @@ public struct DocumentDump: Sendable {
     public let sourcePath: String
     public let blobCount: Int
     public let objectCount: Int
+    public let objectReferenceEdgeCount: Int
+    public let rootObjectCount: Int
     public let typeHistogram: [UInt32: Int]
     public let unparsedBlobPaths: [String]
 
@@ -84,12 +90,16 @@ public struct DocumentDump: Sendable {
         sourcePath: String,
         blobCount: Int,
         objectCount: Int,
+        objectReferenceEdgeCount: Int,
+        rootObjectCount: Int,
         typeHistogram: [UInt32: Int],
         unparsedBlobPaths: [String]
     ) {
         self.sourcePath = sourcePath
         self.blobCount = blobCount
         self.objectCount = objectCount
+        self.objectReferenceEdgeCount = objectReferenceEdgeCount
+        self.rootObjectCount = rootObjectCount
         self.typeHistogram = typeHistogram
         self.unparsedBlobPaths = unparsedBlobPaths
     }

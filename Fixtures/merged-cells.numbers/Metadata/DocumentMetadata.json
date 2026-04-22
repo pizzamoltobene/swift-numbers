@@ -17,6 +17,13 @@
               "startColumn": 0,
               "endColumn": 1
             }
+          ],
+          "cells": [
+            {
+              "row": 0,
+              "column": 0,
+              "stringValue": "Merged Title"
+            }
           ]
         }
       ]

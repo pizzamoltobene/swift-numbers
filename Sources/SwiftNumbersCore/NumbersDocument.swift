@@ -45,6 +45,26 @@ public struct NumbersDocument: Sendable {
                         )
                     }
 
+                    var cells: [CellAddress: CellValue] = [:]
+                    cells.reserveCapacity(table.cells.count)
+                    for cell in table.cells {
+                        let address = CellAddress(row: Int(cell.row), column: Int(cell.column))
+                        let value: CellValue
+
+                        switch cell.value {
+                        case .stringValue(let string):
+                            value = .string(string)
+                        case .numberValue(let number):
+                            value = .number(number)
+                        case .boolValue(let bool):
+                            value = .bool(bool)
+                        case nil:
+                            value = .empty
+                        }
+
+                        cells[address] = value
+                    }
+
                     return Table(
                         id: table.tableID,
                         name: table.name,
@@ -52,7 +72,8 @@ public struct NumbersDocument: Sendable {
                             rowCount: Int(table.rowCount),
                             columnCount: Int(table.columnCount),
                             mergeRanges: ranges
-                        )
+                        ),
+                        cells: cells
                     )
                 }
 
@@ -70,6 +91,8 @@ public struct NumbersDocument: Sendable {
             sourcePath: url.path,
             blobCount: blobs.count,
             objectCount: inventory.records.count,
+            objectReferenceEdgeCount: inventory.objectReferenceEdgeCount,
+            rootObjectCount: inventory.rootObjectIDs.count,
             typeHistogram: inventory.typeHistogram,
             unparsedBlobPaths: inventory.unparsedBlobPaths
         )
@@ -88,6 +111,8 @@ public struct NumbersDocument: Sendable {
         lines.append("Tables: \(sheets.reduce(0) { $0 + $1.tables.count })")
         lines.append("Index blobs: \(dumpInfo.blobCount)")
         lines.append("IWA objects: \(dumpInfo.objectCount)")
+        lines.append("Object reference edges: \(dumpInfo.objectReferenceEdgeCount)")
+        lines.append("Root objects: \(dumpInfo.rootObjectCount)")
 
         let sortedTypes = dumpInfo.typeHistogram.keys.sorted()
         if sortedTypes.isEmpty {

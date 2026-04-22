@@ -10,7 +10,39 @@
           "name": "Table 1",
           "rowCount": 4,
           "columnCount": 3,
-          "merges": []
+          "merges": [],
+          "cells": [
+            {
+              "row": 0,
+              "column": 0,
+              "stringValue": "Name"
+            },
+            {
+              "row": 0,
+              "column": 1,
+              "stringValue": "Value"
+            },
+            {
+              "row": 1,
+              "column": 0,
+              "stringValue": "Answer"
+            },
+            {
+              "row": 1,
+              "column": 1,
+              "numberValue": 42
+            },
+            {
+              "row": 2,
+              "column": 0,
+              "stringValue": "Enabled"
+            },
+            {
+              "row": 2,
+              "column": 1,
+              "boolValue": true
+            }
+          ]
         }
       ]
     }

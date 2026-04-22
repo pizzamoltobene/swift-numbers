@@ -10,7 +10,34 @@
           "name": "Styled Table",
           "rowCount": 6,
           "columnCount": 4,
-          "merges": []
+          "merges": [],
+          "cells": [
+            {
+              "row": 0,
+              "column": 0,
+              "stringValue": "Amount"
+            },
+            {
+              "row": 1,
+              "column": 0,
+              "stringValue": "Q1"
+            },
+            {
+              "row": 1,
+              "column": 1,
+              "numberValue": 1200.5
+            },
+            {
+              "row": 2,
+              "column": 0,
+              "stringValue": "Q2"
+            },
+            {
+              "row": 2,
+              "column": 1,
+              "numberValue": 1325.75
+            }
+          ]
         }
       ]
     }

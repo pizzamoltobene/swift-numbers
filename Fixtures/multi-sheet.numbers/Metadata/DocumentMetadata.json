@@ -10,7 +10,19 @@
           "name": "Table A1",
           "rowCount": 3,
           "columnCount": 3,
-          "merges": []
+          "merges": [],
+          "cells": [
+            {
+              "row": 0,
+              "column": 0,
+              "stringValue": "A1"
+            },
+            {
+              "row": 1,
+              "column": 1,
+              "numberValue": 10
+            }
+          ]
         }
       ]
     },
@@ -23,14 +35,33 @@
           "name": "Table B1",
           "rowCount": 2,
           "columnCount": 2,
-          "merges": []
+          "merges": [],
+          "cells": [
+            {
+              "row": 0,
+              "column": 0,
+              "stringValue": "B1"
+            }
+          ]
         },
         {
           "tableId": "table-b2",
           "name": "Table B2",
           "rowCount": 7,
           "columnCount": 5,
-          "merges": []
+          "merges": [],
+          "cells": [
+            {
+              "row": 0,
+              "column": 0,
+              "stringValue": "Flag"
+            },
+            {
+              "row": 0,
+              "column": 1,
+              "boolValue": false
+            }
+          ]
         }
       ]
     }
