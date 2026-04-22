@@ -1,23 +1,25 @@
 # Third-Party Notices
 
-## numbers-parser
+## SwiftProtobuf
 
-The following files are vendored from [numbers-parser](https://github.com/masaccio/numbers-parser):
+This project depends on `swift-protobuf` and includes generated Swift sources from local `.proto` definitions.
 
-- `Sources/SwiftNumbersProto/Protos/NumbersParser/TSPMessages.proto`
-- `Sources/SwiftNumbersProto/Protos/NumbersParser/TSPArchiveMessages.proto`
-- `Fixtures/reference-empty.numbers`
+Repository: https://github.com/apple/swift-protobuf
 
-The following minimal schema subsets are derived from upstream `numbers-parser` protobuf schemas for Swift-native decoding:
+## ZIPFoundation
 
-- `Sources/SwiftNumbersProto/Protos/NumbersSubset/TNArchives_Minimal.proto`
-- `Sources/SwiftNumbersProto/Protos/NumbersSubset/TSDArchives_Minimal.proto`
-- `Sources/SwiftNumbersProto/Protos/NumbersSubset/TSTArchives_Minimal.proto`
+This project depends on `ZIPFoundation` for ZIP archive reading.
 
-Original repository license: see upstream repository and `LICENSE.rst` in `numbers-parser`.
+Repository: https://github.com/weichsel/ZIPFoundation
+
+## swift-snappy
+
+This project depends on `swift-snappy` for Snappy decompression.
+
+Repository: https://github.com/lovetodream/swift-snappy
 
 ## Protocol Buffers Descriptor
 
-The file below is vendored from the Protocol Buffers source distributed in `swift-protobuf`:
+The file below is vendored from the Protocol Buffers source distributed with `swift-protobuf`:
 
 - `Sources/SwiftNumbersProto/google/protobuf/descriptor.proto`

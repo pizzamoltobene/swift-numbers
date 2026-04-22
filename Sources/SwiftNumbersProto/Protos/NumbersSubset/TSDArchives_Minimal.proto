@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-import "Protos/NumbersParser/TSPMessages.proto";
+import "Protos/BaseMessages/TSPMessages.proto";
 package TSD;
 
 message DrawableArchive {

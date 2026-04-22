@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark private .numbers corpus against Python numbers-parser and SwiftNumbers CLI."""
+"""Benchmark private .numbers corpus using SwiftNumbers CLI only."""
 
 from __future__ import annotations
 
@@ -161,33 +161,10 @@ def run_command(command: list[str]) -> float:
     return elapsed
 
 
-def python_numbers_parser_command(file_path: Path) -> list[str]:
-    snippet = (
-        "from numbers_parser import Document;"
-        "import sys;"
-        "doc=Document(sys.argv[1]);"
-        "sheets_attr=getattr(doc,'sheets',None);"
-        "sheets=sheets_attr() if callable(sheets_attr) else sheets_attr;"
-        "_ = len(sheets or [])"
-    )
-    return ["python3", "-c", snippet, str(file_path)]
-
-
-def python_numbers_parser_available() -> bool:
-    probe = subprocess.run(
-        ["python3", "-c", "import numbers_parser"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
-    return probe.returncode == 0
-
-
 def benchmark_documents(
     documents: Iterable[Path],
     warmup: int,
     iterations: int,
-    include_python: bool,
     swift_commands: dict[str, list[str]],
 ) -> dict[str, dict[str, float] | dict[str, list[float]]]:
     samples: dict[str, CommandSamples] = {
@@ -195,30 +172,15 @@ def benchmark_documents(
         "swift_dump": CommandSamples(samples_ms=[]),
     }
 
-    if include_python:
-        samples["python_numbers_parser"] = CommandSamples(samples_ms=[])
-
     for document in documents:
         for _ in range(warmup):
-            for key, base in swift_commands.items():
+            for base in swift_commands.values():
                 _ = run_command([*base, str(document)])
-            if include_python:
-                try:
-                    _ = run_command(python_numbers_parser_command(document))
-                except RuntimeError as error:
-                    print(f"[warn] Skipping python warmup for {document.name}: {error}")
 
         for _ in range(iterations):
             for key, base in swift_commands.items():
                 elapsed = run_command([*base, str(document)])
                 samples[key].samples_ms.append(elapsed)
-
-            if include_python:
-                try:
-                    elapsed = run_command(python_numbers_parser_command(document))
-                    samples["python_numbers_parser"].samples_ms.append(elapsed)
-                except RuntimeError as error:
-                    print(f"[warn] Skipping python measurement for {document.name}: {error}")
 
     payload: dict[str, dict[str, float] | dict[str, list[float]]] = {}
     for key, command_samples in samples.items():
@@ -236,7 +198,7 @@ def print_summary(
     print("Benchmark summary (ms):")
     for config in sorted(results_by_config.keys()):
         print(f"[{config}]")
-        for key in ["python_numbers_parser", "swift_list_sheets", "swift_dump"]:
+        for key in ["swift_list_sheets", "swift_dump"]:
             if key not in results_by_config[config]:
                 continue
             summary = results_by_config[config][key]["summary"]
@@ -359,10 +321,6 @@ def main() -> int:
             print(f"Building Swift package before benchmark ({configuration})...")
             subprocess.run(["swift", "build", "-c", configuration], check=True)
 
-    include_python = python_numbers_parser_available()
-    if not include_python:
-        print("numbers-parser not available in Python environment; python baseline will be skipped.")
-
     print(
         f"Benchmarking {len(documents)} document(s) from {corpus} for configurations: {', '.join(configurations)}"
     )
@@ -380,7 +338,6 @@ def main() -> int:
             documents=documents,
             warmup=max(args.warmup, 0),
             iterations=max(args.iterations, 1),
-            include_python=include_python,
             swift_commands=swift_commands,
         )
         results_by_config[configuration] = raw_results

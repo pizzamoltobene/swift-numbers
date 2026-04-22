@@ -1,125 +1,107 @@
-# SwiftNumbers
+<p align="center">
+  <img src="docs/assets/swiftnumbers-logo.svg" alt="SwiftNumbers logo" width="960" />
+</p>
 
-Swift-native replacement for `numbers-parser` (macOS-first), focused on deterministic container reading, typed metadata access, and robust round-trip groundwork.
+<h1 align="center">SwiftNumbers</h1>
 
-## Current MVP (Sprint 1)
+<p align="center">
+  Fast, native <code>.numbers</code> reading in Swift.
+</p>
 
-- Open `.numbers` containers
-- Read `Index.zip` blobs and build object inventory
-- Read single-file `.numbers` ZIP containers (`Index/*.iwa`) and build object inventory
-- Decode `document/sheet/table` metadata with SwiftProtobuf
-- Build object-reference graph from IWA archive headers (`objectReferences`)
-- Expose read-only basic cell values via `Table.cell(at:)`
-- CLI command: `swiftnumbers dump <file.numbers>`
-- CLI command: `swiftnumbers list-sheets <file.numbers>`
-- Machine-readable CLI output: `--format json` for `dump` and `list-sheets`
-- Real-file read path (typed Swift decode for `document/sheet/table/tile/string/merge`)
-- Document version diagnostics from `Metadata/Properties.plist` (warning-only on unsupported versions)
+<p align="center">
+  <a href="https://github.com/pizzamoltobene/swift-numbers/actions/workflows/ci.yml">
+    <img alt="CI" src="https://github.com/pizzamoltobene/swift-numbers/actions/workflows/ci.yml/badge.svg" />
+  </a>
+  <img alt="Swift 6.0+" src="https://img.shields.io/badge/Swift-6.0%2B-F05138?logo=swift&logoColor=white" />
+  <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-1F2937?logo=apple&logoColor=white" />
+  <img alt="Release v0.1.0" src="https://img.shields.io/badge/Release-v0.1.0-16A34A" />
+</p>
 
-## Requirements
+`SwiftNumbers` is a macOS-first Swift package for deterministic, read-only extraction of sheets, tables, and cell values from `.numbers` documents.
 
-- macOS 13+
-- Swift 6.3+
+## What You Get
 
-## Build and Run
+- Native Swift implementation (`Swift 6.0+`, `macOS 13+`)
+- Stable public API:
+  - `NumbersDocument.open(at:)`
+  - `NumbersDocument.sheets`
+  - `Sheet.tables`
+  - `Table.metadata`
+  - `Table.cell(at:) -> CellValue?`
+- CLI with text and JSON output:
+  - `swiftnumbers dump <file.numbers> [--format text|json]`
+  - `swiftnumbers list-sheets <file.numbers> [--format text|json]`
+- Real-read pipeline with diagnostics and safe metadata fallback
+- CI quality gates: format, warnings-as-errors build, tests, coverage threshold
+
+## Install (SwiftPM)
+
+Use the `v0.1.0` tag:
+
+```swift
+.package(url: "https://github.com/pizzamoltobene/swift-numbers.git", from: "0.1.0")
+```
+
+Then add the library target dependency:
+
+```swift
+.product(name: "SwiftNumbers", package: "swift-numbers")
+```
+
+## Quick Start
 
 ```bash
 swift build
 swift test
 ./scripts/ci-check.sh
-swift run swiftnumbers dump Fixtures/simple-table.numbers
+
 swift run swiftnumbers list-sheets Fixtures/multi-sheet.numbers
 swift run swiftnumbers dump Fixtures/simple-table.numbers --format json
 ```
 
-## CI / Quality Gates
+## Local Real-File Regression Workflow
 
-GitHub workflow: `.github/workflows/ci.yml`
+Private files stay local only.
 
-Required checks for `main`:
+- Corpus path:
+  - default: `./PrivateCorpus`
+  - override: `SWIFT_NUMBERS_PRIVATE_CORPUS=/abs/path`
+- Per-file expectation manifest:
+  - default: `./.private-corpus/expectations.json`
+  - override: `SWIFT_NUMBERS_PRIVATE_EXPECTATIONS=/abs/path/expectations.json`
 
-- build (`swift build -warnings-as-errors`)
-- tests (`swift test --enable-code-coverage`)
-- format check (`swift format lint --recursive`)
-- first-party coverage summary (`./scripts/coverage-summary.sh --threshold 70`)
-
-Local one-shot command:
-
-```bash
-./scripts/ci-check.sh
-```
-
-## Private Real-World Corpus (Local Only)
-
-Real user `.numbers` files stay local and are never committed.
-
-- Default local path: `./PrivateCorpus` (gitignored)
-- Override via env var: `SWIFT_NUMBERS_PRIVATE_CORPUS=/abs/path/to/corpus`
-- Local expectation manifest (gitignored): `./.private-corpus/expectations.json`
-- Override manifest path via env var: `SWIFT_NUMBERS_PRIVATE_EXPECTATIONS=/abs/path/expectations.json`
-- Integration tests auto-skip when corpus is missing
-
-Supported corpus checks:
-
-- `open + dump` on every file
-- per-file expectations: `minSheets`, `minTables`, `minPopulatedCells`, `allowEmptyCells`
-
-Generate/update manifest:
+Generate or refresh expectations:
 
 ```bash
 ./scripts/update_private_corpus_expectations.py --write
 ```
 
-## Performance Harness
-
-Compare Python and Swift paths on private corpus:
+Run performance guardrails (debug + release):
 
 ```bash
 ./scripts/bench_private_corpus.py --update-baseline
 ./scripts/bench_private_corpus.py
 ```
 
-What it measures:
-
-- `python numbers-parser` open/read
-- `swiftnumbers list-sheets`
-- `swiftnumbers dump`
-
-Guardrail:
-
-- fail if Swift mean runtime regresses by more than `15%` vs baseline
-- dual baselines are tracked separately:
-  - debug: `.local/perf-baseline-debug.json`
-  - release: `.local/perf-baseline-release.json`
-
 ## Repository Layout
 
-- `Sources/SwiftNumbersContainer`: `.numbers` container access (`Index.zip`, metadata files)
-- `Sources/SwiftNumbersIWA`: IWA inventory extraction + object reference traversal
-- `Sources/SwiftNumbersProto`: protobuf schema + metadata loading (`document_metadata.proto` + vendored `TSP*.proto` from `numbers-parser`)
-- `Sources/SwiftNumbersCore`: public API (`NumbersDocument`, `Sheet`, `Table`, `CellValue`)
+- `Sources/SwiftNumbersCore`: public models and document API
+- `Sources/SwiftNumbersContainer`: package/container reading
+- `Sources/SwiftNumbersIWA`: object inventory and traversal/decode pipeline
+- `Sources/SwiftNumbersProto`: protobuf definitions and loading
 - `Sources/swiftnumbers`: CLI
-- `Fixtures/`: synthetic public fixtures + `reference-empty.numbers` (from `numbers-parser`)
+- `Tests/SwiftNumbersTests`: unit/integration/golden tests
+- `docs/`: preview and quick docs
 
-## License Model
+## Docs
 
-Dual-license:
+- [Quickstart](docs/quickstart.md)
+- [Preview](docs/assets/preview.md)
+- [Changelog](CHANGELOG.md)
 
-- Open source: AGPL-3.0 (`LICENSE-AGPL-3.0`)
-- Commercial: custom terms (`LICENSE-COMMERCIAL.md`)
+## License
 
-## Upstream References
+Dual-license model:
 
-This project vendors selected format artifacts from [numbers-parser](https://github.com/masaccio/numbers-parser):
-
-- `TSPMessages.proto`
-- `TSPArchiveMessages.proto`
-- `Fixtures/reference-empty.numbers`
-
-To refresh these assets, run:
-
-```bash
-./scripts/import_numbers_parser_assets.sh
-```
-
-See [THIRD_PARTY_NOTICES.md](/Users/bondp/Documents/Personal/swift-numbers/THIRD_PARTY_NOTICES.md) for attribution details.
+- Open source: `AGPL-3.0` ([LICENSE-AGPL-3.0](LICENSE-AGPL-3.0))
+- Commercial: [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md)
