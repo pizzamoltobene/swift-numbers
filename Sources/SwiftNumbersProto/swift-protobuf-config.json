@@ -4,6 +4,9 @@
       "protoFiles": [
         "Protos/NumbersParser/TSPMessages.proto",
         "Protos/NumbersParser/TSPArchiveMessages.proto",
+        "Protos/NumbersSubset/TNArchives_Minimal.proto",
+        "Protos/NumbersSubset/TSDArchives_Minimal.proto",
+        "Protos/NumbersSubset/TSTArchives_Minimal.proto",
         "Protos/document_metadata.proto"
       ],
       "visibility": "public"

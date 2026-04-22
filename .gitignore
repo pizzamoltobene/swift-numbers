@@ -3,3 +3,7 @@
 .DS_Store
 vendor/
 .vendor/
+PrivateCorpus/
+.private-corpus/
+.local/
+*.profraw

@@ -1,0 +1,116 @@
+syntax = "proto2";
+
+import "Protos/NumbersParser/TSPMessages.proto";
+import "Protos/NumbersSubset/TSDArchives_Minimal.proto";
+package TST;
+
+message CellID {
+  optional fixed32 packedData = 1;
+}
+
+message TableSize {
+  optional fixed32 packedData = 1;
+  optional uint32 num_columns = 2;
+  optional uint32 num_rows = 3;
+}
+
+message CellRange {
+  optional .TST.CellID origin = 1;
+  optional .TST.TableSize size = 2;
+}
+
+message TileRowInfo {
+  optional uint32 tile_row_index = 1;
+  optional uint32 cell_count = 2;
+  optional bytes cell_storage_buffer_pre_bnc = 3;
+  optional bytes cell_offsets_pre_bnc = 4;
+  optional uint32 storage_version = 5;
+  optional bytes cell_storage_buffer = 6;
+  optional bytes cell_offsets = 7;
+  optional bool has_wide_offsets = 8;
+}
+
+message Tile {
+  optional uint32 maxColumn = 1;
+  optional uint32 maxRow = 2;
+  optional uint32 numCells = 3;
+  optional uint32 numrows = 4;
+  repeated .TST.TileRowInfo rowInfos = 5;
+  optional uint32 storage_version = 6;
+  optional bool last_saved_in_BNC = 7;
+  optional bool should_use_wide_rows = 8;
+}
+
+message TileStorage {
+  message TileEntry {
+    optional uint32 tileid = 1;
+    optional .TSP.Reference tile = 2;
+  }
+
+  repeated .TST.TileStorage.TileEntry tiles = 1;
+  optional uint32 tile_size = 2;
+  optional bool should_use_wide_rows = 3;
+}
+
+message HeaderStorageBucket {
+  message Header {
+    optional uint32 index = 1;
+    optional float size = 2;
+    optional uint32 hidingState = 3;
+    optional uint32 numberOfCells = 4;
+  }
+
+  optional uint32 bucketHashFunction = 1;
+  repeated .TST.HeaderStorageBucket.Header headers = 2;
+}
+
+message HeaderStorage {
+  optional uint32 bucketHashFunction = 1;
+  repeated .TSP.Reference buckets = 2;
+}
+
+message TableDataList {
+  message ListEntry {
+    optional uint32 key = 1;
+    optional uint32 refcount = 2;
+    optional string string_value = 3;
+    optional .TSP.Reference reference = 4;
+  }
+
+  optional uint32 list_type = 1;
+  optional uint32 nextListID = 2;
+  repeated .TST.TableDataList.ListEntry entries = 3;
+  repeated .TSP.Reference segments = 4;
+  optional bool is_new_for_bnc = 5;
+}
+
+message TableDataListSegment {
+  optional uint32 list_type = 1;
+  optional .TSP.Range key_range = 2;
+  repeated .TST.TableDataList.ListEntry entries = 3;
+}
+
+message DataStore {
+  optional .TST.HeaderStorage rowHeaders = 1;
+  optional .TSP.Reference columnHeaders = 2;
+  optional .TST.TileStorage tiles = 3;
+  optional .TSP.Reference stringTable = 4;
+  optional .TSP.Reference merge_region_map = 13;
+}
+
+message TableInfoArchive {
+  optional .TSD.DrawableArchive super = 1;
+  optional .TSP.Reference tableModel = 2;
+}
+
+message TableModelArchive {
+  optional string table_id = 1;
+  optional .TST.DataStore base_data_store = 4;
+  optional uint32 number_of_rows = 6;
+  optional uint32 number_of_columns = 7;
+  optional string table_name = 8;
+}
+
+message MergeRegionMapArchive {
+  repeated .TST.CellRange cell_range = 1;
+}

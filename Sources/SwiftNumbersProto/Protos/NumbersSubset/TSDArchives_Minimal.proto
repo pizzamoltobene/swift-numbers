@@ -1,0 +1,8 @@
+syntax = "proto2";
+
+import "Protos/NumbersParser/TSPMessages.proto";
+package TSD;
+
+message DrawableArchive {
+  optional .TSP.Reference parent = 2;
+}

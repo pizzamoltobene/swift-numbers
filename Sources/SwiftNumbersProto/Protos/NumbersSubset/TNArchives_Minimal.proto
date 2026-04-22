@@ -1,0 +1,13 @@
+syntax = "proto2";
+
+import "Protos/NumbersParser/TSPMessages.proto";
+package TN;
+
+message DocumentArchive {
+  repeated .TSP.Reference sheets = 1;
+}
+
+message SheetArchive {
+  optional string name = 1;
+  repeated .TSP.Reference drawable_infos = 2;
+}

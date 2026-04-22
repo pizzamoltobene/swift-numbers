@@ -8,6 +8,12 @@ The following files are vendored from [numbers-parser](https://github.com/masacc
 - `Sources/SwiftNumbersProto/Protos/NumbersParser/TSPArchiveMessages.proto`
 - `Fixtures/reference-empty.numbers`
 
+The following minimal schema subsets are derived from upstream `numbers-parser` protobuf schemas for Swift-native decoding:
+
+- `Sources/SwiftNumbersProto/Protos/NumbersSubset/TNArchives_Minimal.proto`
+- `Sources/SwiftNumbersProto/Protos/NumbersSubset/TSDArchives_Minimal.proto`
+- `Sources/SwiftNumbersProto/Protos/NumbersSubset/TSTArchives_Minimal.proto`
+
 Original repository license: see upstream repository and `LICENSE.rst` in `numbers-parser`.
 
 ## Protocol Buffers Descriptor

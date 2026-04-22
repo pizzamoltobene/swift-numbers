@@ -1,0 +1,19 @@
+Source: <fixture>
+Document version: <unknown>
+Read path: metadataFallback
+Fallback reason: [error] resolver.document.missing: TN.DocumentArchive root not found in IWA inventory.
+Sheets: 2
+Tables: 3
+Resolved cells: 5
+Index blobs: 3
+IWA objects: 5
+Object reference edges: 0
+Root objects: 5
+Type histogram:
+  1001: 1
+  1002: 2
+  1003: 2
+Unparsed blobs: 0
+Diagnostics: 2
+  [error] resolver.document.missing: TN.DocumentArchive root not found in IWA inventory.
+  [warning] read-path.fallback: Falling back to metadata decode path. ([error] resolver.document.missing: TN.DocumentArchive root not found in IWA inventory.)
