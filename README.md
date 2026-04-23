@@ -1,8 +1,7 @@
 # SwiftNumbers
 
-Fast, native `.numbers` reading in Swift.
 
-`SwiftNumbers` is a Swift package for parsing Apple `.numbers` documents in native Swift workflows.
+`SwiftNumbers` is a Swift library for reading/editing Apple `.numbers` documents.
 
 ## Documentation
 
