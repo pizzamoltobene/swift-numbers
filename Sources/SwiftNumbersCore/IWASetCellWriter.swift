@@ -789,12 +789,20 @@ enum IWASetCellWriter {
     )
 
     let tableInfoRefs = uniqueReferences([parentSheetObjectID, tableModelObjectID])
+    let rowHeaderRefs = dataStore.rowHeaders.buckets.compactMap {
+      $0.identifier > 0 ? $0.identifier : nil
+    }
+    let tileRefs = dataStore.tiles.tiles.compactMap {
+      $0.tile.identifier > 0 ? $0.tile.identifier : nil
+    }
+    let columnHeaderRefs =
+      dataStore.columnHeaders.identifier > 0 ? [dataStore.columnHeaders.identifier] : []
+    let stringTableDataStoreRefs =
+      dataStore.stringTable.identifier > 0 ? [dataStore.stringTable.identifier] : []
+    let mergeRegionRefs =
+      dataStore.mergeRegionMap.identifier > 0 ? [dataStore.mergeRegionMap.identifier] : []
     let tableModelRefs = uniqueReferences(
-      dataStore.rowHeaders.buckets.compactMap { $0.identifier > 0 ? $0.identifier : nil }
-        + dataStore.tiles.tiles.compactMap { $0.tile.identifier > 0 ? $0.tile.identifier : nil }
-        + (dataStore.columnHeaders.identifier > 0 ? [dataStore.columnHeaders.identifier] : [])
-        + (dataStore.stringTable.identifier > 0 ? [dataStore.stringTable.identifier] : [])
-        + (dataStore.mergeRegionMap.identifier > 0 ? [dataStore.mergeRegionMap.identifier] : [])
+      rowHeaderRefs + tileRefs + columnHeaderRefs + stringTableDataStoreRefs + mergeRegionRefs
     )
     let stringTableRefs = uniqueReferences(
       stringTable.segments.compactMap { $0.identifier > 0 ? $0.identifier : nil })
