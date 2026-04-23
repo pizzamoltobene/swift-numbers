@@ -130,6 +130,28 @@ public struct NumbersContainer: Sendable {
     return Array(Set(metadataFiles)).sorted()
   }
 
+  public func hasEntry(named filename: String) throws -> Bool {
+    let target = filename.lowercased()
+
+    if isDirectory {
+      let candidate = rootURL.appendingPathComponent(filename, isDirectory: false)
+      return FileManager.default.fileExists(atPath: candidate.path)
+    }
+
+    let archive = try openArchive(at: rootURL)
+    return archive.contains { entry in
+      guard entry.type == .file else {
+        return false
+      }
+      let path = entry.path.lowercased()
+      return path == target || path.hasSuffix("/\(target)")
+    }
+  }
+
+  public func isLikelyEncryptedDocument() throws -> Bool {
+    try hasEntry(named: ".iwpv2") || hasEntry(named: ".iwph")
+  }
+
   private var isDirectory: Bool {
     var isDirectory: ObjCBool = false
     _ = FileManager.default.fileExists(atPath: rootURL.path, isDirectory: &isDirectory)

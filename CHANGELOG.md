@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.1] - 2026-04-23
+
+### Fixed
+
+- Fixed a runtime crash when decoding certain high-magnitude decimal payloads
+  in real-read (`unpackDecimal128` no longer overflows `Int64`).
+- Added explicit encrypted-document detection for `.numbers` files containing
+  encryption markers (`.iwpv2` / `.iwph`).
+- `NumbersDocument.open(at:)` now throws a clear unsupported error for encrypted
+  documents instead of returning a misleading empty-sheet success path.
+
+### Added
+
+- Unit coverage for decimal128 overflow-safe decoding.
+- Compatibility tests for encrypted marker detection and unsupported open-path
+  behavior.
+
 ## [0.2.0] - 2026-04-22
 
 ### Added

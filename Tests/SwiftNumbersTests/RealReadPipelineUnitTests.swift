@@ -99,6 +99,17 @@ final class RealReadPipelineUnitTests: XCTestCase {
     XCTAssertEqual(row[2], nil)
   }
 
+  func testUnpackDecimal128HandlesLargeMantissaWithoutOverflow() {
+    var bytes = [UInt8](repeating: 0xFF, count: 16)
+    // Encoded exponent for zero: 0x1820.
+    bytes[14] = 0x41  // exponent low bits + mantissa low bit
+    bytes[15] = 0x30  // exponent high bits, positive sign
+
+    let value = IWARealDocumentReader.unpackDecimal128(Data(bytes))
+    XCTAssertTrue(value.isFinite)
+    XCTAssertFalse(value.isNaN)
+  }
+
   private func makeCellBuffer(
     type: UInt8,
     flags: Int32,

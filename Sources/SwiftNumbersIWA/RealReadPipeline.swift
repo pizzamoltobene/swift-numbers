@@ -1039,15 +1039,16 @@ public enum IWARealDocumentReader {
     let bytes = [UInt8](data)
     let exponent = (Int((bytes[15] & 0x7F) << 7) | Int(bytes[14] >> 1)) - 0x1820
 
-    var mantissa = Int64(bytes[14] & 0x01)
+    // Use Double accumulation to avoid Int64 overflow on high-magnitude decimal128 payloads.
+    var mantissa = Double(bytes[14] & 0x01)
     for index in stride(from: 13, through: 0, by: -1) {
-      mantissa = (mantissa * 256) + Int64(bytes[index])
+      mantissa = (mantissa * 256) + Double(bytes[index])
     }
 
     if (bytes[15] & 0x80) != 0 {
       mantissa = -mantissa
     }
 
-    return Double(mantissa) * pow(10.0, Double(exponent))
+    return mantissa * pow(10.0, Double(exponent))
   }
 }

@@ -47,4 +47,39 @@ final class ReferenceCompatibilityTests: XCTestCase {
     XCTAssertTrue(dump.contains("Root objects:"))
     XCTAssertTrue(dump.contains("Diagnostics:"))
   }
+
+  func testContainerDetectsEncryptionMarkers() throws {
+    let fixture = try makeTemporaryNumbersDirectory(encrypted: true)
+    defer { try? FileManager.default.removeItem(at: fixture) }
+
+    let container = try NumbersContainer.open(at: fixture)
+    XCTAssertTrue(try container.isLikelyEncryptedDocument())
+  }
+
+  func testOpenThrowsUnsupportedForEncryptedDocument() throws {
+    let fixture = try makeTemporaryNumbersDirectory(encrypted: true)
+    defer { try? FileManager.default.removeItem(at: fixture) }
+
+    XCTAssertThrowsError(try NumbersDocument.open(at: fixture)) { error in
+      guard case NumbersDocumentError.encryptedDocumentUnsupported = error else {
+        XCTFail("Expected encryptedDocumentUnsupported, got \(error)")
+        return
+      }
+    }
+  }
+
+  private func makeTemporaryNumbersDirectory(encrypted: Bool) throws -> URL {
+    let fixture = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+      .appendingPathComponent("swift-numbers-\(UUID().uuidString).numbers", isDirectory: true)
+
+    try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: true)
+
+    guard encrypted else {
+      return fixture
+    }
+
+    try Data([0x01]).write(to: fixture.appendingPathComponent(".iwpv2", isDirectory: false))
+    try Data([0x01]).write(to: fixture.appendingPathComponent(".iwph", isDirectory: false))
+    return fixture
+  }
 }

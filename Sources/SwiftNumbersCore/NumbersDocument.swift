@@ -5,11 +5,15 @@ import SwiftNumbersProto
 
 public enum NumbersDocumentError: LocalizedError {
   case metadataMissing
+  case encryptedDocumentUnsupported
 
   public var errorDescription: String? {
     switch self {
     case .metadataMissing:
       return "Document metadata is missing (expected Metadata/DocumentMetadata.pb or .json)."
+    case .encryptedDocumentUnsupported:
+      return
+        "Encrypted .numbers documents are currently unsupported. Re-save without password protection and retry."
     }
   }
 }
@@ -22,6 +26,9 @@ public struct NumbersDocument: Sendable {
 
   public static func open(at url: URL) throws -> NumbersDocument {
     let container = try NumbersContainer.open(at: url)
+    if try container.isLikelyEncryptedDocument() {
+      throw NumbersDocumentError.encryptedDocumentUnsupported
+    }
     let documentVersion = NumbersDocumentVersion.read(from: container)
     let metadata = try MetadataLoader.loadDocumentMetadata(from: container)
     let blobs = try container.loadIndexBlobs()
