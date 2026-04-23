@@ -1,5 +1,6 @@
 # SwiftNumbers
 
+![SwiftNumbers Logo](docs/assets/swiftnumbers-logo.png)
 
 `SwiftNumbers` is a Swift library for reading/editing Apple `.numbers` documents.
 
