@@ -23,6 +23,7 @@ public struct NumbersDocument: Sendable {
   public static func open(at url: URL) throws -> NumbersDocument {
     let container = try NumbersContainer.open(at: url)
     let documentVersion = NumbersDocumentVersion.read(from: container)
+    let metadata = try MetadataLoader.loadDocumentMetadata(from: container)
     let blobs = try container.loadIndexBlobs()
     let inventory = try IWAInventoryBuilder.build(from: blobs)
 
@@ -33,10 +34,17 @@ public struct NumbersDocument: Sendable {
     var fallbackReason: String?
     var diagnostics = realRead.diagnostics
 
-    if !realRead.sheets.isEmpty {
+    if let metadata, shouldPreferEditableMetadataOverlay(metadata) {
+      sheets = mapMetadataSheets(metadata)
+      readPath = .metadataFallback
+      fallbackReason = "Using SwiftNumbers editable metadata overlay."
+      diagnostics.append(
+        "[info] read-path.editable-overlay: Prioritizing metadata overlay produced by SwiftNumbers writer."
+      )
+    } else if !realRead.sheets.isEmpty {
       sheets = mapResolvedSheets(realRead.sheets)
       readPath = .real
-    } else if let metadata = try MetadataLoader.loadDocumentMetadata(from: container) {
+    } else if let metadata {
       sheets = mapMetadataSheets(metadata)
       readPath = .metadataFallback
       fallbackReason =
@@ -143,7 +151,11 @@ public struct NumbersDocument: Sendable {
           case .empty:
             value = .empty
           case .string(let string):
-            value = .string(string)
+            if let date = decodeEditableDateMarker(string) {
+              value = .date(date)
+            } else {
+              value = .string(string)
+            }
           case .number(let number):
             value = .number(number)
           case .bool(let bool):
@@ -201,7 +213,11 @@ public struct NumbersDocument: Sendable {
 
           switch cell.value {
           case .stringValue(let string):
-            value = .string(string)
+            if let date = decodeEditableDateMarker(string) {
+              value = .date(date)
+            } else {
+              value = .string(string)
+            }
           case .numberValue(let number):
             value = .number(number)
           case .boolValue(let bool):
@@ -231,5 +247,28 @@ public struct NumbersDocument: Sendable {
         tables: tables
       )
     }
+  }
+
+  private static func shouldPreferEditableMetadataOverlay(
+    _ metadata: Swiftnumbers_DocumentMetadata
+  ) -> Bool {
+    metadata.documentID.hasPrefix("swiftnumbers-editable-v1:")
+  }
+
+  private static func decodeEditableDateMarker(_ raw: String) -> Date? {
+    let prefix = "__SWIFTNUMBERS_DATE__:"
+    guard raw.hasPrefix(prefix) else {
+      return nil
+    }
+
+    let isoString = String(raw.dropFirst(prefix.count))
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = formatter.date(from: isoString) {
+      return date
+    }
+
+    formatter.formatOptions = [.withInternetDateTime]
+    return formatter.date(from: isoString)
   }
 }

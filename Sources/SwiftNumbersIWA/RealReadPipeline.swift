@@ -951,11 +951,13 @@ public enum IWARealDocumentReader {
     case 0:
       return .empty
     case 2, 10:
-      if let decimalNumber {
-        return .number(decimalNumber)
-      }
+      // Writer outputs may include both decimal and double payloads.
+      // Prefer IEEE-754 double when present to avoid precision/encoding drift in decimal unpacking.
       if let doubleNumber {
         return .number(doubleNumber)
+      }
+      if let decimalNumber {
+        return .number(decimalNumber)
       }
       return nil
     case 3:
@@ -965,10 +967,13 @@ public enum IWARealDocumentReader {
       let value = stringLookup[UInt32(stringID)] ?? ""
       return .string(value)
     case 6:
+      if let doubleNumber {
+        return .bool(doubleNumber > 0)
+      }
       if let decimalNumber {
         return .bool(decimalNumber > 0)
       }
-      return .bool((doubleNumber ?? 0) > 0)
+      return .bool(false)
     default:
       return nil
     }

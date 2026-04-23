@@ -24,7 +24,7 @@ cp "$PROTO_SRC/TSPArchiveMessages.proto" "$TARGET_PROTO_DIR/TSPArchiveMessages.p
 
 REFERENCE_FIXTURE="$(find "$SOURCE_DIR" -type f -name 'empty.numbers' | head -n 1)"
 if [[ -n "$REFERENCE_FIXTURE" ]]; then
-  cp "$REFERENCE_FIXTURE" "$ROOT/Fixtures/reference-empty.numbers"
+  cp "$REFERENCE_FIXTURE" "$ROOT/Tests/Fixtures/reference-empty.numbers"
 fi
 
 sed -i '' 's#import "TSPMessages.proto";#import "Protos/BaseMessages/TSPMessages.proto";#' \
@@ -32,5 +32,5 @@ sed -i '' 's#import "TSPMessages.proto";#import "Protos/BaseMessages/TSPMessages
 
 echo "Refreshed base proto assets into Sources/SwiftNumbersProto/Protos/BaseMessages"
 if [[ -n "$REFERENCE_FIXTURE" ]]; then
-  echo "Updated reference fixture: Fixtures/reference-empty.numbers"
+  echo "Updated reference fixture: Tests/Fixtures/reference-empty.numbers"
 fi

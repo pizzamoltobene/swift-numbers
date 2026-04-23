@@ -1,45 +1,93 @@
-<p align="center">
-  <img src="docs/assets/swiftnumbers-logo.svg" alt="SwiftNumbers logo" width="960" />
-</p>
+# SwiftNumbers
 
-<h1 align="center">SwiftNumbers</h1>
+Fast, native `.numbers` reading in Swift.
 
-<p align="center">
-  Fast, native <code>.numbers</code> reading in Swift.
-</p>
+`SwiftNumbers` is a Swift package for parsing Apple `.numbers` documents in native Swift workflows.
 
-<p align="center">
-  <a href="https://github.com/pizzamoltobene/swift-numbers/actions/workflows/ci.yml">
-    <img alt="CI" src="https://github.com/pizzamoltobene/swift-numbers/actions/workflows/ci.yml/badge.svg" />
-  </a>
-  <img alt="Swift 6.0+" src="https://img.shields.io/badge/Swift-6.0%2B-F05138?logo=swift&logoColor=white" />
-  <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-1F2937?logo=apple&logoColor=white" />
-  <img alt="Release v0.1.0" src="https://img.shields.io/badge/Release-v0.1.0-16A34A" />
-</p>
+## Documentation
 
-`SwiftNumbers` is a macOS-first Swift package for deterministic, read-only extraction of sheets, tables, and cell values from `.numbers` documents.
+Start here: [Docs Hub](docs/index.md)
 
-## What You Get
+| Goal | Where to read |
+|---|---|
+| Fast local setup | [Quickstart](docs/quickstart.md) |
+| Full API and operation contract | [Capabilities](docs/capabilities.md) |
+| One page per operation | [Operations Index](docs/operations/README.md) |
+| Exact public signatures and types | [API Reference](docs/api-reference.md) |
+| Copy/paste workflows | [Cookbook](docs/cookbook.md) |
+| CLI usage and JSON fields | [CLI Reference](docs/cli-reference.md) |
+| Failure analysis and fixes | [Troubleshooting](docs/troubleshooting.md) |
+| Internal module and pipeline design | [Architecture](docs/architecture.md) |
 
-- Native Swift implementation (`Swift 6.0+`, `macOS 13+`)
-- Stable public API:
-  - `NumbersDocument.open(at:)`
-  - `NumbersDocument.sheets`
-  - `Sheet.tables`
-  - `Table.metadata`
-  - `Table.cell(at:) -> CellValue?`
-- CLI with text and JSON output:
-  - `swiftnumbers dump <file.numbers> [--format text|json]`
-  - `swiftnumbers list-sheets <file.numbers> [--format text|json]`
-- Real-read pipeline with diagnostics and safe metadata fallback
-- CI quality gates: format, warnings-as-errors build, tests, coverage threshold
+## At a Glance
+
+`SwiftNumbers` gives you a Swift-native way to work with Apple Numbers files in apps, tools, and backend workflows.
+
+- Read real `.numbers` documents (package and single-file archive formats)
+- Access sheets, tables, metadata, and cell values through a stable API
+- Edit tabular data and save valid output `.numbers` files
+- Inspect files from CLI (`dump`, `list-sheets`) in text or JSON
+- Ship with a GitHub-ready baseline (format/lint/build/tests/coverage gates)
+
+For full API/CLI behavior, use [Capabilities](docs/capabilities.md).  
+For practical flows, use [Cookbook](docs/cookbook.md).
+
+## Supported (v0.2.0)
+
+- Open `.numbers` package documents and single-file archive documents
+- Read sheets/tables/metadata and lookup cells by address
+- CLI read operations:
+  - `swiftnumbers list-sheets`
+  - `swiftnumbers dump`
+  - text and JSON output formats
+- Editable operations:
+  - update existing cell values
+  - append/insert rows
+  - append columns
+  - add table on existing sheet
+  - add sheet
+  - save to a new output file (`save(to:)`)
+  - in-place atomic replace save (`saveInPlace()`)
+- Supported value types for editable workflows:
+  - `string`
+  - `number`
+  - `bool`
+  - `empty`
+  - `date`
+
+## Write Support (v0.2.0)
+
+- Native Swift low-level IWA write path currently covers:
+  - `setValue` for `string` / `number` / `bool` / `empty` / `date` (`date` uses a stable SwiftNumbers marker)
+  - `appendRow(_:)`
+  - `insertRow(_:at:)`
+  - `appendColumn(_:)`
+  - `addSheet(named:)`
+  - `addTable(named:rows:columns:onSheetNamed:)`
+- Metadata-overlay fallback is retained as a safety net when the low-level path cannot handle a specific source file/layout.
+- `save(to:)` supports both:
+  - writing to a new destination
+  - same-path atomic in-place replace
+
+## Out of Scope (v0.2.0)
+
+- Advanced Numbers features are out of scope in `0.2.0`:
+  - formulas
+  - pivot/grouped tables
+  - charts
+  - comments
+  - filters/sorts/conditions
+  - advanced formatting and full layout fidelity
+  - collaborative metadata
+  - encrypted documents
+- Platform scope is currently `macOS 13+`
 
 ## Install (SwiftPM)
 
-Use the `v0.1.0` tag:
+Use the `v0.2.0` tag:
 
 ```swift
-.package(url: "https://github.com/pizzamoltobene/swift-numbers.git", from: "0.1.0")
+.package(url: "https://github.com/pizzamoltobene/swift-numbers.git", from: "0.2.0")
 ```
 
 Then add the library target dependency:
@@ -55,8 +103,23 @@ swift build
 swift test
 ./scripts/ci-check.sh
 
-swift run swiftnumbers list-sheets Fixtures/multi-sheet.numbers
-swift run swiftnumbers dump Fixtures/simple-table.numbers --format json
+swift run swiftnumbers list-sheets Tests/Fixtures/multi-sheet.numbers
+swift run swiftnumbers dump Tests/Fixtures/simple-table.numbers --format json
+```
+
+## Editable Example
+
+```swift
+import SwiftNumbersCore
+
+let document = try EditableNumbersDocument.open(at: inputURL)
+let sheet = try document.sheet(named: "Sales")
+let table = try sheet.table(named: "Q1")
+
+try table.setValue(.string("Done"), at: "C4")
+table.setValue(.number(1499.99), at: CellAddress(row: 3, column: 3))
+
+try document.save(to: outputURL)
 ```
 
 ## Local Real-File Regression Workflow
@@ -76,11 +139,10 @@ Generate or refresh expectations:
 ./scripts/update_private_corpus_expectations.py --write
 ```
 
-Run performance guardrails (debug + release):
+Run local release checks:
 
 ```bash
-./scripts/bench_private_corpus.py --update-baseline
-./scripts/bench_private_corpus.py
+./scripts/release_check_020.sh
 ```
 
 ## Repository Layout
@@ -95,7 +157,15 @@ Run performance guardrails (debug + release):
 
 ## Docs
 
+- [Docs Hub](docs/index.md)
 - [Quickstart](docs/quickstart.md)
+- [Capabilities](docs/capabilities.md)
+- [Operations Index](docs/operations/README.md)
+- [API Reference](docs/api-reference.md)
+- [Cookbook](docs/cookbook.md)
+- [CLI Reference](docs/cli-reference.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Architecture](docs/architecture.md)
 - [Preview](docs/assets/preview.md)
 - [Changelog](CHANGELOG.md)
 

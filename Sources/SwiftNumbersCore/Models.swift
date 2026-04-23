@@ -15,6 +15,7 @@ public enum CellValue: Sendable, Hashable {
   case string(String)
   case number(Double)
   case bool(Bool)
+  case date(Date)
 }
 
 public struct MergeRange: Hashable, Sendable {
@@ -60,6 +61,10 @@ public struct Table: Hashable, Sendable {
 
   public func cell(at address: CellAddress) -> CellValue? {
     cells[address]
+  }
+
+  public var allCells: [CellAddress: CellValue] {
+    cells
   }
 
   public var populatedCellCount: Int {

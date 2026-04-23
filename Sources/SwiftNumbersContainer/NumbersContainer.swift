@@ -8,6 +8,51 @@ public struct NumbersContainer: Sendable {
     self.rootURL = rootURL
   }
 
+  public static func copyContainer(
+    from sourceURL: URL,
+    to destinationURL: URL,
+    replacingMetadataFiles metadataFiles: [String: Data] = [:],
+    replacingIndexBlobs indexBlobs: [String: Data] = [:]
+  ) throws {
+    let source = sourceURL.standardizedFileURL
+    let destination = destinationURL.standardizedFileURL
+
+    guard FileManager.default.fileExists(atPath: source.path) else {
+      throw NumbersContainerError.pathDoesNotExist(source)
+    }
+
+    let parent = destination.deletingLastPathComponent()
+    try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+
+    if isDirectory(at: source) {
+      if FileManager.default.fileExists(atPath: destination.path) {
+        try FileManager.default.removeItem(at: destination)
+      }
+      try FileManager.default.copyItem(at: source, to: destination)
+
+      if !metadataFiles.isEmpty {
+        let metadataURL = destination.appendingPathComponent("Metadata", isDirectory: true)
+        try FileManager.default.createDirectory(at: metadataURL, withIntermediateDirectories: true)
+        for filename in metadataFiles.keys.sorted() {
+          let target = metadataURL.appendingPathComponent(filename, isDirectory: false)
+          try metadataFiles[filename]?.write(to: target)
+        }
+      }
+
+      if !indexBlobs.isEmpty {
+        try replaceIndexBlobsInPackage(packageURL: destination, blobs: indexBlobs)
+      }
+      return
+    }
+
+    try rewriteArchiveContainer(
+      source: source,
+      destination: destination,
+      replacingMetadataFiles: metadataFiles,
+      replacingIndexBlobs: indexBlobs
+    )
+  }
+
   public static func open(at url: URL) throws -> NumbersContainer {
     let normalizedURL = url.standardizedFileURL
     guard FileManager.default.fileExists(atPath: normalizedURL.path) else {
@@ -38,10 +83,16 @@ public struct NumbersContainer: Sendable {
     }
 
     let archive = try openArchive(at: rootURL)
-    let suffix = "/metadata/\(filename.lowercased())"
+    let lowercasedFilename = filename.lowercased()
+    let directPath = "metadata/\(lowercasedFilename)"
+    let nestedSuffix = "/metadata/\(lowercasedFilename)"
     guard
       let entry = archive.first(where: { candidate in
-        candidate.type == .file && candidate.path.lowercased().hasSuffix(suffix)
+        guard candidate.type == .file else {
+          return false
+        }
+        let path = candidate.path.lowercased()
+        return path == directPath || path.hasSuffix(nestedSuffix)
       })
     else {
       return nil
@@ -178,5 +229,221 @@ public struct NumbersContainer: Sendable {
       data.append(chunk)
     }
     return data
+  }
+
+  private static func isDirectory(at url: URL) -> Bool {
+    var isDirectory: ObjCBool = false
+    _ = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+    return isDirectory.boolValue
+  }
+
+  private static func rewriteArchiveContainer(
+    source: URL,
+    destination: URL,
+    replacingMetadataFiles metadataFiles: [String: Data],
+    replacingIndexBlobs indexBlobs: [String: Data]
+  ) throws {
+    let sourceArchive: Archive
+    do {
+      sourceArchive = try Archive(url: source, accessMode: .read)
+    } catch {
+      throw NumbersContainerError.invalidZipArchive(source)
+    }
+
+    if FileManager.default.fileExists(atPath: destination.path) {
+      try FileManager.default.removeItem(at: destination)
+    }
+
+    let destinationArchive: Archive
+    do {
+      destinationArchive = try Archive(url: destination, accessMode: .create)
+    } catch {
+      throw NumbersContainerError.invalidZipArchive(destination)
+    }
+
+    let replacedMetadataNames = Set(metadataFiles.keys.map { $0.lowercased() })
+    let replacedIndexBlobsByLowerPath = Dictionary(
+      uniqueKeysWithValues: indexBlobs.map { ($0.key.lowercased(), (path: $0.key, data: $0.value)) }
+    )
+    var fileEntries: [(path: String, data: Data)] = []
+    fileEntries.reserveCapacity(64)
+
+    for entry in sourceArchive where entry.type == .file {
+      let lowercasedPath = entry.path.lowercased()
+      if isReplacedMetadataEntry(
+        pathLowercased: lowercasedPath, metadataNames: replacedMetadataNames)
+      {
+        continue
+      }
+      if replacedIndexBlobsByLowerPath[lowercasedPath] != nil {
+        continue
+      }
+      let data = try extract(entry: entry, from: sourceArchive)
+      fileEntries.append((path: entry.path, data: data))
+    }
+
+    for filename in metadataFiles.keys.sorted() {
+      guard let data = metadataFiles[filename] else {
+        continue
+      }
+      fileEntries.append((path: "Metadata/\(filename)", data: data))
+    }
+
+    for key in indexBlobs.keys.sorted() {
+      guard let data = indexBlobs[key] else {
+        continue
+      }
+      fileEntries.append((path: key, data: data))
+    }
+
+    for entry in fileEntries.sorted(by: { $0.path < $1.path }) {
+      let payload = entry.data
+      try destinationArchive.addEntry(
+        with: entry.path,
+        type: .file,
+        uncompressedSize: Int64(payload.count),
+        compressionMethod: .deflate,
+        provider: { position, size in
+          let start = Int(position)
+          let end = min(start + size, payload.count)
+          guard start >= 0, end >= start else {
+            return Data()
+          }
+          return payload.subdata(in: start..<end)
+        }
+      )
+    }
+  }
+
+  private static func isReplacedMetadataEntry(
+    pathLowercased: String,
+    metadataNames: Set<String>
+  ) -> Bool {
+    guard !metadataNames.isEmpty else {
+      return false
+    }
+    for name in metadataNames {
+      let direct = "metadata/\(name)"
+      if pathLowercased == direct || pathLowercased.hasSuffix("/\(direct)") {
+        return true
+      }
+    }
+    return false
+  }
+
+  private static func extract(entry: Entry, from archive: Archive) throws -> Data {
+    var data = Data()
+    _ = try archive.extract(entry) { chunk in
+      data.append(chunk)
+    }
+    return data
+  }
+
+  private static func replaceIndexBlobsInPackage(packageURL: URL, blobs: [String: Data]) throws {
+    let indexZipURL = packageURL.appendingPathComponent("Index.zip", isDirectory: false)
+    if FileManager.default.fileExists(atPath: indexZipURL.path) {
+      try rewriteZipFile(
+        at: indexZipURL,
+        replacingEntries: blobs
+      )
+      return
+    }
+
+    let indexDirectoryURL = packageURL.appendingPathComponent("Index", isDirectory: true)
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: indexDirectoryURL.path, isDirectory: &isDirectory),
+      isDirectory.boolValue
+    else {
+      throw NumbersContainerError.indexZipMissing(packageURL)
+    }
+
+    for key in blobs.keys.sorted() {
+      guard let data = blobs[key] else {
+        continue
+      }
+      let target = packageURL.appendingPathComponent(key, isDirectory: false)
+      try FileManager.default.createDirectory(
+        at: target.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      try data.write(to: target)
+    }
+  }
+
+  private static func rewriteZipFile(
+    at zipURL: URL,
+    replacingEntries replacements: [String: Data]
+  ) throws {
+    let sourceArchive: Archive
+    do {
+      sourceArchive = try Archive(url: zipURL, accessMode: .read)
+    } catch {
+      throw NumbersContainerError.invalidZipArchive(zipURL)
+    }
+
+    let tempURL = zipURL.deletingLastPathComponent().appendingPathComponent(
+      ".\(UUID().uuidString)-\(zipURL.lastPathComponent)"
+    )
+    if FileManager.default.fileExists(atPath: tempURL.path) {
+      try FileManager.default.removeItem(at: tempURL)
+    }
+
+    let replacementByLowerPath = Dictionary(
+      uniqueKeysWithValues: replacements.map {
+        ($0.key.lowercased(), (path: $0.key, data: $0.value))
+      })
+
+    let destinationArchive: Archive
+    do {
+      destinationArchive = try Archive(url: tempURL, accessMode: .create)
+    } catch {
+      throw NumbersContainerError.invalidZipArchive(tempURL)
+    }
+
+    var entries: [(path: String, data: Data)] = []
+    for entry in sourceArchive where entry.type == .file {
+      if replacementByLowerPath[entry.path.lowercased()] != nil {
+        continue
+      }
+      let data = try extract(entry: entry, from: sourceArchive)
+      entries.append((path: entry.path, data: data))
+    }
+
+    for key in replacements.keys.sorted() {
+      guard let data = replacements[key] else {
+        continue
+      }
+      entries.append((path: key, data: data))
+    }
+
+    for entry in entries.sorted(by: { $0.path < $1.path }) {
+      let payload = entry.data
+      try destinationArchive.addEntry(
+        with: entry.path,
+        type: .file,
+        uncompressedSize: Int64(payload.count),
+        compressionMethod: .deflate,
+        provider: { position, size in
+          let start = Int(position)
+          let end = min(start + size, payload.count)
+          guard start >= 0, end >= start else {
+            return Data()
+          }
+          return payload.subdata(in: start..<end)
+        }
+      )
+    }
+
+    let fileManager = FileManager.default
+    if fileManager.fileExists(atPath: zipURL.path) {
+      _ = try fileManager.replaceItemAt(
+        zipURL,
+        withItemAt: tempURL,
+        backupItemName: nil,
+        options: [.usingNewMetadataOnly]
+      )
+    } else {
+      try fileManager.moveItem(at: tempURL, to: zipURL)
+    }
   }
 }
