@@ -37,11 +37,122 @@ public enum MergeRole: Hashable, Sendable {
   case member
 }
 
+public struct RichTextRun: Hashable, Sendable {
+  public let range: Range<Int>
+  public let text: String
+  public let fontName: String?
+  public let fontSize: Double?
+  public let isBold: Bool?
+  public let isItalic: Bool?
+  public let textColorHex: String?
+  public let linkURL: String?
+
+  public init(
+    range: Range<Int>,
+    text: String,
+    fontName: String? = nil,
+    fontSize: Double? = nil,
+    isBold: Bool? = nil,
+    isItalic: Bool? = nil,
+    textColorHex: String? = nil,
+    linkURL: String? = nil
+  ) {
+    self.range = range
+    self.text = text
+    self.fontName = fontName
+    self.fontSize = fontSize
+    self.isBold = isBold
+    self.isItalic = isItalic
+    self.textColorHex = textColorHex
+    self.linkURL = linkURL
+  }
+}
+
+public struct RichTextRead: Hashable, Sendable {
+  public let text: String
+  public let runs: [RichTextRun]
+
+  public init(text: String, runs: [RichTextRun]) {
+    self.text = text
+    self.runs = runs
+  }
+}
+
+public enum ReadHorizontalAlignment: Hashable, Sendable {
+  case left
+  case center
+  case right
+  case justified
+  case natural
+  case unknown(Int32)
+}
+
+public enum ReadVerticalAlignment: Hashable, Sendable {
+  case top
+  case middle
+  case bottom
+  case unknown(Int32)
+}
+
+public enum ReadNumberFormatKind: String, Hashable, Sendable {
+  case number
+  case currency
+  case date
+  case duration
+  case text
+  case bool
+}
+
+public struct ReadNumberFormat: Hashable, Sendable {
+  public let kind: ReadNumberFormatKind
+  public let formatID: Int32
+
+  public init(kind: ReadNumberFormatKind, formatID: Int32) {
+    self.kind = kind
+    self.formatID = formatID
+  }
+}
+
+public struct ReadCellStyle: Hashable, Sendable {
+  public let horizontalAlignment: ReadHorizontalAlignment?
+  public let verticalAlignment: ReadVerticalAlignment?
+  public let backgroundColorHex: String?
+  public let hasTopBorder: Bool
+  public let hasRightBorder: Bool
+  public let hasBottomBorder: Bool
+  public let hasLeftBorder: Bool
+  public let numberFormat: ReadNumberFormat?
+
+  public init(
+    horizontalAlignment: ReadHorizontalAlignment? = nil,
+    verticalAlignment: ReadVerticalAlignment? = nil,
+    backgroundColorHex: String? = nil,
+    hasTopBorder: Bool = false,
+    hasRightBorder: Bool = false,
+    hasBottomBorder: Bool = false,
+    hasLeftBorder: Bool = false,
+    numberFormat: ReadNumberFormat? = nil
+  ) {
+    self.horizontalAlignment = horizontalAlignment
+    self.verticalAlignment = verticalAlignment
+    self.backgroundColorHex = backgroundColorHex
+    self.hasTopBorder = hasTopBorder
+    self.hasRightBorder = hasRightBorder
+    self.hasBottomBorder = hasBottomBorder
+    self.hasLeftBorder = hasLeftBorder
+    self.numberFormat = numberFormat
+  }
+}
+
 public struct ReadCell: Hashable, Sendable {
   public let address: CellAddress
   public let value: CellValue
   public let kind: ReadCellKind
+  public let readValue: ReadCellValue
+  public let formulaResult: FormulaResultRead?
   public let formatted: String
+  public let richText: RichTextRead?
+  public let style: ReadCellStyle?
   public let rawCellType: UInt8?
   public let stringID: Int32?
   public let richTextID: Int32?
@@ -58,7 +169,11 @@ public struct ReadCell: Hashable, Sendable {
     address: CellAddress,
     value: CellValue,
     kind: ReadCellKind,
+    readValue: ReadCellValue? = nil,
+    formulaResult: FormulaResultRead? = nil,
     formatted: String,
+    richText: RichTextRead? = nil,
+    style: ReadCellStyle? = nil,
     rawCellType: UInt8? = nil,
     stringID: Int32? = nil,
     richTextID: Int32? = nil,
@@ -70,7 +185,21 @@ public struct ReadCell: Hashable, Sendable {
     self.address = address
     self.value = value
     self.kind = kind
+    self.formulaResult = formulaResult
+    if let readValue {
+      self.readValue = readValue
+    } else if let formulaResult {
+      self.readValue = .formulaResult(formulaResult)
+    } else {
+      self.readValue = Self.deriveReadValue(
+        kind: kind,
+        value: value,
+        richText: richText
+      )
+    }
     self.formatted = formatted
+    self.richText = richText
+    self.style = style
     self.rawCellType = rawCellType
     self.stringID = stringID
     self.richTextID = richTextID
@@ -78,6 +207,35 @@ public struct ReadCell: Hashable, Sendable {
     self.formulaErrorID = formulaErrorID
     self.mergeRange = mergeRange
     self.mergeRole = mergeRole
+  }
+
+  private static func deriveReadValue(
+    kind: ReadCellKind,
+    value: CellValue,
+    richText: RichTextRead?
+  ) -> ReadCellValue {
+    switch kind {
+    case .duration:
+      if case .number(let seconds) = value {
+        return .duration(seconds)
+      }
+      return .fromCellValue(value)
+    case .formulaError:
+      if case .string(let message) = value {
+        return .error(message)
+      }
+      return .error("#ERROR!")
+    case .richText:
+      if let richText {
+        return .richText(richText)
+      }
+      if case .string(let text) = value {
+        return .richText(RichTextRead(text: text, runs: []))
+      }
+      return .fromCellValue(value)
+    default:
+      return .fromCellValue(value)
+    }
   }
 }
 
@@ -112,25 +270,120 @@ public struct FormulaRead: Hashable, Sendable {
   }
 }
 
+public struct FormulaResultRead: Hashable, Sendable {
+  public let formulaID: Int32?
+  public let rawFormula: String?
+  public let parsedTokens: [String]
+  public let astSummary: String?
+  public let computedValue: CellValue
+  public let computedFormatted: String
+
+  public init(
+    formulaID: Int32?,
+    rawFormula: String?,
+    parsedTokens: [String],
+    astSummary: String?,
+    computedValue: CellValue,
+    computedFormatted: String
+  ) {
+    self.formulaID = formulaID
+    self.rawFormula = rawFormula
+    self.parsedTokens = parsedTokens
+    self.astSummary = astSummary
+    self.computedValue = computedValue
+    self.computedFormatted = computedFormatted
+  }
+}
+
+public enum ReadCellValue: Hashable, Sendable {
+  case empty
+  case string(String)
+  case number(Double)
+  case bool(Bool)
+  case date(Date)
+  case duration(TimeInterval)
+  case error(String)
+  case richText(RichTextRead)
+  case formulaResult(FormulaResultRead)
+
+  public static func fromCellValue(_ value: CellValue) -> ReadCellValue {
+    switch value {
+    case .empty:
+      return .empty
+    case .string(let text):
+      return .string(text)
+    case .number(let number):
+      return .number(number)
+    case .bool(let bool):
+      return .bool(bool)
+    case .date(let date):
+      return .date(date)
+    }
+  }
+}
+
+public enum ReadNumberFormatMode: Hashable, Sendable {
+  case decimal
+  case currency(code: String?)
+  case percent
+  case scientific
+  case pattern(String)
+}
+
+public enum ReadDateTimeStyle: String, Hashable, Sendable {
+  case none
+  case short
+  case medium
+  case long
+  case full
+}
+
+public enum ReadDateFormatMode: Hashable, Sendable {
+  case iso8601
+  case styled(date: ReadDateTimeStyle, time: ReadDateTimeStyle)
+  case pattern(String)
+}
+
+public enum ReadDurationFormatMode: String, Hashable, Sendable {
+  case seconds
+  case hhmmss
+  case abbreviated
+}
+
 public struct ReadFormattingOptions: Hashable, Sendable {
   public let localeIdentifier: String
   public let timeZoneIdentifier: String?
   public let usesGroupingSeparator: Bool
+  public let minimumFractionDigits: Int
   public let maximumFractionDigits: Int
   public let includeFractionalSeconds: Bool
+  public let numberFormatMode: ReadNumberFormatMode
+  public let dateFormatMode: ReadDateFormatMode
+  public let durationFormatMode: ReadDurationFormatMode
+  public let preferCellNumberFormatHints: Bool
 
   public init(
     localeIdentifier: String = "en_US_POSIX",
     timeZoneIdentifier: String? = nil,
     usesGroupingSeparator: Bool = false,
+    minimumFractionDigits: Int = 0,
     maximumFractionDigits: Int = 15,
-    includeFractionalSeconds: Bool = true
+    includeFractionalSeconds: Bool = true,
+    numberFormatMode: ReadNumberFormatMode = .decimal,
+    dateFormatMode: ReadDateFormatMode = .iso8601,
+    durationFormatMode: ReadDurationFormatMode = .seconds,
+    preferCellNumberFormatHints: Bool = true
   ) {
     self.localeIdentifier = localeIdentifier
     self.timeZoneIdentifier = timeZoneIdentifier
     self.usesGroupingSeparator = usesGroupingSeparator
+    self.minimumFractionDigits = minimumFractionDigits
     self.maximumFractionDigits = maximumFractionDigits
     self.includeFractionalSeconds = includeFractionalSeconds
+    self.numberFormatMode = numberFormatMode
+    self.dateFormatMode = dateFormatMode
+    self.durationFormatMode = durationFormatMode
+    self.preferCellNumberFormatHints = preferCellNumberFormatHints
   }
 
   public static let `default` = ReadFormattingOptions()
@@ -279,19 +532,22 @@ public struct Table: Hashable, Sendable {
   public let metadata: TableMetadata
   private let cells: [CellAddress: CellValue]
   private let readCellsByAddress: [CellAddress: ReadCell]
+  private let formulasByAddress: [CellAddress: FormulaRead]
 
   public init(
     id: String,
     name: String,
     metadata: TableMetadata,
     cells: [CellAddress: CellValue] = [:],
-    readCells: [CellAddress: ReadCell] = [:]
+    readCells: [CellAddress: ReadCell] = [:],
+    formulas: [CellAddress: FormulaRead] = [:]
   ) {
     self.id = id
     self.name = name
     self.metadata = metadata
     self.cells = cells
     self.readCellsByAddress = readCells
+    self.formulasByAddress = formulas
   }
 
   public func cell(at address: CellAddress) -> CellValue? {
@@ -387,13 +643,27 @@ public struct Table: Hashable, Sendable {
   }
 
   public func formula(at address: CellAddress) -> FormulaRead? {
+    if let decoded = formulasByAddress[address] {
+      return decoded
+    }
+
     guard let readCell = readCell(at: address), readCell.kind == .formula else {
       return nil
     }
 
-    let raw = Self.extractRawFormula(from: readCell.value)
-    let tokens = raw.map(Self.tokenizeFormula) ?? []
-    let astSummary = tokens.isEmpty ? nil : "Tokenized formula (\(tokens.count) tokens)"
+    let formulaResult = readCell.formulaResult
+    let raw = formulaResult?.rawFormula ?? Self.extractRawFormula(from: readCell.value)
+    let tokens: [String]
+    if let parsedTokens = formulaResult?.parsedTokens, !parsedTokens.isEmpty {
+      tokens = parsedTokens
+    } else {
+      tokens = raw.map(Self.tokenizeFormula) ?? []
+    }
+    let astSummary =
+      formulaResult?.astSummary
+      ?? (tokens.isEmpty ? nil : "Tokenized formula (\(tokens.count) tokens)")
+    let computedValue = formulaResult?.computedValue ?? readCell.value
+    let computedFormatted = formulaResult?.computedFormatted ?? readCell.formatted
 
     return FormulaRead(
       address: address,
@@ -402,8 +672,8 @@ public struct Table: Hashable, Sendable {
       rawFormula: raw,
       parsedTokens: tokens,
       astSummary: astSummary,
-      result: readCell.value,
-      resultFormatted: readCell.formatted
+      result: computedValue,
+      resultFormatted: computedFormatted
     )
   }
 
@@ -414,8 +684,61 @@ public struct Table: Hashable, Sendable {
     return formula(at: parsed.address)
   }
 
+  public func richText(at address: CellAddress) -> RichTextRead? {
+    readCell(at: address)?.richText
+  }
+
+  public func richText(_ reference: String) -> RichTextRead? {
+    guard let parsed = try? CellReference(reference) else {
+      return nil
+    }
+    return richText(at: parsed.address)
+  }
+
+  public func style(at address: CellAddress) -> ReadCellStyle? {
+    readCell(at: address)?.style
+  }
+
+  public func style(_ reference: String) -> ReadCellStyle? {
+    guard let parsed = try? CellReference(reference) else {
+      return nil
+    }
+    return style(at: parsed.address)
+  }
+
+  public func formulaResult(at address: CellAddress) -> FormulaResultRead? {
+    readCell(at: address)?.formulaResult
+  }
+
+  public func formulaResult(_ reference: String) -> FormulaResultRead? {
+    guard let parsed = try? CellReference(reference) else {
+      return nil
+    }
+    return formulaResult(at: parsed.address)
+  }
+
+  public func readValue(at address: CellAddress) -> ReadCellValue? {
+    readCell(at: address)?.readValue
+  }
+
+  public func readValue(_ reference: String) -> ReadCellValue? {
+    guard let parsed = try? CellReference(reference) else {
+      return nil
+    }
+    return readValue(at: parsed.address)
+  }
+
   public func formulas() -> [FormulaRead] {
-    readCellsByAddress.keys
+    if !formulasByAddress.isEmpty {
+      return formulasByAddress.values.sorted { lhs, rhs in
+        if lhs.address.row == rhs.address.row {
+          return lhs.address.column < rhs.address.column
+        }
+        return lhs.address.row < rhs.address.row
+      }
+    }
+
+    return readCellsByAddress.keys
       .sorted { lhs, rhs in
         if lhs.row == rhs.row {
           return lhs.column < rhs.column
@@ -487,6 +810,36 @@ public struct Table: Hashable, Sendable {
     }
 
     return result
+  }
+
+  public func readRows(lazy: Bool) -> AnySequence<[ReadCell]> {
+    if !lazy {
+      return AnySequence(readRows())
+    }
+
+    let sequence = (0..<metadata.rowCount).lazy.map { row in
+      (0..<metadata.columnCount).compactMap { column in
+        readCell(at: CellAddress(row: row, column: column))
+      }
+    }
+    return AnySequence(sequence)
+  }
+
+  public func readValues() -> [[ReadCellValue]] {
+    readRows().map { row in
+      row.map(\.readValue)
+    }
+  }
+
+  public func readValues(lazy: Bool) -> AnySequence<[ReadCellValue]> {
+    if !lazy {
+      return AnySequence(readValues())
+    }
+
+    let sequence = readRows(lazy: true).lazy.map { row in
+      row.map(\.readValue)
+    }
+    return AnySequence(sequence)
   }
 
   public func column(named name: String, headerRow: Int = 0, includeHeader: Bool = false) throws
@@ -682,6 +1035,10 @@ public struct Table: Hashable, Sendable {
       return nil
     }
 
+    if let readCell = readCell(at: address) {
+      return Self.formattedValueString(for: readCell, options: options)
+    }
+
     let value = cell(at: address) ?? .empty
     return Self.formattedValueString(for: value, options: options)
   }
@@ -735,37 +1092,194 @@ public struct Table: Hashable, Sendable {
       .lowercased()
   }
 
-  private static func formattedValueString(for value: CellValue, options: ReadFormattingOptions)
+  private static func formattedValueString(for readCell: ReadCell, options: ReadFormattingOptions)
     -> String
   {
-    switch value {
+    formattedValueString(for: readCell.readValue, style: readCell.style, options: options)
+  }
+
+  private static func formattedValueString(
+    for readValue: ReadCellValue,
+    style: ReadCellStyle?,
+    options: ReadFormattingOptions
+  ) -> String {
+    switch readValue {
     case .empty:
       return ""
     case .string(let text):
       return text
     case .number(let number):
-      let formatter = NumberFormatter()
-      formatter.locale = Locale(identifier: options.localeIdentifier)
-      formatter.numberStyle = .decimal
-      formatter.usesGroupingSeparator = options.usesGroupingSeparator
-      formatter.maximumFractionDigits = options.maximumFractionDigits
-      formatter.minimumFractionDigits = 0
-      return formatter.string(from: NSNumber(value: number)) ?? String(number)
+      let mode =
+        if options.preferCellNumberFormatHints,
+        let styleMode = numberFormatModeHint(from: style)
+        {
+          styleMode
+        } else {
+          options.numberFormatMode
+        }
+      return numberString(for: number, mode: mode, options: options)
     case .bool(let bool):
       return bool ? "TRUE" : "FALSE"
     case .date(let date):
+      return dateString(for: date, mode: options.dateFormatMode, options: options)
+    case .duration(let seconds):
+      return durationString(seconds: seconds, mode: options.durationFormatMode, options: options)
+    case .error(let message):
+      return message
+    case .richText(let richText):
+      return richText.text
+    case .formulaResult(let formulaResult):
+      return formattedValueString(
+        for: .fromCellValue(formulaResult.computedValue),
+        style: style,
+        options: options
+      )
+    }
+  }
+
+  private static func formattedValueString(for value: CellValue, options: ReadFormattingOptions)
+    -> String
+  {
+    formattedValueString(for: .fromCellValue(value), style: nil, options: options)
+  }
+
+  private static func numberFormatModeHint(from style: ReadCellStyle?) -> ReadNumberFormatMode? {
+    guard let numberFormat = style?.numberFormat else {
+      return nil
+    }
+
+    switch numberFormat.kind {
+    case .number:
+      return .decimal
+    case .currency:
+      return .currency(code: nil)
+    case .date, .duration, .text, .bool:
+      return nil
+    }
+  }
+
+  private static func numberString(
+    for value: Double,
+    mode: ReadNumberFormatMode,
+    options: ReadFormattingOptions
+  ) -> String {
+    let formatter = NumberFormatter()
+    formatter.locale = Locale(identifier: options.localeIdentifier)
+    formatter.usesGroupingSeparator = options.usesGroupingSeparator
+    formatter.minimumFractionDigits = max(options.minimumFractionDigits, 0)
+    formatter.maximumFractionDigits = max(
+      options.maximumFractionDigits,
+      formatter.minimumFractionDigits
+    )
+
+    switch mode {
+    case .decimal:
+      formatter.numberStyle = .decimal
+    case .currency(let code):
+      formatter.numberStyle = .currency
+      if let code, !code.isEmpty {
+        formatter.currencyCode = code
+      }
+    case .percent:
+      formatter.numberStyle = .percent
+    case .scientific:
+      formatter.numberStyle = .scientific
+    case .pattern(let pattern):
+      formatter.numberStyle = .decimal
+      formatter.positiveFormat = pattern
+    }
+
+    return formatter.string(from: NSNumber(value: value)) ?? String(value)
+  }
+
+  private static func dateString(
+    for value: Date,
+    mode: ReadDateFormatMode,
+    options: ReadFormattingOptions
+  ) -> String {
+    switch mode {
+    case .iso8601:
       let formatter = ISO8601DateFormatter()
       formatter.formatOptions =
         options.includeFractionalSeconds
         ? [.withInternetDateTime, .withFractionalSeconds]
         : [.withInternetDateTime]
-      if let timeZoneIdentifier = options.timeZoneIdentifier,
-        let timeZone = TimeZone(identifier: timeZoneIdentifier)
-      {
+      if let timeZone = userTimeZone(for: options) {
         formatter.timeZone = timeZone
       }
-      return formatter.string(from: date)
+      return formatter.string(from: value)
+    case .styled(let dateStyle, let timeStyle):
+      let formatter = DateFormatter()
+      formatter.locale = Locale(identifier: options.localeIdentifier)
+      formatter.dateStyle = dateFormatterStyle(for: dateStyle)
+      formatter.timeStyle = dateFormatterStyle(for: timeStyle)
+      formatter.timeZone = userTimeZone(for: options) ?? TimeZone(secondsFromGMT: 0)
+      return formatter.string(from: value)
+    case .pattern(let pattern):
+      let formatter = DateFormatter()
+      formatter.locale = Locale(identifier: options.localeIdentifier)
+      formatter.timeZone = userTimeZone(for: options) ?? TimeZone(secondsFromGMT: 0)
+      formatter.dateFormat =
+        pattern.isEmpty ? "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX" : pattern
+      return formatter.string(from: value)
     }
+  }
+
+  private static func durationString(
+    seconds: TimeInterval,
+    mode: ReadDurationFormatMode,
+    options: ReadFormattingOptions
+  ) -> String {
+    switch mode {
+    case .seconds:
+      return numberString(for: seconds, mode: .decimal, options: options)
+    case .hhmmss:
+      let sign = seconds < 0 ? "-" : ""
+      let absolute = Int(abs(seconds.rounded(.towardZero)))
+      let hours = absolute / 3600
+      let minutes = (absolute % 3600) / 60
+      let secs = absolute % 60
+      return String(format: "%@%02d:%02d:%02d", sign, hours, minutes, secs)
+    case .abbreviated:
+      let sign = seconds < 0 ? "-" : ""
+      let absolute = Int(abs(seconds.rounded(.towardZero)))
+      let hours = absolute / 3600
+      let minutes = (absolute % 3600) / 60
+      let secs = absolute % 60
+      var parts: [String] = []
+      if hours > 0 {
+        parts.append("\(hours)h")
+      }
+      if minutes > 0 {
+        parts.append("\(minutes)m")
+      }
+      if secs > 0 || parts.isEmpty {
+        parts.append("\(secs)s")
+      }
+      return sign + parts.joined(separator: " ")
+    }
+  }
+
+  private static func dateFormatterStyle(for style: ReadDateTimeStyle) -> DateFormatter.Style {
+    switch style {
+    case .none:
+      return .none
+    case .short:
+      return .short
+    case .medium:
+      return .medium
+    case .long:
+      return .long
+    case .full:
+      return .full
+    }
+  }
+
+  private static func userTimeZone(for options: ReadFormattingOptions) -> TimeZone? {
+    guard let identifier = options.timeZoneIdentifier else {
+      return nil
+    }
+    return TimeZone(identifier: identifier)
   }
 
   private static func extractRawFormula(from value: CellValue) -> String? {
@@ -846,7 +1360,11 @@ public struct Table: Hashable, Sendable {
         address: cell.address,
         value: cell.value,
         kind: cell.kind,
+        readValue: cell.readValue,
+        formulaResult: cell.formulaResult,
         formatted: cell.formatted,
+        richText: cell.richText,
+        style: cell.style,
         rawCellType: cell.rawCellType,
         stringID: cell.stringID,
         richTextID: cell.richTextID,
@@ -865,7 +1383,11 @@ public struct Table: Hashable, Sendable {
       address: cell.address,
       value: cell.value,
       kind: cell.kind,
+      readValue: cell.readValue,
+      formulaResult: cell.formulaResult,
       formatted: cell.formatted,
+      richText: cell.richText,
+      style: cell.style,
       rawCellType: cell.rawCellType,
       stringID: cell.stringID,
       richTextID: cell.richTextID,
@@ -882,6 +1404,19 @@ public struct Table: Hashable, Sendable {
     }
     if type == ReadCell.self {
       return readCell as! T
+    }
+    if type == ReadCellValue.self {
+      return readCell.readValue as! T
+    }
+    if type == FormulaResultRead.self {
+      guard let formulaResult = readCell.formulaResult else {
+        throw TableReadError.missingValue(readCell.address)
+      }
+      return formulaResult as! T
+    }
+
+    if case .duration(let durationValue) = readCell.readValue, type == TimeInterval.self {
+      return durationValue as! T
     }
 
     switch readCell.value {

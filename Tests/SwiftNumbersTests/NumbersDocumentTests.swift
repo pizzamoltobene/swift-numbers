@@ -153,6 +153,11 @@ final class NumbersDocumentTests: XCTestCase {
     XCTAssertEqual(try table.value(Double.self, at: "B2"), 42)
     XCTAssertEqual(try table.value(String.self, at: "A2"), "Answer")
     XCTAssertEqual(try table.value(Bool.self, at: "B3"), true)
+    if case .number(let number) = try table.value(ReadCellValue.self, at: "B2") {
+      XCTAssertEqual(number, 42)
+    } else {
+      XCTFail("Expected numeric read value")
+    }
     XCTAssertNil(try table.optionalValue(String.self, at: "C4"))
 
     XCTAssertThrowsError(try table.value(Double.self, at: "A2"))
@@ -191,6 +196,18 @@ final class NumbersDocumentTests: XCTestCase {
 
     let lazyRows = Array(table.rows(lazy: true))
     XCTAssertEqual(lazyRows.count, table.metadata.rowCount)
+
+    let lazyReadRows = Array(table.readRows(lazy: true))
+    XCTAssertEqual(lazyReadRows.count, table.metadata.rowCount)
+    XCTAssertEqual(lazyReadRows.first?.first?.formatted, "Name")
+
+    let lazyReadValues = Array(table.readValues(lazy: true))
+    XCTAssertEqual(lazyReadValues.count, table.metadata.rowCount)
+    if case .string(let name) = lazyReadValues[0][0] {
+      XCTAssertEqual(name, "Name")
+    } else {
+      XCTFail("Expected string read value in A1")
+    }
   }
 
   func testUsedRangeAndPopulatedCells() throws {
@@ -273,16 +290,26 @@ final class NumbersDocumentTests: XCTestCase {
 
   func testFormulaReadAPI() throws {
     let formulaAddress = CellAddress(row: 1, column: 1)
+    let formulaResult = FormulaResultRead(
+      formulaID: 77,
+      rawFormula: "=SUM(A1:A2)",
+      parsedTokens: ["=", "SUM", "(", "A1", ":", "A2", ")"],
+      astSummary: "Decoded TSCE AST (7 nodes)",
+      computedValue: .number(7),
+      computedFormatted: "7"
+    )
     let table = Table(
       id: "formula-table",
       name: "Formula Table",
       metadata: TableMetadata(rowCount: 3, columnCount: 3, mergeRanges: []),
-      cells: [formulaAddress: .string("=SUM(A1:A2)")],
+      cells: [formulaAddress: .number(7)],
       readCells: [
         formulaAddress: ReadCell(
           address: formulaAddress,
-          value: .string("=SUM(A1:A2)"),
+          value: .number(7),
           kind: .formula,
+          readValue: .formulaResult(formulaResult),
+          formulaResult: formulaResult,
           formatted: "7",
           rawCellType: 4,
           formulaID: 77
@@ -299,5 +326,161 @@ final class NumbersDocumentTests: XCTestCase {
     let all = table.formulas()
     XCTAssertEqual(all.count, 1)
     XCTAssertEqual(all[0].reference, "B2")
+
+    let extracted = try table.value(FormulaResultRead.self, at: "B2")
+    XCTAssertEqual(extracted.rawFormula, "=SUM(A1:A2)")
+    XCTAssertEqual(extracted.computedValue, .number(7))
+    XCTAssertEqual(table.formulaResult("B2")?.computedFormatted, "7")
+  }
+
+  func testRichTextAndStyleReadAccessors() throws {
+    let address = CellAddress(row: 0, column: 0)
+    let richText = RichTextRead(
+      text: "Hello",
+      runs: [
+        RichTextRun(
+          range: 0..<5,
+          text: "Hello",
+          fontName: "Helvetica",
+          fontSize: 12,
+          isBold: true,
+          textColorHex: "#336699",
+          linkURL: "https://example.com"
+        )
+      ]
+    )
+    let style = ReadCellStyle(
+      horizontalAlignment: .left,
+      verticalAlignment: .top,
+      backgroundColorHex: "#FFFFFF",
+      hasTopBorder: true,
+      numberFormat: ReadNumberFormat(kind: .text, formatID: 25)
+    )
+
+    let table = Table(
+      id: "rich-table",
+      name: "Rich Table",
+      metadata: TableMetadata(rowCount: 1, columnCount: 1, mergeRanges: []),
+      cells: [address: .string("Hello")],
+      readCells: [
+        address: ReadCell(
+          address: address,
+          value: .string("Hello"),
+          kind: .richText,
+          formatted: "Hello",
+          richText: richText,
+          style: style,
+          rawCellType: 9,
+          richTextID: 1
+        )
+      ]
+    )
+
+    XCTAssertEqual(table.richText("A1")?.text, "Hello")
+    XCTAssertEqual(table.richText(at: address)?.runs.first?.linkURL, "https://example.com")
+    XCTAssertEqual(table.style("A1")?.backgroundColorHex, "#FFFFFF")
+    XCTAssertEqual(table.style(at: address)?.numberFormat?.formatID, 25)
+    if case .richText(let extracted)? = table.readValue("A1") {
+      XCTAssertEqual(extracted.text, "Hello")
+    } else {
+      XCTFail("Expected rich text read value")
+    }
+  }
+
+  func testFormattedValueModesAndStyleHints() throws {
+    let numberAddress = CellAddress(row: 0, column: 0)
+    let dateAddress = CellAddress(row: 0, column: 1)
+    let durationAddress = CellAddress(row: 0, column: 2)
+    let date = Date(timeIntervalSinceReferenceDate: 0)
+    let currencyStyle = ReadCellStyle(numberFormat: ReadNumberFormat(kind: .currency, formatID: 1))
+
+    let table = Table(
+      id: "format-table",
+      name: "Format Table",
+      metadata: TableMetadata(rowCount: 1, columnCount: 3, mergeRanges: []),
+      cells: [
+        numberAddress: .number(42.5),
+        dateAddress: .date(date),
+        durationAddress: .number(3661),
+      ],
+      readCells: [
+        numberAddress: ReadCell(
+          address: numberAddress,
+          value: .number(42.5),
+          kind: .number,
+          formatted: "42.5",
+          style: currencyStyle
+        ),
+        dateAddress: ReadCell(
+          address: dateAddress,
+          value: .date(date),
+          kind: .date,
+          formatted: "2001-01-01T00:00:00.000Z"
+        ),
+        durationAddress: ReadCell(
+          address: durationAddress,
+          value: .number(3661),
+          kind: .duration,
+          readValue: .duration(3661),
+          formatted: "3661"
+        ),
+      ]
+    )
+
+    let currency = table.formattedValue(
+      "A1",
+      options: ReadFormattingOptions(
+        localeIdentifier: "en_US_POSIX",
+        timeZoneIdentifier: "UTC",
+        usesGroupingSeparator: false,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+        includeFractionalSeconds: true,
+        numberFormatMode: .decimal,
+        dateFormatMode: .iso8601,
+        durationFormatMode: .seconds,
+        preferCellNumberFormatHints: true
+      )
+    )
+    XCTAssertTrue(currency?.contains("$") == true)
+
+    let percent = table.formattedValue(
+      "A1",
+      options: ReadFormattingOptions(
+        localeIdentifier: "en_US_POSIX",
+        numberFormatMode: .percent,
+        preferCellNumberFormatHints: false
+      )
+    )
+    XCTAssertTrue(percent?.contains("%") == true)
+
+    XCTAssertEqual(
+      table.formattedValue(
+        "B1",
+        options: ReadFormattingOptions(
+          localeIdentifier: "en_US_POSIX",
+          timeZoneIdentifier: "UTC",
+          dateFormatMode: .pattern("yyyy-MM-dd"),
+          preferCellNumberFormatHints: false
+        )
+      ),
+      "2001-01-01"
+    )
+
+    XCTAssertEqual(
+      table.formattedValue(
+        "C1",
+        options: ReadFormattingOptions(durationFormatMode: .hhmmss)
+      ),
+      "01:01:01"
+    )
+
+    XCTAssertEqual(
+      table.formattedValue(
+        "C1",
+        options: ReadFormattingOptions(durationFormatMode: .abbreviated)
+      ),
+      "1h 1m 1s"
+    )
   }
 }

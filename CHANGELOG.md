@@ -2,6 +2,32 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.3.1] - 2026-04-24
+
+### Added
+
+- First-class read value model in public API:
+  - `ReadCellValue`
+  - `FormulaResultRead`
+  - `ReadCell.readValue`
+  - `ReadCell.formulaResult`
+- New read helpers on `Table`:
+  - `readValue(at:)`, `readValue(_:)`
+  - `formulaResult(at:)`, `formulaResult(_:)`
+  - lazy rich read extraction: `readRows(lazy:)`, `readValues()`, `readValues(lazy:)`
+- Formula-read mapping now exposes computed result payload via `FormulaResultRead`
+  while preserving raw formula, parsed tokens, and AST summary when available.
+
+### Changed
+
+- `formattedValue(...)` now supports deterministic display modes through `ReadFormattingOptions`:
+  - number: `decimal`, `currency`, `percent`, `scientific`, `pattern`
+  - date: `iso8601`, `styled`, `pattern`
+  - duration: `seconds`, `hhmmss`, `abbreviated`
+  - optional style-driven number-format hinting (`preferCellNumberFormatHints`)
+- Typed read accessors now support `ReadCellValue` and `FormulaResultRead`.
+- Documentation refreshed from `v0.3.0` to `v0.3.1` across README and docs portal.
+
 ## [0.3.0] - 2026-04-24
 
 ### Added

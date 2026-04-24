@@ -1,0 +1,124 @@
+syntax = "proto2";
+
+package TSCE;
+
+message ASTNodeArrayArchive {
+  enum NodeType {
+    UNKNOWN = 0;
+    ADD = 1;
+    SUB = 2;
+    MUL = 3;
+    DIV = 4;
+    POW = 5;
+    CONCAT = 6;
+    GT = 7;
+    GTE = 8;
+    LT = 9;
+    LTE = 10;
+    EQ = 11;
+    NEQ = 12;
+    NEG = 13;
+    PLUS = 14;
+    PERCENT = 15;
+    FUNCTION = 16;
+    NUMBER = 17;
+    BOOL = 18;
+    STRING = 19;
+    DATE = 20;
+    DURATION = 21;
+    EMPTY_ARG = 22;
+    TOKEN = 23;
+    ARRAY = 24;
+    LIST = 25;
+    THUNK = 26;
+    LOCAL_REF = 27;
+    CROSS_TABLE_REF = 28;
+    RANGE = 29;
+    REF_ERROR = 30;
+    UNKNOWN_FUNCTION = 31;
+    APPEND_WS = 32;
+    PREPEND_WS = 33;
+    BEGIN_THUNK = 34;
+    END_THUNK = 35;
+    CELL_REF = 36;
+    RANGE_UIDS = 45;
+    REF_ERROR_UIDS = 46;
+    UID_REF = 48;
+    LET_BIND = 52;
+    VAR = 53;
+    END_SCOPE = 54;
+    LAMBDA = 55;
+    BEGIN_LAMBDA_THUNK = 56;
+    END_LAMBDA_THUNK = 57;
+    LINKED_CELL_REF = 63;
+    LINKED_COLUMN_REF = 64;
+    LINKED_ROW_REF = 65;
+    CATEGORY_REF = 66;
+    COLON_TRACT = 67;
+    VIEW_TRACT_REF = 68;
+    INTERSECTION = 69;
+    SPILL_RANGE = 70;
+  }
+
+  message Coordinate {
+    optional sint32 value = 1;
+    optional bool absolute = 2 [default = false];
+  }
+
+  message StickyBits {
+    optional bool begin_row_absolute = 1;
+    optional bool begin_column_absolute = 2;
+    optional bool end_row_absolute = 3;
+    optional bool end_column_absolute = 4;
+  }
+
+  message RelativeRange {
+    optional int32 begin = 1;
+    optional int32 end = 2;
+  }
+
+  message AbsoluteRange {
+    optional uint32 begin = 1;
+    optional uint32 end = 2;
+  }
+
+  message ColonTract {
+    repeated .TSCE.ASTNodeArrayArchive.RelativeRange relative_columns = 1;
+    repeated .TSCE.ASTNodeArrayArchive.RelativeRange relative_rows = 2;
+    repeated .TSCE.ASTNodeArrayArchive.AbsoluteRange absolute_columns = 3;
+    repeated .TSCE.ASTNodeArrayArchive.AbsoluteRange absolute_rows = 4;
+  }
+
+  message Node {
+    optional .TSCE.ASTNodeArrayArchive.NodeType node_type = 1;
+    optional uint32 function_index = 2;
+    optional uint32 function_num_args = 3;
+    optional double number_value = 4;
+    optional bool bool_value = 5;
+    optional string string_value = 6;
+    optional double date_seconds = 7;
+    optional double duration_value = 8;
+    optional int32 duration_unit = 9;
+    optional bool token_bool_value = 10;
+    optional uint32 array_num_columns = 11;
+    optional uint32 array_num_rows = 12;
+    optional uint32 list_num_args = 13;
+    optional .TSCE.ASTNodeArrayArchive thunk_node_array = 14;
+    optional string unknown_function_name = 17;
+    optional uint32 unknown_function_num_args = 18;
+    optional string whitespace = 25;
+    optional .TSCE.ASTNodeArrayArchive.Coordinate column = 26;
+    optional .TSCE.ASTNodeArrayArchive.Coordinate row = 27;
+    optional .TSCE.ASTNodeArrayArchive.StickyBits sticky_bits = 33;
+    optional .TSCE.ASTNodeArrayArchive.StickyBits frozen_sticky_bits = 41;
+    optional .TSCE.ASTNodeArrayArchive.ColonTract colon_tract = 40;
+    optional uint64 decimal_low = 42;
+    optional uint64 decimal_high = 43;
+  }
+
+  repeated .TSCE.ASTNodeArrayArchive.Node nodes = 1;
+}
+
+message FormulaArchive {
+  optional .TSCE.ASTNodeArrayArchive ast_node_array = 1;
+}

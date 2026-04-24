@@ -2,6 +2,7 @@ syntax = "proto2";
 
 import "Protos/BaseMessages/TSPMessages.proto";
 import "Protos/NumbersSubset/TSDArchives_Minimal.proto";
+import "Protos/NumbersSubset/TSCEArchives_Minimal.proto";
 package TST;
 
 message CellID {
@@ -58,6 +59,8 @@ message HeaderStorageBucket {
     optional float size = 2;
     optional uint32 hidingState = 3;
     optional uint32 numberOfCells = 4;
+    optional .TSP.Reference cell_style = 5;
+    optional .TSP.Reference text_style = 6;
   }
 
   optional uint32 bucketHashFunction = 1;
@@ -70,14 +73,31 @@ message HeaderStorage {
 }
 
 message TableDataList {
+  enum ListType {
+    STRING = 1;
+    FORMAT = 2;
+    FORMULA = 3;
+    STYLE = 4;
+    FORMULA_ERROR = 5;
+    CUSTOM_FORMAT = 6;
+    MULTIPLE_CHOICE_LIST_FORMAT = 7;
+    RICH_TEXT_PAYLOAD = 8;
+    CONDITIONAL_STYLE = 9;
+    COMMENT_STORAGE = 10;
+    IMPORT_WARNING = 11;
+    CONTROL_CELL_SPEC = 12;
+  }
+
   message ListEntry {
     optional uint32 key = 1;
     optional uint32 refcount = 2;
     optional string string_value = 3;
     optional .TSP.Reference reference = 4;
+    optional .TSCE.FormulaArchive formula = 5;
+    optional .TSP.Reference rich_text_payload = 9;
   }
 
-  optional uint32 list_type = 1;
+  optional .TST.TableDataList.ListType list_type = 1;
   optional uint32 nextListID = 2;
   repeated .TST.TableDataList.ListEntry entries = 3;
   repeated .TSP.Reference segments = 4;
@@ -85,7 +105,7 @@ message TableDataList {
 }
 
 message TableDataListSegment {
-  optional uint32 list_type = 1;
+  optional .TST.TableDataList.ListType list_type = 1;
   optional .TSP.Range key_range = 2;
   repeated .TST.TableDataList.ListEntry entries = 3;
 }
@@ -95,7 +115,32 @@ message DataStore {
   optional .TSP.Reference columnHeaders = 2;
   optional .TST.TileStorage tiles = 3;
   optional .TSP.Reference stringTable = 4;
+  optional .TSP.Reference styleTable = 5;
+  optional .TSP.Reference formula_table = 6;
+  optional .TSP.Reference format_table_pre_bnc = 11;
+  optional .TSP.Reference formula_error_table = 12;
   optional .TSP.Reference merge_region_map = 13;
+  optional .TSP.Reference rich_text_table = 17;
+  optional .TSP.Reference format_table = 22;
+}
+
+message CellStylePropertiesArchive {
+  optional .TSD.FillArchive cell_fill = 1;
+  optional int32 vertical_alignment = 8;
+  optional .TSD.StrokeArchive top_stroke = 10;
+  optional .TSD.StrokeArchive right_stroke = 11;
+  optional .TSD.StrokeArchive bottom_stroke = 12;
+  optional .TSD.StrokeArchive left_stroke = 13;
+}
+
+message CellStyleArchive {
+  optional .TST.CellStylePropertiesArchive cell_properties = 11;
+}
+
+message RichTextPayloadArchive {
+  optional .TSP.Reference storage = 1;
+  optional .TSP.Range range = 2;
+  optional .TST.CellID cellid = 3;
 }
 
 message TableInfoArchive {
@@ -109,6 +154,17 @@ message TableModelArchive {
   optional uint32 number_of_rows = 6;
   optional uint32 number_of_columns = 7;
   optional string table_name = 8;
+  optional uint32 number_of_header_rows = 9;
+  optional uint32 number_of_header_columns = 10;
+  optional uint32 number_of_footer_rows = 11;
+  optional .TSP.Reference body_cell_style = 18;
+  optional .TSP.Reference header_row_style = 19;
+  optional .TSP.Reference header_column_style = 20;
+  optional .TSP.Reference footer_row_style = 21;
+  optional .TSP.Reference body_text_style = 24;
+  optional .TSP.Reference header_row_text_style = 25;
+  optional .TSP.Reference header_column_text_style = 26;
+  optional .TSP.Reference footer_row_text_style = 27;
 }
 
 message MergeRegionMapArchive {

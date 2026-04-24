@@ -1,6 +1,6 @@
 # SwiftNumbers Docs
 
-Welcome to the documentation hub for `SwiftNumbers v0.3.0`.
+Welcome to the documentation hub for `SwiftNumbers v0.3.1`.
 
 If you are new to the project, start with the 5-minute path below. If you need exact API behavior, jump directly to Capabilities.
 
@@ -26,7 +26,7 @@ If you are new to the project, start with the 5-minute path below. If you need e
 | Understand internals and module boundaries | [Architecture](architecture.md) |
 | Diagnose read/write failures | [Troubleshooting](troubleshooting.md) |
 
-## Product Scope (v0.3.0)
+## Product Scope (v0.3.1)
 
 ### Supported
 

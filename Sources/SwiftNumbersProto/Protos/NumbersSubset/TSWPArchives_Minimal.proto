@@ -1,0 +1,52 @@
+syntax = "proto2";
+
+import "Protos/BaseMessages/TSPMessages.proto";
+package TSWP;
+
+message ObjectAttributeTable {
+  message ObjectAttribute {
+    optional uint32 character_index = 1;
+    optional .TSP.Reference object = 2;
+  }
+
+  repeated .TSWP.ObjectAttributeTable.ObjectAttribute entries = 1;
+}
+
+message CharacterStylePropertiesArchive {
+  optional bool bold = 1;
+  optional bool italic = 2;
+  optional float font_size = 3;
+  optional bool font_name_null = 4;
+  optional string font_name = 5;
+  optional bool font_color_null = 6;
+  optional .TSP.Color font_color = 7;
+}
+
+message ParagraphStylePropertiesArchive {
+  optional int32 alignment = 1;
+}
+
+message CharacterStyleArchive {
+  optional .TSWP.CharacterStylePropertiesArchive char_properties = 11;
+}
+
+message ParagraphStyleArchive {
+  optional .TSWP.CharacterStylePropertiesArchive char_properties = 11;
+  optional .TSWP.ParagraphStylePropertiesArchive para_properties = 12;
+}
+
+message StorageArchive {
+  repeated string text = 3;
+  optional .TSWP.ObjectAttributeTable table_para_style = 5;
+  optional .TSWP.ObjectAttributeTable table_list_style = 7;
+  optional .TSWP.ObjectAttributeTable table_char_style = 8;
+  optional .TSWP.ObjectAttributeTable table_smartfield = 11;
+}
+
+message HyperlinkFieldArchive {
+  optional string url_ref = 2;
+}
+
+message UnsupportedHyperlinkFieldArchive {
+  optional string url_ref = 2;
+}

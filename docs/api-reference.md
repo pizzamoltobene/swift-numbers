@@ -1,6 +1,6 @@
 # API Reference
 
-Exact public API reference for `SwiftNumbersCore` in `v0.3.0`.
+Exact public API reference for `SwiftNumbersCore` in `v0.3.1`.
 
 ## Import
 
@@ -104,9 +104,13 @@ public struct Table: Hashable, Sendable {
   public func cell(_ reference: String) -> CellValue?
   public func readCell(at address: CellAddress) -> ReadCell?
   public func readCell(_ reference: String) -> ReadCell?
+  public func readValue(at address: CellAddress) -> ReadCellValue?
+  public func readValue(_ reference: String) -> ReadCellValue?
   public func formula(at address: CellAddress) -> FormulaRead?
   public func formula(_ reference: String) -> FormulaRead?
   public func formulas() -> [FormulaRead]
+  public func formulaResult(at address: CellAddress) -> FormulaResultRead?
+  public func formulaResult(_ reference: String) -> FormulaResultRead?
   public var rowCount: Int { get }
   public var columnCount: Int { get }
   public var usedRange: CellRange? { get }
@@ -115,6 +119,9 @@ public struct Table: Hashable, Sendable {
   public func rows(valuesOnly: Bool = true) -> [[CellValue]]
   public func rows(lazy: Bool) -> AnySequence<[CellValue]>
   public func readRows() -> [[ReadCell]]
+  public func readRows(lazy: Bool) -> AnySequence<[ReadCell]>
+  public func readValues() -> [[ReadCellValue]]
+  public func readValues(lazy: Bool) -> AnySequence<[ReadCellValue]>
   public func column(named name: String, headerRow: Int = 0, includeHeader: Bool = false) throws -> [CellValue]
   public func column(at index: Int, from startRow: Int = 0) throws -> [CellValue]
   public func readColumn(at index: Int, from startRow: Int = 0) throws -> [ReadCell]
@@ -208,7 +215,11 @@ public struct ReadCell: Hashable, Sendable {
   public let address: CellAddress
   public let value: CellValue
   public let kind: ReadCellKind
+  public let readValue: ReadCellValue
+  public let formulaResult: FormulaResultRead?
   public let formatted: String
+  public let richText: RichTextRead?
+  public let style: ReadCellStyle?
   public let rawCellType: UInt8?
   public let stringID: Int32?
   public let richTextID: Int32?
@@ -259,6 +270,35 @@ public struct FormulaRead: Hashable, Sendable {
 }
 ```
 
+### `FormulaResultRead`
+
+```swift
+public struct FormulaResultRead: Hashable, Sendable {
+  public let formulaID: Int32?
+  public let rawFormula: String?
+  public let parsedTokens: [String]
+  public let astSummary: String?
+  public let computedValue: CellValue
+  public let computedFormatted: String
+}
+```
+
+### `ReadCellValue`
+
+```swift
+public enum ReadCellValue: Hashable, Sendable {
+  case empty
+  case string(String)
+  case number(Double)
+  case bool(Bool)
+  case date(Date)
+  case duration(TimeInterval)
+  case error(String)
+  case richText(RichTextRead)
+  case formulaResult(FormulaResultRead)
+}
+```
+
 ### `ReadCellKind`
 
 ```swift
@@ -284,10 +324,59 @@ public struct ReadFormattingOptions: Hashable, Sendable {
     localeIdentifier: String = "en_US_POSIX",
     timeZoneIdentifier: String? = nil,
     usesGroupingSeparator: Bool = false,
+    minimumFractionDigits: Int = 0,
     maximumFractionDigits: Int = 15,
-    includeFractionalSeconds: Bool = true
+    includeFractionalSeconds: Bool = true,
+    numberFormatMode: ReadNumberFormatMode = .decimal,
+    dateFormatMode: ReadDateFormatMode = .iso8601,
+    durationFormatMode: ReadDurationFormatMode = .seconds,
+    preferCellNumberFormatHints: Bool = true
   )
   public static let `default`: ReadFormattingOptions
+}
+```
+
+### `ReadNumberFormatMode`
+
+```swift
+public enum ReadNumberFormatMode: Hashable, Sendable {
+  case decimal
+  case currency(code: String?)
+  case percent
+  case scientific
+  case pattern(String)
+}
+```
+
+### `ReadDateTimeStyle`
+
+```swift
+public enum ReadDateTimeStyle: String, Hashable, Sendable {
+  case none
+  case short
+  case medium
+  case long
+  case full
+}
+```
+
+### `ReadDateFormatMode`
+
+```swift
+public enum ReadDateFormatMode: Hashable, Sendable {
+  case iso8601
+  case styled(date: ReadDateTimeStyle, time: ReadDateTimeStyle)
+  case pattern(String)
+}
+```
+
+### `ReadDurationFormatMode`
+
+```swift
+public enum ReadDurationFormatMode: String, Hashable, Sendable {
+  case seconds
+  case hhmmss
+  case abbreviated
 }
 ```
 

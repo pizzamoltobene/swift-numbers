@@ -27,37 +27,162 @@ public enum IWAResolvedCellKind: Hashable, Sendable {
   case unknown(UInt8)
 }
 
+public struct IWAResolvedRichTextRun: Hashable, Sendable {
+  public let start: Int
+  public let end: Int
+  public let text: String
+  public let fontName: String?
+  public let fontSize: Double?
+  public let isBold: Bool?
+  public let isItalic: Bool?
+  public let textColorHex: String?
+  public let linkURL: String?
+
+  public init(
+    start: Int,
+    end: Int,
+    text: String,
+    fontName: String? = nil,
+    fontSize: Double? = nil,
+    isBold: Bool? = nil,
+    isItalic: Bool? = nil,
+    textColorHex: String? = nil,
+    linkURL: String? = nil
+  ) {
+    self.start = start
+    self.end = end
+    self.text = text
+    self.fontName = fontName
+    self.fontSize = fontSize
+    self.isBold = isBold
+    self.isItalic = isItalic
+    self.textColorHex = textColorHex
+    self.linkURL = linkURL
+  }
+}
+
+public struct IWAResolvedRichText: Hashable, Sendable {
+  public let text: String
+  public let runs: [IWAResolvedRichTextRun]
+
+  public init(text: String, runs: [IWAResolvedRichTextRun]) {
+    self.text = text
+    self.runs = runs
+  }
+}
+
+public enum IWAResolvedHorizontalAlignment: Hashable, Sendable {
+  case left
+  case center
+  case right
+  case justified
+  case natural
+  case unknown(Int32)
+}
+
+public enum IWAResolvedVerticalAlignment: Hashable, Sendable {
+  case top
+  case middle
+  case bottom
+  case unknown(Int32)
+}
+
+public enum IWAResolvedNumberFormatKind: String, Hashable, Sendable {
+  case number
+  case currency
+  case date
+  case duration
+  case text
+  case bool
+}
+
+public struct IWAResolvedNumberFormat: Hashable, Sendable {
+  public let kind: IWAResolvedNumberFormatKind
+  public let formatID: Int32
+
+  public init(kind: IWAResolvedNumberFormatKind, formatID: Int32) {
+    self.kind = kind
+    self.formatID = formatID
+  }
+}
+
+public struct IWAResolvedCellStyle: Hashable, Sendable {
+  public let horizontalAlignment: IWAResolvedHorizontalAlignment?
+  public let verticalAlignment: IWAResolvedVerticalAlignment?
+  public let backgroundColorHex: String?
+  public let hasTopBorder: Bool
+  public let hasRightBorder: Bool
+  public let hasBottomBorder: Bool
+  public let hasLeftBorder: Bool
+  public let numberFormat: IWAResolvedNumberFormat?
+
+  public init(
+    horizontalAlignment: IWAResolvedHorizontalAlignment? = nil,
+    verticalAlignment: IWAResolvedVerticalAlignment? = nil,
+    backgroundColorHex: String? = nil,
+    hasTopBorder: Bool = false,
+    hasRightBorder: Bool = false,
+    hasBottomBorder: Bool = false,
+    hasLeftBorder: Bool = false,
+    numberFormat: IWAResolvedNumberFormat? = nil
+  ) {
+    self.horizontalAlignment = horizontalAlignment
+    self.verticalAlignment = verticalAlignment
+    self.backgroundColorHex = backgroundColorHex
+    self.hasTopBorder = hasTopBorder
+    self.hasRightBorder = hasRightBorder
+    self.hasBottomBorder = hasBottomBorder
+    self.hasLeftBorder = hasLeftBorder
+    self.numberFormat = numberFormat
+  }
+}
+
 public struct IWAResolvedCell: Hashable, Sendable {
   public let row: Int
   public let column: Int
   public let value: IWAResolvedCellValue
   public let kind: IWAResolvedCellKind
+  public let richText: IWAResolvedRichText?
+  public let style: IWAResolvedCellStyle?
   public let rawCellType: UInt8
   public let stringID: Int32?
   public let richTextID: Int32?
   public let formulaID: Int32?
   public let formulaErrorID: Int32?
+  public let formulaRaw: String?
+  public let formulaTokens: [String]
+  public let formulaASTSummary: String?
 
   public init(
     row: Int,
     column: Int,
     value: IWAResolvedCellValue,
     kind: IWAResolvedCellKind,
+    richText: IWAResolvedRichText? = nil,
+    style: IWAResolvedCellStyle? = nil,
     rawCellType: UInt8,
     stringID: Int32? = nil,
     richTextID: Int32? = nil,
     formulaID: Int32? = nil,
-    formulaErrorID: Int32? = nil
+    formulaErrorID: Int32? = nil,
+    formulaRaw: String? = nil,
+    formulaTokens: [String] = [],
+    formulaASTSummary: String? = nil
   ) {
     self.row = row
     self.column = column
     self.value = value
     self.kind = kind
+    self.richText = richText
+    self.style = style
     self.rawCellType = rawCellType
     self.stringID = stringID
     self.richTextID = richTextID
     self.formulaID = formulaID
     self.formulaErrorID = formulaErrorID
+    self.formulaRaw = formulaRaw
+    self.formulaTokens = formulaTokens
+    self.formulaASTSummary = formulaASTSummary
   }
 }
 
@@ -261,12 +386,20 @@ public enum IWARealDocumentReader {
   private enum TypeID {
     static let documentArchive: UInt32 = 1
     static let sheetArchive: UInt32 = 2
+    static let wpStorageArchive: UInt32 = 2001
+    static let wpStorageArchiveAlt: UInt32 = 2005
+    static let wpCharacterStyleArchive: UInt32 = 2021
+    static let wpParagraphStyleArchive: UInt32 = 2022
+    static let wpHyperlinkFieldArchive: UInt32 = 2032
+    static let wpUnsupportedHyperlinkFieldArchive: UInt32 = 2039
     static let tableInfoArchive: UInt32 = 6000
     static let tableModelArchive: UInt32 = 6001
+    static let cellStyleArchive: UInt32 = 6004
     static let tileArchive: UInt32 = 6002
     static let tableDataList: UInt32 = 6005
     static let headerStorageBucket: UInt32 = 6006
     static let tableDataListSegment: UInt32 = 6011
+    static let richTextPayloadArchive: UInt32 = 6218
     static let mergeRegionMapArchive: UInt32 = 6144
   }
 
@@ -283,6 +416,7 @@ public enum IWARealDocumentReader {
     case tableResolveFailed = "resolver.table.resolveFailed"
     case rowStorageMapPatched = "decode.rowStorage.patched"
     case unsupportedCellTypeDropped = "decode.cell.unsupportedTypeDropped"
+    case formulaDecodeFailed = "decode.formula.failed"
   }
 
   public static func read(from inventory: IWAInventory, documentVersion: String?)
@@ -570,6 +704,23 @@ public enum IWARealDocumentReader {
 
       let dataStore = tableModel.baseDataStore
       let stringLookup = decodeStringTable(dataStore.stringTable)
+      let formulaLookup = decodeFormulaTable(dataStore.formulaTable)
+      let styleObjectByID = decodeStyleTable(dataStore.styleTable)
+      let richTextPayloadByID = decodeRichTextPayloadTable(dataStore.richTextTable)
+      let styleDefaults = TableStyleDefaults(
+        rowCount: rowCount,
+        headerRows: Int(tableModel.numberOfHeaderRows),
+        headerColumns: Int(tableModel.numberOfHeaderColumns),
+        footerRows: Int(tableModel.numberOfFooterRows),
+        bodyCellStyleObjectID: tableModel.bodyCellStyle.identifier,
+        headerRowStyleObjectID: tableModel.headerRowStyle.identifier,
+        headerColumnStyleObjectID: tableModel.headerColumnStyle.identifier,
+        footerRowStyleObjectID: tableModel.footerRowStyle.identifier,
+        bodyTextStyleObjectID: tableModel.bodyTextStyle.identifier,
+        headerRowTextStyleObjectID: tableModel.headerRowTextStyle.identifier,
+        headerColumnTextStyleObjectID: tableModel.headerColumnTextStyle.identifier,
+        footerRowTextStyleObjectID: tableModel.footerRowTextStyle.identifier
+      )
       let rowBuffers = decodeRowBuffers(
         dataStore.tiles,
         columnCount: columnCount
@@ -585,7 +736,11 @@ public enum IWARealDocumentReader {
         rowBuffers: rowBuffers,
         rowCount: rowCount,
         columnCount: columnCount,
-        stringLookup: stringLookup
+        stringLookup: stringLookup,
+        formulaLookup: formulaLookup,
+        styleObjectByID: styleObjectByID,
+        richTextPayloadByID: richTextPayloadByID,
+        styleDefaults: styleDefaults
       )
       if !decodeResult.droppedCellTypeCounts.isEmpty {
         for (cellType, count) in decodeResult.droppedCellTypeCounts.sorted(by: { $0.key < $1.key }) {
@@ -660,6 +815,191 @@ public enum IWARealDocumentReader {
       }
 
       return lookup
+    }
+
+    private struct DecodedFormula: Sendable {
+      let rawFormula: String?
+      let tokens: [String]
+      let astSummary: String?
+    }
+
+    private func decodeFormulaTable(_ reference: TSP_Reference) -> [Int32: TSCE_FormulaArchive] {
+      let objectID = reference.identifier
+      guard objectID > 0 else {
+        return [:]
+      }
+
+      guard
+        let tableDataList: TST_TableDataList = decode(
+          objectID: objectID,
+          typeID: TypeID.tableDataList,
+          as: TST_TableDataList.self
+        )
+      else {
+        return [:]
+      }
+
+      var lookup: [Int32: TSCE_FormulaArchive] = [:]
+      for entry in tableDataList.entries where entry.hasFormula {
+        let formulaID = Int32(clamping: entry.key)
+        lookup[formulaID] = entry.formula
+      }
+
+      for segmentRef in tableDataList.segments {
+        let segmentObjectID = segmentRef.identifier
+        guard segmentObjectID > 0 else {
+          continue
+        }
+
+        guard
+          let segment: TST_TableDataListSegment = decode(
+            objectID: segmentObjectID,
+            typeID: TypeID.tableDataListSegment,
+            as: TST_TableDataListSegment.self
+          )
+        else {
+          continue
+        }
+
+        for entry in segment.entries where entry.hasFormula {
+          let formulaID = Int32(clamping: entry.key)
+          lookup[formulaID] = entry.formula
+        }
+      }
+
+      return lookup
+    }
+
+    private func decodeStyleTable(_ reference: TSP_Reference) -> [Int32: UInt64] {
+      let objectID = reference.identifier
+      guard objectID > 0 else {
+        return [:]
+      }
+
+      guard
+        let tableDataList: TST_TableDataList = decode(
+          objectID: objectID,
+          typeID: TypeID.tableDataList,
+          as: TST_TableDataList.self
+        )
+      else {
+        return [:]
+      }
+
+      var lookup: [Int32: UInt64] = [:]
+      for entry in tableDataList.entries where entry.hasReference {
+        let key = Int32(clamping: entry.key)
+        let styleObjectID = entry.reference.identifier
+        guard styleObjectID > 0 else {
+          continue
+        }
+        lookup[key] = styleObjectID
+      }
+
+      for segmentRef in tableDataList.segments {
+        let segmentObjectID = segmentRef.identifier
+        guard segmentObjectID > 0 else {
+          continue
+        }
+
+        guard
+          let segment: TST_TableDataListSegment = decode(
+            objectID: segmentObjectID,
+            typeID: TypeID.tableDataListSegment,
+            as: TST_TableDataListSegment.self
+          )
+        else {
+          continue
+        }
+
+        for entry in segment.entries where entry.hasReference {
+          let key = Int32(clamping: entry.key)
+          let styleObjectID = entry.reference.identifier
+          guard styleObjectID > 0 else {
+            continue
+          }
+          lookup[key] = styleObjectID
+        }
+      }
+
+      return lookup
+    }
+
+    private func decodeRichTextPayloadTable(_ reference: TSP_Reference) -> [Int32: UInt64] {
+      let objectID = reference.identifier
+      guard objectID > 0 else {
+        return [:]
+      }
+
+      guard
+        let tableDataList: TST_TableDataList = decode(
+          objectID: objectID,
+          typeID: TypeID.tableDataList,
+          as: TST_TableDataList.self
+        )
+      else {
+        return [:]
+      }
+
+      var lookup: [Int32: UInt64] = [:]
+      for entry in tableDataList.entries where entry.hasRichTextPayload {
+        let key = Int32(clamping: entry.key)
+        let payloadObjectID = entry.richTextPayload.identifier
+        guard payloadObjectID > 0 else {
+          continue
+        }
+        lookup[key] = payloadObjectID
+      }
+
+      for segmentRef in tableDataList.segments {
+        let segmentObjectID = segmentRef.identifier
+        guard segmentObjectID > 0 else {
+          continue
+        }
+
+        guard
+          let segment: TST_TableDataListSegment = decode(
+            objectID: segmentObjectID,
+            typeID: TypeID.tableDataListSegment,
+            as: TST_TableDataListSegment.self
+          )
+        else {
+          continue
+        }
+
+        for entry in segment.entries where entry.hasRichTextPayload {
+          let key = Int32(clamping: entry.key)
+          let payloadObjectID = entry.richTextPayload.identifier
+          guard payloadObjectID > 0 else {
+            continue
+          }
+          lookup[key] = payloadObjectID
+        }
+      }
+
+      return lookup
+    }
+
+    private func decodeFormula(
+      archive: TSCE_FormulaArchive,
+      hostRow: Int,
+      hostColumn: Int
+    ) -> DecodedFormula {
+      let nodes = archive.astNodeArray.nodes
+      guard !nodes.isEmpty else {
+        return DecodedFormula(rawFormula: nil, tokens: [], astSummary: "Decoded TSCE AST (0 nodes)")
+      }
+
+      let nodeNames = nodes.map { IWARealDocumentReader.nodeTypeName($0.nodeType) }
+      let astSummary = "Decoded TSCE AST (\(nodes.count) nodes): \(nodeNames.joined(separator: " -> "))"
+      let raw = IWARealDocumentReader.renderFormula(
+        nodes: nodes,
+        hostRow: hostRow,
+        hostColumn: hostColumn
+      )
+      let tokens = raw.map(IWARealDocumentReader.tokenizeFormula) ?? []
+
+      return DecodedFormula(rawFormula: raw, tokens: tokens, astSummary: astSummary)
     }
 
     private mutating func decodeRowStorageMap(
@@ -776,6 +1116,383 @@ public enum IWARealDocumentReader {
       return allRows
     }
 
+    private struct TableStyleDefaults {
+      let rowCount: Int
+      let headerRows: Int
+      let headerColumns: Int
+      let footerRows: Int
+      let bodyCellStyleObjectID: UInt64
+      let headerRowStyleObjectID: UInt64
+      let headerColumnStyleObjectID: UInt64
+      let footerRowStyleObjectID: UInt64
+      let bodyTextStyleObjectID: UInt64
+      let headerRowTextStyleObjectID: UInt64
+      let headerColumnTextStyleObjectID: UInt64
+      let footerRowTextStyleObjectID: UInt64
+
+      func defaultCellStyleObjectID(row: Int, column: Int) -> UInt64? {
+        if row < max(headerRows, 0), headerRowStyleObjectID > 0 {
+          return headerRowStyleObjectID
+        }
+        if column < max(headerColumns, 0), headerColumnStyleObjectID > 0 {
+          return headerColumnStyleObjectID
+        }
+        let footerStart = max(rowCount - max(footerRows, 0), 0)
+        if row >= footerStart, footerRows > 0, footerRowStyleObjectID > 0 {
+          return footerRowStyleObjectID
+        }
+        return bodyCellStyleObjectID > 0 ? bodyCellStyleObjectID : nil
+      }
+
+      func defaultTextStyleObjectID(row: Int, column: Int) -> UInt64? {
+        if row < max(headerRows, 0), headerRowTextStyleObjectID > 0 {
+          return headerRowTextStyleObjectID
+        }
+        if column < max(headerColumns, 0), headerColumnTextStyleObjectID > 0 {
+          return headerColumnTextStyleObjectID
+        }
+        let footerStart = max(rowCount - max(footerRows, 0), 0)
+        if row >= footerStart, footerRows > 0, footerRowTextStyleObjectID > 0 {
+          return footerRowTextStyleObjectID
+        }
+        return bodyTextStyleObjectID > 0 ? bodyTextStyleObjectID : nil
+      }
+    }
+
+    private struct DecodedTextStyle {
+      let horizontalAlignment: IWAResolvedHorizontalAlignment?
+      let fontName: String?
+      let fontSize: Double?
+      let isBold: Bool?
+      let isItalic: Bool?
+      let textColorHex: String?
+    }
+
+    private struct DecodedCellStyle {
+      let verticalAlignment: IWAResolvedVerticalAlignment?
+      let backgroundColorHex: String?
+      let hasTopBorder: Bool
+      let hasRightBorder: Bool
+      let hasBottomBorder: Bool
+      let hasLeftBorder: Bool
+    }
+
+    private struct RichTextLinkSpan {
+      let start: Int
+      let end: Int
+      let url: String
+    }
+
+    private func decodeCellStyleObject(_ objectID: UInt64) -> DecodedCellStyle? {
+      guard objectID > 0 else {
+        return nil
+      }
+
+      guard
+        let styleArchive: TST_CellStyleArchive = decode(
+          objectID: objectID,
+          typeID: TypeID.cellStyleArchive,
+          as: TST_CellStyleArchive.self
+        ),
+        styleArchive.hasCellProperties
+      else {
+        return nil
+      }
+
+      let properties = styleArchive.cellProperties
+      let verticalAlignment: IWAResolvedVerticalAlignment? = {
+        guard properties.hasVerticalAlignment else {
+          return nil
+        }
+        switch properties.verticalAlignment {
+        case 0:
+          return .top
+        case 1:
+          return .middle
+        case 2:
+          return .bottom
+        default:
+          return .unknown(properties.verticalAlignment)
+        }
+      }()
+
+      return DecodedCellStyle(
+        verticalAlignment: verticalAlignment,
+        backgroundColorHex: colorHex(properties.cellFill.color),
+        hasTopBorder: properties.hasTopStroke,
+        hasRightBorder: properties.hasRightStroke,
+        hasBottomBorder: properties.hasBottomStroke,
+        hasLeftBorder: properties.hasLeftStroke
+      )
+    }
+
+    private func decodeParagraphTextStyleObject(_ objectID: UInt64) -> DecodedTextStyle? {
+      guard objectID > 0 else {
+        return nil
+      }
+
+      guard
+        let styleArchive: TSWP_ParagraphStyleArchive = decode(
+          objectID: objectID,
+          typeID: TypeID.wpParagraphStyleArchive,
+          as: TSWP_ParagraphStyleArchive.self
+        )
+      else {
+        return nil
+      }
+
+      let horizontalAlignment: IWAResolvedHorizontalAlignment? = {
+        guard styleArchive.hasParaProperties, styleArchive.paraProperties.hasAlignment else {
+          return nil
+        }
+        switch styleArchive.paraProperties.alignment {
+        case 0:
+          return .left
+        case 1:
+          return .right
+        case 2:
+          return .center
+        case 3:
+          return .justified
+        case 4:
+          return .natural
+        default:
+          return .unknown(styleArchive.paraProperties.alignment)
+        }
+      }()
+
+      let charProps =
+        styleArchive.hasCharProperties
+        ? styleArchive.charProperties
+        : TSWP_CharacterStylePropertiesArchive()
+
+      return DecodedTextStyle(
+        horizontalAlignment: horizontalAlignment,
+        fontName: charProps.hasFontName && !charProps.fontNameNull ? charProps.fontName : nil,
+        fontSize: charProps.hasFontSize ? Double(charProps.fontSize) : nil,
+        isBold: charProps.hasBold ? charProps.bold : nil,
+        isItalic: charProps.hasItalic ? charProps.italic : nil,
+        textColorHex: colorHex(charProps.fontColor)
+      )
+    }
+
+    private func decodeCharacterStyleObject(_ objectID: UInt64) -> DecodedTextStyle? {
+      guard objectID > 0 else {
+        return nil
+      }
+
+      guard
+        let styleArchive: TSWP_CharacterStyleArchive = decode(
+          objectID: objectID,
+          typeID: TypeID.wpCharacterStyleArchive,
+          as: TSWP_CharacterStyleArchive.self
+        ),
+        styleArchive.hasCharProperties
+      else {
+        return nil
+      }
+
+      let charProps = styleArchive.charProperties
+      return DecodedTextStyle(
+        horizontalAlignment: nil,
+        fontName: charProps.hasFontName && !charProps.fontNameNull ? charProps.fontName : nil,
+        fontSize: charProps.hasFontSize ? Double(charProps.fontSize) : nil,
+        isBold: charProps.hasBold ? charProps.bold : nil,
+        isItalic: charProps.hasItalic ? charProps.italic : nil,
+        textColorHex: colorHex(charProps.fontColor)
+      )
+    }
+
+    private func decodeHyperlinkURL(_ objectID: UInt64) -> String? {
+      guard objectID > 0 else {
+        return nil
+      }
+
+      if
+        let link: TSWP_HyperlinkFieldArchive = decode(
+          objectID: objectID,
+          typeID: TypeID.wpHyperlinkFieldArchive,
+          as: TSWP_HyperlinkFieldArchive.self
+        ),
+        !link.urlRef.isEmpty
+      {
+        return link.urlRef
+      }
+
+      if
+        let link: TSWP_UnsupportedHyperlinkFieldArchive = decode(
+          objectID: objectID,
+          typeID: TypeID.wpUnsupportedHyperlinkFieldArchive,
+          as: TSWP_UnsupportedHyperlinkFieldArchive.self
+        ),
+        !link.urlRef.isEmpty
+      {
+        return link.urlRef
+      }
+
+      return nil
+    }
+
+    private func decodeRichText(
+      richTextID: Int32?,
+      payloadObjectByID: [Int32: UInt64]
+    ) -> IWAResolvedRichText? {
+      guard
+        let richTextID,
+        richTextID >= 0,
+        let payloadObjectID = payloadObjectByID[richTextID],
+        payloadObjectID > 0
+      else {
+        return nil
+      }
+
+      guard
+        let payload: TST_RichTextPayloadArchive = decode(
+          objectID: payloadObjectID,
+          typeID: TypeID.richTextPayloadArchive,
+          as: TST_RichTextPayloadArchive.self
+        ),
+        payload.hasStorage,
+        payload.storage.identifier > 0
+      else {
+        return nil
+      }
+
+      guard
+        let storage: TSWP_StorageArchive = decodeAnyType(
+          objectID: payload.storage.identifier,
+          typeIDs: [TypeID.wpStorageArchive, TypeID.wpStorageArchiveAlt],
+          as: TSWP_StorageArchive.self
+        )
+      else {
+        return nil
+      }
+
+      let mergedText = storage.text.joined()
+      guard !mergedText.isEmpty else {
+        return IWAResolvedRichText(text: "", runs: [])
+      }
+
+      let textLength = mergedText.count
+      let charStyleEntries = storage.tableCharStyle.entries.sorted { lhs, rhs in
+        lhs.characterIndex < rhs.characterIndex
+      }
+
+      let smartFieldEntries = storage.tableSmartfield.entries.sorted { lhs, rhs in
+        lhs.characterIndex < rhs.characterIndex
+      }
+
+      var linkSpans: [RichTextLinkSpan] = []
+      for (index, entry) in smartFieldEntries.enumerated() {
+        let objectID = entry.object.identifier
+        guard objectID > 0, let url = decodeHyperlinkURL(objectID), !url.isEmpty else {
+          continue
+        }
+        let start = min(Int(entry.characterIndex), textLength)
+        let end: Int
+        if index + 1 < smartFieldEntries.count {
+          end = min(Int(smartFieldEntries[index + 1].characterIndex), textLength)
+        } else {
+          end = textLength
+        }
+        guard start < end else {
+          continue
+        }
+        linkSpans.append(RichTextLinkSpan(start: start, end: end, url: url))
+      }
+
+      func linkURL(at charIndex: Int) -> String? {
+        for span in linkSpans where charIndex >= span.start && charIndex < span.end {
+          return span.url
+        }
+        return nil
+      }
+
+      var runs: [IWAResolvedRichTextRun] = []
+      if charStyleEntries.isEmpty {
+        runs.append(
+          IWAResolvedRichTextRun(
+            start: 0,
+            end: textLength,
+            text: mergedText,
+            linkURL: linkURL(at: 0)
+          ))
+        return IWAResolvedRichText(text: mergedText, runs: runs)
+      }
+
+      for index in 0..<charStyleEntries.count {
+        let entry = charStyleEntries[index]
+        let start = min(Int(entry.characterIndex), textLength)
+        let end: Int
+        if index + 1 < charStyleEntries.count {
+          end = min(Int(charStyleEntries[index + 1].characterIndex), textLength)
+        } else {
+          end = textLength
+        }
+        guard start < end else {
+          continue
+        }
+
+        let styleObjectID = entry.object.identifier
+        let textStyle = decodeCharacterStyleObject(styleObjectID)
+        let runText = substring(mergedText, start: start, end: end)
+        runs.append(
+          IWAResolvedRichTextRun(
+            start: start,
+            end: end,
+            text: runText,
+            fontName: textStyle?.fontName,
+            fontSize: textStyle?.fontSize,
+            isBold: textStyle?.isBold,
+            isItalic: textStyle?.isItalic,
+            textColorHex: textStyle?.textColorHex,
+            linkURL: linkURL(at: start)
+          ))
+      }
+
+      if runs.isEmpty {
+        runs.append(
+          IWAResolvedRichTextRun(
+            start: 0,
+            end: textLength,
+            text: mergedText,
+            linkURL: linkURL(at: 0)
+          ))
+      }
+
+      return IWAResolvedRichText(text: mergedText, runs: runs)
+    }
+
+    private func resolvedNumberFormat(from decoded: DecodedCellStorage) -> IWAResolvedNumberFormat? {
+      if let formatID = decoded.textFormatID {
+        return IWAResolvedNumberFormat(kind: .text, formatID: formatID)
+      }
+      if let formatID = decoded.currencyFormatID {
+        return IWAResolvedNumberFormat(kind: .currency, formatID: formatID)
+      }
+      if let formatID = decoded.boolFormatID {
+        return IWAResolvedNumberFormat(kind: .bool, formatID: formatID)
+      }
+      if let formatID = decoded.numberFormatID {
+        return IWAResolvedNumberFormat(kind: .number, formatID: formatID)
+      }
+      if let formatID = decoded.dateFormatID {
+        return IWAResolvedNumberFormat(kind: .date, formatID: formatID)
+      }
+      if let formatID = decoded.durationFormatID {
+        return IWAResolvedNumberFormat(kind: .duration, formatID: formatID)
+      }
+      return nil
+    }
+
+    private func colorHex(_ color: TSP_Color?) -> String? {
+      IWARealDocumentReader.colorHex(color)
+    }
+
+    private func substring(_ text: String, start: Int, end: Int) -> String {
+      IWARealDocumentReader.substring(text, start: start, end: end)
+    }
+
     private struct DecodedCellsResult {
       let cells: [IWAResolvedCell]
       let droppedCellTypeCounts: [UInt8: Int]
@@ -786,7 +1503,11 @@ public enum IWARealDocumentReader {
       rowBuffers: [[Data?]],
       rowCount: Int,
       columnCount: Int,
-      stringLookup: [UInt32: String]
+      stringLookup: [UInt32: String],
+      formulaLookup: [Int32: TSCE_FormulaArchive],
+      styleObjectByID: [Int32: UInt64],
+      richTextPayloadByID: [Int32: UInt64],
+      styleDefaults: TableStyleDefaults
     ) -> DecodedCellsResult {
       guard rowCount > 0, columnCount > 0 else {
         return DecodedCellsResult(cells: [], droppedCellTypeCounts: [:])
@@ -795,6 +1516,9 @@ public enum IWARealDocumentReader {
       var cells: [IWAResolvedCell] = []
       cells.reserveCapacity(min(rowCount * columnCount, 1024))
       var droppedCellTypeCounts: [UInt8: Int] = [:]
+      var cellStyleCache: [UInt64: DecodedCellStyle?] = [:]
+      var textStyleCache: [UInt64: DecodedTextStyle?] = [:]
+      var richTextCache: [Int32: IWAResolvedRichText?] = [:]
 
       for row in 0..<min(rowCount, rowStorageMap.count) {
         guard let storageIndex = rowStorageMap[row], storageIndex >= 0,
@@ -822,17 +1546,113 @@ public enum IWARealDocumentReader {
             continue
           }
 
+          var formulaRaw: String?
+          var formulaTokens: [String] = []
+          var formulaASTSummary: String?
+
+          if decoded.kind == .formula,
+            let formulaID = decoded.formulaID,
+            let formulaArchive = formulaLookup[formulaID]
+          {
+            let formula = decodeFormula(
+              archive: formulaArchive,
+              hostRow: row,
+              hostColumn: column
+            )
+            formulaRaw = formula.rawFormula
+            formulaTokens = formula.tokens
+            formulaASTSummary = formula.astSummary
+          }
+
+          let richText: IWAResolvedRichText? = {
+            guard let richTextID = decoded.richTextID, richTextID >= 0 else {
+              return nil
+            }
+            if let cached = richTextCache[richTextID] {
+              return cached
+            }
+            let resolved = decodeRichText(
+              richTextID: richTextID,
+              payloadObjectByID: richTextPayloadByID
+            )
+            richTextCache[richTextID] = resolved
+            return resolved
+          }()
+
+          let resolvedCellStyleObjectID: UInt64? = {
+            if let styleID = decoded.cellStyleID, let objectID = styleObjectByID[styleID], objectID > 0 {
+              return objectID
+            }
+            return styleDefaults.defaultCellStyleObjectID(row: row, column: column)
+          }()
+
+          let resolvedTextStyleObjectID: UInt64? = {
+            if let styleID = decoded.textStyleID, let objectID = styleObjectByID[styleID], objectID > 0 {
+              return objectID
+            }
+            return styleDefaults.defaultTextStyleObjectID(row: row, column: column)
+          }()
+
+          let cellStyle: DecodedCellStyle? = {
+            guard let objectID = resolvedCellStyleObjectID, objectID > 0 else {
+              return nil
+            }
+            if let cached = cellStyleCache[objectID] {
+              return cached
+            }
+            let resolved = decodeCellStyleObject(objectID)
+            cellStyleCache[objectID] = resolved
+            return resolved
+          }()
+
+          let textStyle: DecodedTextStyle? = {
+            guard let objectID = resolvedTextStyleObjectID, objectID > 0 else {
+              return nil
+            }
+            if let cached = textStyleCache[objectID] {
+              return cached
+            }
+            let resolved = decodeParagraphTextStyleObject(objectID) ?? decodeCharacterStyleObject(objectID)
+            textStyleCache[objectID] = resolved
+            return resolved
+          }()
+
+          let numberFormat = resolvedNumberFormat(from: decoded)
+          let style: IWAResolvedCellStyle? = {
+            guard
+              cellStyle != nil || textStyle != nil || numberFormat != nil
+            else {
+              return nil
+            }
+
+            return IWAResolvedCellStyle(
+              horizontalAlignment: textStyle?.horizontalAlignment,
+              verticalAlignment: cellStyle?.verticalAlignment,
+              backgroundColorHex: cellStyle?.backgroundColorHex,
+              hasTopBorder: cellStyle?.hasTopBorder ?? false,
+              hasRightBorder: cellStyle?.hasRightBorder ?? false,
+              hasBottomBorder: cellStyle?.hasBottomBorder ?? false,
+              hasLeftBorder: cellStyle?.hasLeftBorder ?? false,
+              numberFormat: numberFormat
+            )
+          }()
+
           cells.append(
             IWAResolvedCell(
               row: row,
               column: column,
               value: value,
               kind: decoded.kind,
+              richText: richText,
+              style: style,
               rawCellType: decoded.cellType,
               stringID: decoded.stringID,
               richTextID: decoded.richTextID,
               formulaID: decoded.formulaID,
-              formulaErrorID: decoded.formulaErrorID
+              formulaErrorID: decoded.formulaErrorID,
+              formulaRaw: formulaRaw,
+              formulaTokens: formulaTokens,
+              formulaASTSummary: formulaASTSummary
             )
           )
         }
@@ -928,6 +1748,19 @@ public enum IWARealDocumentReader {
         return nil
       }
     }
+
+    private func decodeAnyType<MessageType: SwiftProtobuf.Message>(
+      objectID: UInt64,
+      typeIDs: [UInt32],
+      as type: MessageType.Type
+    ) -> MessageType? {
+      for typeID in typeIDs {
+        if let decoded: MessageType = decode(objectID: objectID, typeID: typeID, as: type) {
+          return decoded
+        }
+      }
+      return nil
+    }
   }
 
   static func splitRowStorageBuffers(
@@ -994,8 +1827,16 @@ public enum IWARealDocumentReader {
     let value: IWAResolvedCellValue?
     let stringID: Int32?
     let richTextID: Int32?
+    let cellStyleID: Int32?
+    let textStyleID: Int32?
     let formulaID: Int32?
     let formulaErrorID: Int32?
+    let numberFormatID: Int32?
+    let currencyFormatID: Int32?
+    let dateFormatID: Int32?
+    let durationFormatID: Int32?
+    let textFormatID: Int32?
+    let boolFormatID: Int32?
   }
 
   static func decodeCellStorage(buffer: Data, stringLookup: [UInt32: String]) -> DecodedCellStorage?
@@ -1021,8 +1862,16 @@ public enum IWARealDocumentReader {
     var secondsNumber: Double?
     var stringID: Int32?
     var richTextID: Int32?
+    var cellStyleID: Int32?
+    var textStyleID: Int32?
     var formulaID: Int32?
     var formulaErrorID: Int32?
+    var numberFormatID: Int32?
+    var currencyFormatID: Int32?
+    var dateFormatID: Int32?
+    var durationFormatID: Int32?
+    var textFormatID: Int32?
+    var boolFormatID: Int32?
 
     if (flags & 0x1) != 0 {
       guard offset + 16 <= buffer.count else {
@@ -1065,16 +1914,18 @@ public enum IWARealDocumentReader {
     }
 
     if (flags & 0x20) != 0 {
-      guard offset + 4 <= buffer.count else {
+      guard let value = decodeInt32LittleEndian(buffer, offset: offset) else {
         return nil
       }
+      cellStyleID = value
       offset += 4
     }
 
     if (flags & 0x40) != 0 {
-      guard offset + 4 <= buffer.count else {
+      guard let value = decodeInt32LittleEndian(buffer, offset: offset) else {
         return nil
       }
+      textStyleID = value
       offset += 4
     }
 
@@ -1112,6 +1963,75 @@ public enum IWARealDocumentReader {
         return nil
       }
       formulaErrorID = value
+      offset += 4
+    }
+
+    if (flags & 0x1000) != 0 {
+      guard offset + 4 <= buffer.count else {
+        return nil
+      }
+      offset += 4
+    }
+
+    if (flags & 0x2000) != 0 {
+      guard let value = decodeInt32LittleEndian(buffer, offset: offset) else {
+        return nil
+      }
+      numberFormatID = value
+      offset += 4
+    }
+
+    if (flags & 0x4000) != 0 {
+      guard let value = decodeInt32LittleEndian(buffer, offset: offset) else {
+        return nil
+      }
+      currencyFormatID = value
+      offset += 4
+    }
+
+    if (flags & 0x8000) != 0 {
+      guard let value = decodeInt32LittleEndian(buffer, offset: offset) else {
+        return nil
+      }
+      dateFormatID = value
+      offset += 4
+    }
+
+    if (flags & 0x10000) != 0 {
+      guard let value = decodeInt32LittleEndian(buffer, offset: offset) else {
+        return nil
+      }
+      durationFormatID = value
+      offset += 4
+    }
+
+    if (flags & 0x20000) != 0 {
+      guard let value = decodeInt32LittleEndian(buffer, offset: offset) else {
+        return nil
+      }
+      textFormatID = value
+      offset += 4
+    }
+
+    if (flags & 0x40000) != 0 {
+      guard let value = decodeInt32LittleEndian(buffer, offset: offset) else {
+        return nil
+      }
+      boolFormatID = value
+      offset += 4
+    }
+
+    if (flags & 0x80000) != 0 {
+      guard offset + 4 <= buffer.count else {
+        return nil
+      }
+      offset += 4
+    }
+
+    if (flags & 0x100000) != 0 {
+      guard offset + 4 <= buffer.count else {
+        return nil
+      }
       offset += 4
     }
 
@@ -1194,8 +2114,16 @@ public enum IWARealDocumentReader {
       value: decoded.value,
       stringID: stringID,
       richTextID: richTextID,
+      cellStyleID: cellStyleID,
+      textStyleID: textStyleID,
       formulaID: formulaID,
-      formulaErrorID: formulaErrorID
+      formulaErrorID: formulaErrorID,
+      numberFormatID: numberFormatID,
+      currencyFormatID: currencyFormatID,
+      dateFormatID: dateFormatID,
+      durationFormatID: durationFormatID,
+      textFormatID: textFormatID,
+      boolFormatID: boolFormatID
     )
   }
 
@@ -1203,6 +2131,555 @@ public enum IWARealDocumentReader {
   {
     decodeCellStorage(buffer: buffer, stringLookup: stringLookup)?.value
   }
+
+  static func renderFormula(
+    archive: TSCE_FormulaArchive,
+    hostRow: Int,
+    hostColumn: Int
+  ) -> String? {
+    let rendered = renderFormula(
+      nodes: archive.astNodeArray.nodes,
+      hostRow: hostRow,
+      hostColumn: hostColumn
+    )
+
+    guard let rendered, !rendered.isEmpty else {
+      return nil
+    }
+    if rendered.hasPrefix("=") {
+      return rendered
+    }
+    return "=" + rendered
+  }
+
+  static func renderFormula(
+    nodes: [TSCE_ASTNodeArrayArchive.Node],
+    hostRow: Int,
+    hostColumn: Int
+  ) -> String? {
+    guard !nodes.isEmpty else {
+      return nil
+    }
+
+    var stack: [String] = []
+    stack.reserveCapacity(nodes.count)
+
+    func pop() -> String {
+      stack.popLast() ?? ""
+    }
+
+    func popPair() -> (String, String) {
+      let rhs = pop()
+      let lhs = pop()
+      return (lhs, rhs)
+    }
+
+    func push(_ value: String) {
+      stack.append(value)
+    }
+
+    for node in nodes {
+      switch node.nodeType {
+      case .add:
+        let (lhs, rhs) = popPair()
+        push("\(lhs)+\(rhs)")
+      case .sub:
+        let (lhs, rhs) = popPair()
+        push("\(lhs)-\(rhs)")
+      case .mul:
+        let (lhs, rhs) = popPair()
+        push("\(lhs)*\(rhs)")
+      case .div:
+        let (lhs, rhs) = popPair()
+        push("\(lhs)/\(rhs)")
+      case .pow:
+        let (lhs, rhs) = popPair()
+        push("\(lhs)^\(rhs)")
+      case .concat:
+        let (lhs, rhs) = popPair()
+        push("\(lhs)&\(rhs)")
+      case .gt:
+        let (lhs, rhs) = popPair()
+        push("\(lhs)>\(rhs)")
+      case .gte:
+        let (lhs, rhs) = popPair()
+        push("\(lhs)>=\(rhs)")
+      case .lt:
+        let (lhs, rhs) = popPair()
+        push("\(lhs)<\(rhs)")
+      case .lte:
+        let (lhs, rhs) = popPair()
+        push("\(lhs)<=\(rhs)")
+      case .eq:
+        let (lhs, rhs) = popPair()
+        push("\(lhs)=\(rhs)")
+      case .neq:
+        let (lhs, rhs) = popPair()
+        push("\(lhs)<>\(rhs)")
+      case .neg:
+        push("-\(pop())")
+      case .plus:
+        push("+\(pop())")
+      case .percent:
+        push("\(pop())%")
+      case .function:
+        let count = Int(node.functionNumArgs)
+        var args: [String] = []
+        args.reserveCapacity(max(count, 0))
+        for _ in 0..<count {
+          args.append(pop())
+        }
+        let orderedArgs = args.reversed().joined(separator: ",")
+        let functionName = functionName(for: node.functionIndex)
+        push("\(functionName)(\(orderedArgs))")
+      case .number:
+        push(formattedNumber(node.numberValue, decimalLow: node.decimalLow, decimalHigh: node.decimalHigh))
+      case .bool:
+        push(node.boolValue ? "TRUE" : "FALSE")
+      case .token:
+        push(node.tokenBoolValue ? "TRUE" : "FALSE")
+      case .string:
+        let escaped = node.stringValue.replacingOccurrences(of: "\"", with: "\"\"")
+        push("\"\(escaped)\"")
+      case .date:
+        let dt = Date(timeIntervalSinceReferenceDate: node.dateSeconds)
+        let calendar = Calendar(identifier: .gregorian)
+        let components = calendar.dateComponents(in: TimeZone(secondsFromGMT: 0)!, from: dt)
+        let year = components.year ?? 2001
+        let month = components.month ?? 1
+        let day = components.day ?? 1
+        push("DATE(\(year),\(month),\(day))")
+      case .duration:
+        push(formattedNumber(node.durationValue, decimalLow: 0, decimalHigh: 0))
+      case .emptyArg:
+        push("")
+      case .array:
+        let rows = max(Int(node.arrayNumRows), 0)
+        let cols = max(Int(node.arrayNumColumns), 0)
+        guard rows > 0, cols > 0 else {
+          push("{}")
+          continue
+        }
+
+        var rowChunks: [String] = []
+        rowChunks.reserveCapacity(rows)
+        for _ in 0..<rows {
+          var values: [String] = []
+          values.reserveCapacity(cols)
+          for _ in 0..<cols {
+            values.append(pop())
+          }
+          rowChunks.append(values.reversed().joined(separator: ","))
+        }
+        push("{\(rowChunks.reversed().joined(separator: ";"))}")
+      case .list:
+        let count = Int(node.listNumArgs)
+        var args: [String] = []
+        args.reserveCapacity(max(count, 0))
+        for _ in 0..<count {
+          args.append(pop())
+        }
+        push("(\(args.reversed().joined(separator: ",")))")
+      case .range, .rangeUids:
+        let (lhs, rhs) = popPair()
+        push("\(lhs):\(rhs)")
+      case .colonTract:
+        push(renderColonTract(node.colonTract, sticky: node.stickyBits))
+      case .localRef, .cellRef:
+        push(renderCellReference(node: node, hostRow: hostRow, hostColumn: hostColumn))
+      case .crossTableRef:
+        // Keep cross-table references explicit for now.
+        push(renderCellReference(node: node, hostRow: hostRow, hostColumn: hostColumn))
+      case .refError, .refErrorUids:
+        push("#REF!")
+      case .unknownFunction:
+        let count = Int(node.unknownFunctionNumArgs)
+        var args: [String] = []
+        args.reserveCapacity(max(count, 0))
+        for _ in 0..<count {
+          args.append(pop())
+        }
+        let name = node.unknownFunctionName.isEmpty ? "UNKNOWN_FUNC" : node.unknownFunctionName
+        push("\(name)(\(args.reversed().joined(separator: ",")))")
+      case .appendWs:
+        if !stack.isEmpty {
+          let top = pop()
+          push(top + node.whitespace)
+        }
+      case .prependWs:
+        if !stack.isEmpty {
+          let top = pop()
+          push(node.whitespace + top)
+        }
+      case .thunk:
+        let thunk = renderFormula(nodes: node.thunkNodeArray.nodes, hostRow: hostRow, hostColumn: hostColumn)
+        if let thunk, !thunk.isEmpty {
+          push(thunk)
+        }
+      case .beginThunk, .endThunk, .uidRef, .letBind, .var, .endScope, .lambda, .beginLambdaThunk,
+        .endLambdaThunk, .linkedCellRef, .linkedColumnRef, .linkedRowRef, .categoryRef, .viewTractRef,
+        .intersection, .spillRange, .unknown:
+        continue
+      }
+    }
+
+    return stack.last
+  }
+
+  static func nodeTypeName(_ type: TSCE_ASTNodeArrayArchive.NodeType) -> String {
+    switch type {
+    case .unknown:
+      return "UNKNOWN"
+    case .add:
+      return "ADD"
+    case .sub:
+      return "SUB"
+    case .mul:
+      return "MUL"
+    case .div:
+      return "DIV"
+    case .pow:
+      return "POW"
+    case .concat:
+      return "CONCAT"
+    case .gt:
+      return "GT"
+    case .gte:
+      return "GTE"
+    case .lt:
+      return "LT"
+    case .lte:
+      return "LTE"
+    case .eq:
+      return "EQ"
+    case .neq:
+      return "NEQ"
+    case .neg:
+      return "NEG"
+    case .plus:
+      return "PLUS"
+    case .percent:
+      return "PERCENT"
+    case .function:
+      return "FUNCTION"
+    case .number:
+      return "NUMBER"
+    case .bool:
+      return "BOOL"
+    case .string:
+      return "STRING"
+    case .date:
+      return "DATE"
+    case .duration:
+      return "DURATION"
+    case .emptyArg:
+      return "EMPTY_ARG"
+    case .token:
+      return "TOKEN"
+    case .array:
+      return "ARRAY"
+    case .list:
+      return "LIST"
+    case .thunk:
+      return "THUNK"
+    case .localRef:
+      return "LOCAL_REF"
+    case .crossTableRef:
+      return "CROSS_TABLE_REF"
+    case .range:
+      return "RANGE"
+    case .refError:
+      return "REF_ERROR"
+    case .unknownFunction:
+      return "UNKNOWN_FUNCTION"
+    case .appendWs:
+      return "APPEND_WS"
+    case .prependWs:
+      return "PREPEND_WS"
+    case .beginThunk:
+      return "BEGIN_THUNK"
+    case .endThunk:
+      return "END_THUNK"
+    case .cellRef:
+      return "CELL_REF"
+    case .rangeUids:
+      return "RANGE_UIDS"
+    case .refErrorUids:
+      return "REF_ERROR_UIDS"
+    case .uidRef:
+      return "UID_REF"
+    case .letBind:
+      return "LET_BIND"
+    case .var:
+      return "VAR"
+    case .endScope:
+      return "END_SCOPE"
+    case .lambda:
+      return "LAMBDA"
+    case .beginLambdaThunk:
+      return "BEGIN_LAMBDA_THUNK"
+    case .endLambdaThunk:
+      return "END_LAMBDA_THUNK"
+    case .linkedCellRef:
+      return "LINKED_CELL_REF"
+    case .linkedColumnRef:
+      return "LINKED_COLUMN_REF"
+    case .linkedRowRef:
+      return "LINKED_ROW_REF"
+    case .categoryRef:
+      return "CATEGORY_REF"
+    case .colonTract:
+      return "COLON_TRACT"
+    case .viewTractRef:
+      return "VIEW_TRACT_REF"
+    case .intersection:
+      return "INTERSECTION"
+    case .spillRange:
+      return "SPILL_RANGE"
+    }
+  }
+
+  static func tokenizeFormula(_ formula: String) -> [String] {
+    if formula.isEmpty {
+      return []
+    }
+
+    let punctuation = Set<Character>(["(", ")", ",", ":", "+", "-", "*", "/", "^", "&", "=", "<", ">"])
+    var tokens: [String] = []
+    var current = ""
+    var inString = false
+
+    for character in formula {
+      if inString {
+        current.append(character)
+        if character == "\"" {
+          tokens.append(current)
+          current = ""
+          inString = false
+        }
+        continue
+      }
+
+      if character == "\"" {
+        if !current.isEmpty {
+          tokens.append(current)
+          current = ""
+        }
+        current.append(character)
+        inString = true
+        continue
+      }
+
+      if character.isWhitespace {
+        if !current.isEmpty {
+          tokens.append(current)
+          current = ""
+        }
+        continue
+      }
+
+      if punctuation.contains(character) {
+        if !current.isEmpty {
+          tokens.append(current)
+          current = ""
+        }
+        tokens.append(String(character))
+        continue
+      }
+
+      current.append(character)
+    }
+
+    if !current.isEmpty {
+      tokens.append(current)
+    }
+
+    return tokens
+  }
+
+  static func colorHex(_ color: TSP_Color?) -> String? {
+    guard let color else {
+      return nil
+    }
+    guard color.hasR, color.hasG, color.hasB else {
+      return nil
+    }
+
+    func clamp(_ value: Float) -> Int {
+      Int((max(0, min(1, value)) * 255).rounded())
+    }
+
+    let red = clamp(color.r)
+    let green = clamp(color.g)
+    let blue = clamp(color.b)
+    let alpha = color.hasA ? clamp(color.a) : 255
+
+    if alpha == 255 {
+      return String(format: "#%02X%02X%02X", red, green, blue)
+    }
+    return String(format: "#%02X%02X%02X%02X", red, green, blue, alpha)
+  }
+
+  static func substring(_ text: String, start: Int, end: Int) -> String {
+    let clampedStart = max(0, min(start, text.count))
+    let clampedEnd = max(clampedStart, min(end, text.count))
+    let startIndex = text.index(text.startIndex, offsetBy: clampedStart)
+    let endIndex = text.index(text.startIndex, offsetBy: clampedEnd)
+    return String(text[startIndex..<endIndex])
+  }
+
+  private static func functionName(for index: UInt32) -> String {
+    knownFunctionNames[index] ?? "FUNC_\(index)"
+  }
+
+  private static func renderCellReference(
+    node: TSCE_ASTNodeArrayArchive.Node,
+    hostRow: Int,
+    hostColumn: Int
+  ) -> String {
+    let row = node.row
+    let col = node.column
+
+    let hasRow = node.hasRow
+    let hasColumn = node.hasColumn
+
+    if !hasRow && !hasColumn {
+      return "#REF!"
+    }
+
+    var resolvedRow = hostRow
+    var resolvedColumn = hostColumn
+    var rowAbsolute = false
+    var columnAbsolute = false
+
+    if hasRow {
+      rowAbsolute = row.absolute
+      resolvedRow = rowAbsolute ? Int(row.value) : hostRow + Int(row.value)
+    }
+    if hasColumn {
+      columnAbsolute = col.absolute
+      resolvedColumn = columnAbsolute ? Int(col.value) : hostColumn + Int(col.value)
+    }
+
+    if resolvedRow < 0 || resolvedColumn < 0 {
+      return "#REF!"
+    }
+
+    let colLetters = a1ColumnLabel(for: resolvedColumn)
+    let colPart = columnAbsolute ? "$\(colLetters)" : colLetters
+    let rowPart = rowAbsolute ? "$\(resolvedRow + 1)" : "\(resolvedRow + 1)"
+    return "\(colPart)\(rowPart)"
+  }
+
+  private static func renderColonTract(
+    _ tract: TSCE_ASTNodeArrayArchive.ColonTract,
+    sticky: TSCE_ASTNodeArrayArchive.StickyBits
+  ) -> String {
+    guard
+      let startRowRange = tract.absoluteRows.first,
+      let startColumnRange = tract.absoluteColumns.first
+    else {
+      return "#RANGE!"
+    }
+
+    let rowStart = Int(startRowRange.begin)
+    let rowEnd = Int(startRowRange.hasEnd ? startRowRange.end : startRowRange.begin)
+    let columnStart = Int(startColumnRange.begin)
+    let columnEnd = Int(startColumnRange.hasEnd ? startColumnRange.end : startColumnRange.begin)
+
+    let begin = renderA1(
+      row: rowStart,
+      column: columnStart,
+      rowAbsolute: sticky.beginRowAbsolute,
+      columnAbsolute: sticky.beginColumnAbsolute
+    )
+    let end = renderA1(
+      row: rowEnd,
+      column: columnEnd,
+      rowAbsolute: sticky.endRowAbsolute,
+      columnAbsolute: sticky.endColumnAbsolute
+    )
+    return "\(begin):\(end)"
+  }
+
+  private static func renderA1(
+    row: Int,
+    column: Int,
+    rowAbsolute: Bool,
+    columnAbsolute: Bool
+  ) -> String {
+    let colLetters = a1ColumnLabel(for: max(column, 0))
+    let colPart = columnAbsolute ? "$\(colLetters)" : colLetters
+    let rowPart = rowAbsolute ? "$\(max(row, 0) + 1)" : "\(max(row, 0) + 1)"
+    return "\(colPart)\(rowPart)"
+  }
+
+  private static func a1ColumnLabel(for zeroBasedColumn: Int) -> String {
+    var value = zeroBasedColumn + 1
+    var result = ""
+    while value > 0 {
+      let remainder = (value - 1) % 26
+      let scalar = UnicodeScalar(65 + remainder)!
+      result = String(Character(scalar)) + result
+      value = (value - 1) / 26
+    }
+    return result.isEmpty ? "A" : result
+  }
+
+  private static func formattedNumber(_ value: Double, decimalLow: UInt64, decimalHigh: UInt64)
+    -> String
+  {
+    if decimalHigh == 0x3040_0000_0000_0000 {
+      return String(decimalLow)
+    }
+
+    let formatter = NumberFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.numberStyle = .decimal
+    formatter.usesGroupingSeparator = false
+    formatter.maximumFractionDigits = 15
+    formatter.minimumFractionDigits = 0
+    return formatter.string(from: NSNumber(value: value)) ?? String(value)
+  }
+
+  // Small curated subset for common analytical functions.
+  private static let knownFunctionNames: [UInt32: String] = [
+    1: "SUM",
+    2: "AVERAGE",
+    3: "COUNT",
+    4: "COUNTA",
+    5: "MIN",
+    6: "MAX",
+    7: "IF",
+    8: "AND",
+    9: "OR",
+    10: "NOT",
+    11: "ROUND",
+    12: "ROUNDUP",
+    13: "ROUNDDOWN",
+    14: "ABS",
+    15: "INT",
+    16: "MOD",
+    17: "POWER",
+    18: "SQRT",
+    19: "LOG",
+    20: "EXP",
+    21: "TODAY",
+    22: "NOW",
+    23: "DATE",
+    24: "TIME",
+    25: "YEAR",
+    26: "MONTH",
+    27: "DAY",
+    28: "HOUR",
+    29: "MINUTE",
+    30: "SECOND",
+    31: "VLOOKUP",
+    32: "HLOOKUP",
+    33: "INDEX",
+    34: "MATCH",
+    35: "XLOOKUP",
+  ]
 
   static func detectedCellType(buffer: Data) -> UInt8? {
     guard buffer.count >= 2 else {

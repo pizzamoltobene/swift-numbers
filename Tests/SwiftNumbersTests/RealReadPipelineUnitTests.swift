@@ -2,6 +2,7 @@ import Foundation
 import XCTest
 
 @testable import SwiftNumbersIWA
+import SwiftNumbersProto
 
 final class RealReadPipelineUnitTests: XCTestCase {
   func testDecodeSignedInt16Array() {
@@ -158,6 +159,49 @@ final class RealReadPipelineUnitTests: XCTestCase {
     XCTAssertEqual(richTextDecoded?.value, .richText("RT payload"))
   }
 
+  func testDecodeCellStorageParsesStyleAndFormatIdentifiers() {
+    let flags: Int32 = 0x8 | 0x20 | 0x40 | 0x2000 | 0x4000 | 0x8000 | 0x10000 | 0x20000 | 0x40000
+    let buffer = makeCellBuffer(type: 3, flags: flags) { data in
+      appendInt32(11, to: &data)  // string id
+      appendInt32(12, to: &data)  // cell style id
+      appendInt32(13, to: &data)  // text style id
+      appendInt32(21, to: &data)  // number format id
+      appendInt32(22, to: &data)  // currency format id
+      appendInt32(23, to: &data)  // date format id
+      appendInt32(24, to: &data)  // duration format id
+      appendInt32(25, to: &data)  // text format id
+      appendInt32(26, to: &data)  // bool format id
+    }
+
+    let decoded = IWARealDocumentReader.decodeCellStorage(
+      buffer: buffer,
+      stringLookup: [11: "Styled"]
+    )
+
+    XCTAssertEqual(decoded?.stringID, 11)
+    XCTAssertEqual(decoded?.cellStyleID, 12)
+    XCTAssertEqual(decoded?.textStyleID, 13)
+    XCTAssertEqual(decoded?.numberFormatID, 21)
+    XCTAssertEqual(decoded?.currencyFormatID, 22)
+    XCTAssertEqual(decoded?.dateFormatID, 23)
+    XCTAssertEqual(decoded?.durationFormatID, 24)
+    XCTAssertEqual(decoded?.textFormatID, 25)
+    XCTAssertEqual(decoded?.boolFormatID, 26)
+  }
+
+  func testColorHexEncodesRGBAndAlpha() {
+    var color = TSP_Color()
+    color.model = .rgb
+    color.r = 0.2
+    color.g = 0.4
+    color.b = 0.6
+    color.a = 1.0
+    XCTAssertEqual(IWARealDocumentReader.colorHex(color), "#336699")
+
+    color.a = 0.5
+    XCTAssertEqual(IWARealDocumentReader.colorHex(color), "#33669980")
+  }
+
   func testUnsupportedVersionDiagnostic() {
     let warning = NumbersDocumentVersion.unsupportedVersionDiagnostic(for: "99.0.1")
     XCTAssertNotNil(warning)
@@ -201,6 +245,108 @@ final class RealReadPipelineUnitTests: XCTestCase {
     let value = IWARealDocumentReader.unpackDecimal128(Data(bytes))
     XCTAssertTrue(value.isFinite)
     XCTAssertFalse(value.isNaN)
+  }
+
+  func testRenderFormulaFromASTArithmetic() {
+    var left = TSCE_ASTNodeArrayArchive.Node()
+    left.nodeType = .number
+    left.numberValue = 2
+
+    var right = TSCE_ASTNodeArrayArchive.Node()
+    right.nodeType = .number
+    right.numberValue = 3
+
+    var add = TSCE_ASTNodeArrayArchive.Node()
+    add.nodeType = .add
+
+    var ast = TSCE_ASTNodeArrayArchive()
+    ast.nodes = [left, right, add]
+
+    var archive = TSCE_FormulaArchive()
+    archive.astNodeArray = ast
+
+    XCTAssertEqual(
+      IWARealDocumentReader.renderFormula(
+        archive: archive,
+        hostRow: 0,
+        hostColumn: 0
+      ),
+      "=2+3"
+    )
+  }
+
+  func testRenderFormulaFromASTRangeReference() {
+    var startRow = TSCE_ASTNodeArrayArchive.Coordinate()
+    startRow.value = 0
+    startRow.absolute = true
+    var startColumn = TSCE_ASTNodeArrayArchive.Coordinate()
+    startColumn.value = 0
+    startColumn.absolute = true
+
+    var startRef = TSCE_ASTNodeArrayArchive.Node()
+    startRef.nodeType = .cellRef
+    startRef.row = startRow
+    startRef.column = startColumn
+
+    var endRow = TSCE_ASTNodeArrayArchive.Coordinate()
+    endRow.value = 1
+    endRow.absolute = true
+    var endColumn = TSCE_ASTNodeArrayArchive.Coordinate()
+    endColumn.value = 1
+    endColumn.absolute = true
+
+    var endRef = TSCE_ASTNodeArrayArchive.Node()
+    endRef.nodeType = .cellRef
+    endRef.row = endRow
+    endRef.column = endColumn
+
+    var range = TSCE_ASTNodeArrayArchive.Node()
+    range.nodeType = .range
+
+    var ast = TSCE_ASTNodeArrayArchive()
+    ast.nodes = [startRef, endRef, range]
+
+    var archive = TSCE_FormulaArchive()
+    archive.astNodeArray = ast
+
+    XCTAssertEqual(
+      IWARealDocumentReader.renderFormula(
+        archive: archive,
+        hostRow: 10,
+        hostColumn: 10
+      ),
+      "=$A$1:$B$2"
+    )
+  }
+
+  func testRenderFormulaFromASTFunctionCall() {
+    var first = TSCE_ASTNodeArrayArchive.Node()
+    first.nodeType = .number
+    first.numberValue = 1
+
+    var second = TSCE_ASTNodeArrayArchive.Node()
+    second.nodeType = .number
+    second.numberValue = 2
+
+    var function = TSCE_ASTNodeArrayArchive.Node()
+    function.nodeType = .function
+    function.functionIndex = 1
+    function.functionNumArgs = 2
+
+    var ast = TSCE_ASTNodeArrayArchive()
+    ast.nodes = [first, second, function]
+
+    var archive = TSCE_FormulaArchive()
+    archive.astNodeArray = ast
+
+    XCTAssertEqual(
+      IWARealDocumentReader.renderFormula(
+        archive: archive,
+        hostRow: 0,
+        hostColumn: 0
+      ),
+      "=SUM(1,2)"
+    )
   }
 
   private func makeCellBuffer(

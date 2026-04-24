@@ -1,6 +1,6 @@
-# SwiftNumbers Capabilities (v0.3.0)
+# SwiftNumbers Capabilities (v0.3.1)
 
-This document is the full capability reference for `SwiftNumbers` `v0.3.0`.
+This document is the full capability reference for `SwiftNumbers` `v0.3.1`.
 
 ## 0) How to Read This Document
 
@@ -56,7 +56,7 @@ Core internal modules:
 
 ## 3) Capability Matrix
 
-| Area | Status in v0.3.0 | Notes |
+| Area | Status in v0.3.1 | Notes |
 |---|---|---|
 | Open package `.numbers` | Supported | Reads `Index.zip` package form |
 | Open single-file archive `.numbers` | Supported | Reads embedded `Index`/`Index.zip` |
@@ -155,7 +155,7 @@ This section gives operation-by-operation examples with:
 
 | Group | Operations |
 |---|---|
-| Read open/introspection | `open`, `sheets`, `firstSheet`, `sheet(named:)`, `sheet(at:)`, `tables`, `firstTable`, `table(named:)`, `table(at:)`, `metadata`, `cell(at:)`, `cell(row:column:)`, `cell("A1")`, `readCell(...)`, `formula(...)`, `formulas()`, `rows()/rows(valuesOnly:)/rows(lazy:)`, `column(named:)`, `values(in:)`, `decodeRows(as:)`, typed `value(_:at:)`, `formattedValue(...)`, `mergeRange(...)`, `isMergedCell(...)`, `dump`, `renderDump` |
+| Read open/introspection | `open`, `sheets`, `firstSheet`, `sheet(named:)`, `sheet(at:)`, `tables`, `firstTable`, `table(named:)`, `table(at:)`, `metadata`, `cell(at:)`, `cell(row:column:)`, `cell("A1")`, `readCell(...)`, `readValue(...)`, `formula(...)`, `formulas()`, `formulaResult(...)`, `rows()/rows(valuesOnly:)/rows(lazy:)`, `readRows()/readRows(lazy:)`, `readValues()/readValues(lazy:)`, `column(named:)`, `values(in:)`, `decodeRows(as:)`, typed `value(_:at:)`, `formattedValue(...)`, `mergeRange(...)`, `isMergedCell(...)`, `dump`, `renderDump` |
 | Editable open/navigation | `EditableNumbersDocument.open`, `sheet(named:)`, `table(named:)`, `cell(_:)`, `cell(at: CellReference)` |
 | Editable mutation | `setValue`, `appendRow`, `insertRow`, `appendColumn`, `addTable`, `addSheet` |
 | Save | `save(to:)`, `saveInPlace()` |
@@ -169,14 +169,14 @@ This section gives operation-by-operation examples with:
 | Inspect file structure quickly | `dump()`, `renderDump()`, CLI `dump` | Includes diagnostics and read path |
 | List all sheets | `sheets`, CLI `list-sheets` | JSON mode is script-friendly |
 | Read one value | `cell(at:)`, `cell(row:column:)`, `cell("A1")` | Read-only `Table` API |
-| Read rich cell object | `readCell(...)` | Includes `kind`, `formatted`, merge role, and low-level IDs |
-| Read formulas | `formula(...)`, `formulas()` | Exposes `formulaID`, raw formula when available, parsed tokens, formatted result |
-| Read all table rows | `rows()` | Returns rectangular `[[CellValue]]` with `.empty` fill |
+| Read rich cell object | `readCell(...)` | Includes `kind`, `readValue`, `formulaResult`, `formatted`, merge role, IDs, plus `richText` runs and read-only `style` snapshot when available |
+| Read formulas | `formula(...)`, `formulas()`, `formulaResult(...)` | Exposes `formulaID`, raw formula, parsed tokens, AST summary, computed value/result formatting |
+| Read all table rows | `rows()`, `readRows()`, `readValues()` | `rows()` returns `CellValue`; read variants return richer read model values |
 | Read a column by header | `column(named:)` | Header lookup on selected header row |
 | Read A1 range | `values(in:)`, `readCells(in:)` | Supports `A1:D5000` style extraction |
-| Typed reads | `value(_:at:)`, `optionalValue(_:at:)` | Strongly typed value extraction with explicit errors |
+| Typed reads | `value(_:at:)`, `optionalValue(_:at:)` | Supports `CellValue`, `ReadCell`, `ReadCellValue`, `FormulaResultRead`, and scalar types with explicit errors |
 | Decode rows into model | `decodeRows(as:)` | Maps header row to `Decodable` properties |
-| Read display-friendly value | `formattedValue(...)` | Returns string form; empty in-range cell => `""` |
+| Read display-friendly value | `formattedValue(...)` | Deterministic formatting options: decimal/currency/percent/scientific/pattern, date ISO/styled/pattern, duration seconds/`hh:mm:ss`/abbreviated, optional style hints |
 | Lookup by index/name | `sheet(at:)`, `sheet(named:)`, `table(at:)`, `table(named:)`, subscripts | Document/sheet convenience traversal |
 | Detect merged cells | `mergeRange(...)`, `isMergedCell(...)` | Uses `Table.metadata.mergeRanges` |
 | Edit one value by A1 | `setValue(_:at: String)` | Throws on invalid A1 |
@@ -1354,7 +1354,7 @@ Release helper:
 - outputs `.local/release-check-020.json`
 - includes manual Apple Numbers smoke-check confirmation step
 
-## 10) Out of Scope for v0.3.0
+## 10) Out of Scope for v0.3.1
 
 - formula write and formula engine behavior
 - pivot/grouped tables

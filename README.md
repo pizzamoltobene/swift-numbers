@@ -32,7 +32,7 @@ Start here: [Docs Hub](docs/index.md)
 For full API/CLI behavior, use [Capabilities](docs/capabilities.md).  
 For practical flows, use [Cookbook](docs/cookbook.md).
 
-## Release Highlights (v0.3.0)
+## Release Highlights (v0.3.1)
 
 - `saveInPlace()` now applies to the current working document path.
   - Example: if you first call `save(to: newURL)`, a later `saveInPlace()` updates `newURL`.
@@ -41,20 +41,27 @@ For practical flows, use [Cookbook](docs/cookbook.md).
 - Writer now fails fast on ambiguous sheet/table targeting instead of silently applying changes to an unintended target.
 - Overlay-backed editable documents now refresh overlay metadata after low-level writes, preventing stale reopen values.
 
-## Supported (v0.3.0)
+## Supported (v0.3.1)
 
 - Open `.numbers` package documents and single-file archive documents
 - Read sheets/tables/metadata and lookup by:
   - sheet/table index and name
   - `CellAddress` (`row`, `column`) and A1 references
-  - rich read cells (`readCell`) with `kind`, `formatted`, merge role, and low-level IDs (`formulaID`, `richTextID`, ...)
-  - formula read API: `formula(...)`, `formulas()` (`formulaID`, raw formula when available, parsed tokens)
+  - rich read cells (`readCell`) with:
+    - `kind`, `readValue`, `formulaResult`, `formatted`, merge role, low-level IDs (`formulaID`, `richTextID`, ...)
+    - rich text payload (`richText.text`, `richText.runs[]`: run text, font/style hints, link URL when available)
+    - read-only style snapshot (`style`: alignment/background/borders/number-format ID when available)
+  - formula read API: `formula(...)`, `formulas()`, `formulaResult(...)` (`formulaID`, raw formula, tokens, AST summary, computed value/result formatting)
   - full-table `rows()` extraction
-  - `rows(valuesOnly:)`, `rows(lazy:)`, `column(named:)`, `values(in: "A1:D50")`
+  - `rows(valuesOnly:)`, `rows(lazy:)`, `readRows()`, `readRows(lazy:)`, `readValues()`, `readValues(lazy:)`, `column(named:)`, `values(in: "A1:D50")`
   - `column(at:from:)`, `readColumn(at:from:)`, `usedRange`, `populatedCells()`
-  - typed accessors: `value(_:at:)`, `optionalValue(_:at:)`
+  - typed accessors: `value(_:at:)`, `optionalValue(_:at:)` (including `ReadCellValue` / `FormulaResultRead`)
   - schema mapping: `decodeRows(as:headerRow:)`
-  - `formattedValue(...)` string view
+  - `formattedValue(...)` string view with deterministic formatting options:
+    - number modes: decimal / currency / percent / scientific / pattern
+    - date modes: ISO-8601 / styled / pattern
+    - duration modes: seconds / `hh:mm:ss` / abbreviated
+    - optional style hints from decoded cell number-format metadata
   - merge helpers (`mergeRange(...)`, `isMergedCell(...)`)
   - structured diagnostics (`code/severity/message/objectPath/suggestion/context`) in `DocumentDump`
 - CLI read operations:
@@ -76,7 +83,7 @@ For practical flows, use [Cookbook](docs/cookbook.md).
   - `empty`
   - `date`
 
-## Write Support (v0.3.0)
+## Write Support (v0.3.1)
 
 - Native Swift low-level IWA write path currently covers:
   - `setValue` for `string` / `number` / `bool` / `empty` / `date` (`date` uses a stable SwiftNumbers marker)
@@ -91,9 +98,9 @@ For practical flows, use [Cookbook](docs/cookbook.md).
   - same-path atomic in-place replace
   - repeated saves continue from the latest successful output path
 
-## Out of Scope (v0.3.0)
+## Out of Scope (v0.3.1)
 
-- Advanced Numbers features are out of scope in `0.3.0`:
+- Advanced Numbers features are out of scope in `0.3.1`:
   - formula write/engine semantics
   - pivot/grouped tables
   - charts
@@ -106,10 +113,10 @@ For practical flows, use [Cookbook](docs/cookbook.md).
 
 ## Install (SwiftPM)
 
-Use the `v0.3.0` tag:
+Use the `v0.3.1` tag:
 
 ```swift
-.package(url: "https://github.com/pizzamoltobene/swift-numbers.git", from: "0.3.0")
+.package(url: "https://github.com/pizzamoltobene/swift-numbers.git", from: "0.3.1")
 ```
 
 Then add the library target dependency:

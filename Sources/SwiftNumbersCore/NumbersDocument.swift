@@ -198,11 +198,14 @@ public struct NumbersDocument: Sendable {
       let tables = sheet.tables.map { table in
         var cells: [CellAddress: CellValue] = [:]
         var readCells: [CellAddress: ReadCell] = [:]
+        var formulas: [CellAddress: FormulaRead] = [:]
         cells.reserveCapacity(table.cells.count)
         readCells.reserveCapacity(table.cells.count)
+        formulas.reserveCapacity(table.cells.count)
 
         for cell in table.cells {
           let address = CellAddress(row: cell.row, column: cell.column)
+          let reference = CellReference(address: address).a1
           let value: CellValue
           switch cell.value {
           case .empty:
@@ -226,14 +229,64 @@ public struct NumbersDocument: Sendable {
           case .error(let message):
             value = .string(message)
           case .richText(let text):
-            value = .string(text)
+            value = .string(cell.richText?.text ?? text)
           }
+
+          let mappedKind = mapResolvedCellKind(cell.kind)
+          let formattedValue = formatReadValue(value)
+          let mappedRichText = mapResolvedRichText(cell.richText)
+          let mappedStyle = mapResolvedCellStyle(cell.style)
+          let formulaResult: FormulaResultRead?
+          if cell.kind == .formula {
+            let rawFormula = cell.formulaRaw
+            let tokens =
+              cell.formulaTokens.isEmpty
+              ? (rawFormula.map(tokenizeFormulaForDump) ?? [])
+              : cell.formulaTokens
+            let astSummary =
+              cell.formulaASTSummary
+              ?? (tokens.isEmpty ? nil : "Tokenized formula (\(tokens.count) tokens)")
+
+            formulaResult = FormulaResultRead(
+              formulaID: cell.formulaID,
+              rawFormula: rawFormula,
+              parsedTokens: tokens,
+              astSummary: astSummary,
+              computedValue: value,
+              computedFormatted: formattedValue
+            )
+
+            formulas[address] = FormulaRead(
+              address: address,
+              reference: reference,
+              formulaID: cell.formulaID,
+              rawFormula: rawFormula,
+              parsedTokens: tokens,
+              astSummary: astSummary,
+              result: value,
+              resultFormatted: formattedValue
+            )
+          } else {
+            formulaResult = nil
+          }
+
+          let readValue = mapResolvedReadValue(
+            rawValue: cell.value,
+            fallbackValue: value,
+            richText: mappedRichText,
+            formulaResult: formulaResult
+          )
+
           cells[address] = value
           readCells[address] = ReadCell(
             address: address,
             value: value,
-            kind: mapResolvedCellKind(cell.kind),
-            formatted: formatReadValue(value),
+            kind: mappedKind,
+            readValue: readValue,
+            formulaResult: formulaResult,
+            formatted: formattedValue,
+            richText: mappedRichText,
+            style: mappedStyle,
             rawCellType: cell.rawCellType,
             stringID: cell.stringID,
             richTextID: cell.richTextID,
@@ -260,7 +313,8 @@ public struct NumbersDocument: Sendable {
             mergeRanges: merges
           ),
           cells: cells,
-          readCells: readCells
+          readCells: readCells,
+          formulas: formulas
         )
       }
 
@@ -395,6 +449,137 @@ public struct NumbersDocument: Sendable {
     }
   }
 
+  private static func mapResolvedReadValue(
+    rawValue: IWAResolvedCellValue,
+    fallbackValue: CellValue,
+    richText: RichTextRead?,
+    formulaResult: FormulaResultRead?
+  ) -> ReadCellValue {
+    if let formulaResult {
+      return .formulaResult(formulaResult)
+    }
+
+    switch rawValue {
+    case .empty:
+      return .empty
+    case .string(let string):
+      if case .date(let date) = fallbackValue {
+        return .date(date)
+      }
+      return .string(string)
+    case .number(let number):
+      return .number(number)
+    case .bool(let bool):
+      return .bool(bool)
+    case .date(let date):
+      return .date(date)
+    case .duration(let seconds):
+      return .duration(seconds)
+    case .error(let message):
+      return .error(message)
+    case .richText(let text):
+      if let richText {
+        return .richText(richText)
+      }
+      return .richText(RichTextRead(text: text, runs: []))
+    }
+  }
+
+  private static func mapResolvedRichText(_ richText: IWAResolvedRichText?) -> RichTextRead? {
+    guard let richText else {
+      return nil
+    }
+
+    let runs = richText.runs.compactMap { run -> RichTextRun? in
+      guard run.start >= 0, run.end >= run.start else {
+        return nil
+      }
+      return RichTextRun(
+        range: run.start..<run.end,
+        text: run.text,
+        fontName: run.fontName,
+        fontSize: run.fontSize,
+        isBold: run.isBold,
+        isItalic: run.isItalic,
+        textColorHex: run.textColorHex,
+        linkURL: run.linkURL
+      )
+    }
+    return RichTextRead(text: richText.text, runs: runs)
+  }
+
+  private static func mapResolvedCellStyle(_ style: IWAResolvedCellStyle?) -> ReadCellStyle? {
+    guard let style else {
+      return nil
+    }
+    return ReadCellStyle(
+      horizontalAlignment: style.horizontalAlignment.map(mapResolvedHorizontalAlignment),
+      verticalAlignment: style.verticalAlignment.map(mapResolvedVerticalAlignment),
+      backgroundColorHex: style.backgroundColorHex,
+      hasTopBorder: style.hasTopBorder,
+      hasRightBorder: style.hasRightBorder,
+      hasBottomBorder: style.hasBottomBorder,
+      hasLeftBorder: style.hasLeftBorder,
+      numberFormat: style.numberFormat.map(mapResolvedNumberFormat)
+    )
+  }
+
+  private static func mapResolvedHorizontalAlignment(
+    _ value: IWAResolvedHorizontalAlignment
+  ) -> ReadHorizontalAlignment {
+    switch value {
+    case .left:
+      return .left
+    case .center:
+      return .center
+    case .right:
+      return .right
+    case .justified:
+      return .justified
+    case .natural:
+      return .natural
+    case .unknown(let raw):
+      return .unknown(raw)
+    }
+  }
+
+  private static func mapResolvedVerticalAlignment(
+    _ value: IWAResolvedVerticalAlignment
+  ) -> ReadVerticalAlignment {
+    switch value {
+    case .top:
+      return .top
+    case .middle:
+      return .middle
+    case .bottom:
+      return .bottom
+    case .unknown(let raw):
+      return .unknown(raw)
+    }
+  }
+
+  private static func mapResolvedNumberFormat(
+    _ value: IWAResolvedNumberFormat
+  ) -> ReadNumberFormat {
+    let kind: ReadNumberFormatKind
+    switch value.kind {
+    case .number:
+      kind = .number
+    case .currency:
+      kind = .currency
+    case .date:
+      kind = .date
+    case .duration:
+      kind = .duration
+    case .text:
+      kind = .text
+    case .bool:
+      kind = .bool
+    }
+
+    return ReadNumberFormat(kind: kind, formatID: value.formatID)
+  }
+
   private static func mapReadDiagnostic(_ diagnostic: IWAReadDiagnostic) -> ReadDiagnostic {
     ReadDiagnostic(
       code: diagnostic.code,
@@ -455,5 +640,63 @@ public struct NumbersDocument: Sendable {
       formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
       return formatter.string(from: date)
     }
+  }
+
+  private static func tokenizeFormulaForDump(_ formula: String) -> [String] {
+    if formula.isEmpty {
+      return []
+    }
+
+    let punctuation = Set<Character>(["(", ")", ",", ":", "+", "-", "*", "/", "^", "&", "=", "<", ">"])
+    var tokens: [String] = []
+    var current = ""
+    var inString = false
+
+    for character in formula {
+      if inString {
+        current.append(character)
+        if character == "\"" {
+          tokens.append(current)
+          current = ""
+          inString = false
+        }
+        continue
+      }
+
+      if character == "\"" {
+        if !current.isEmpty {
+          tokens.append(current)
+          current = ""
+        }
+        current.append(character)
+        inString = true
+        continue
+      }
+
+      if character.isWhitespace {
+        if !current.isEmpty {
+          tokens.append(current)
+          current = ""
+        }
+        continue
+      }
+
+      if punctuation.contains(character) {
+        if !current.isEmpty {
+          tokens.append(current)
+          current = ""
+        }
+        tokens.append(String(character))
+        continue
+      }
+
+      current.append(character)
+    }
+
+    if !current.isEmpty {
+      tokens.append(current)
+    }
+
+    return tokens
   }
 }
