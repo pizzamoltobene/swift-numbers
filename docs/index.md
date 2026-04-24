@@ -1,6 +1,6 @@
 # SwiftNumbers Docs
 
-Welcome to the documentation hub for `SwiftNumbers v0.2.0`.
+Welcome to the documentation hub for `SwiftNumbers v0.2.2.1`.
 
 If you are new to the project, start with the 5-minute path below. If you need exact API behavior, jump directly to Capabilities.
 
@@ -26,7 +26,7 @@ If you are new to the project, start with the 5-minute path below. If you need e
 | Understand internals and module boundaries | [Architecture](architecture.md) |
 | Diagnose read/write failures | [Troubleshooting](troubleshooting.md) |
 
-## Product Scope (v0.2.0)
+## Product Scope (v0.2.2.1)
 
 ### Supported
 
@@ -41,7 +41,11 @@ If you are new to the project, start with the 5-minute path below. If you need e
   - `addSheet`
 - Save:
   - `save(to:)` to new destination
-  - atomic same-path replace via `save(to: sourceURL)` or `saveInPlace()`
+  - atomic same-path replace via `save(to: outputURL)`
+  - explicit in-place replace on current working document via `saveInPlace()`
+- Name safety:
+  - `addSheet(named:)` auto-suffixes duplicate sheet names
+  - `addTable(...)` rejects duplicate table names in the same sheet
 - CLI:
   - `swiftnumbers list-sheets`
   - `swiftnumbers dump`

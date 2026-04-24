@@ -1,6 +1,6 @@
 # API Reference
 
-Exact public API reference for `SwiftNumbersCore` in `v0.2.0`.
+Exact public API reference for `SwiftNumbersCore` in `v0.2.2.1`.
 
 ## Import
 
@@ -15,6 +15,7 @@ import SwiftNumbersCore
 | Case | Description |
 |---|---|
 | `metadataMissing` | Document metadata missing (`Metadata/DocumentMetadata.pb` or `.json`) |
+| `encryptedDocumentUnsupported` | Input document appears encrypted (`.iwpv2` / `.iwph`) |
 
 ### `DocumentReadPath: String, Sendable`
 
@@ -29,6 +30,7 @@ import SwiftNumbersCore
 |---|---|
 | `sheetNotFound` | `String` |
 | `tableNotFound` | `sheet: String, table: String` |
+| `duplicateTableName` | `sheet: String, table: String` |
 | `invalidCellReference` | `String` |
 | `invalidRowIndex` | `Int` |
 | `invalidColumnIndex` | `Int` |
@@ -249,10 +251,12 @@ public final class EditableCell {
 
 - `CellAddress` is zero-based.
 - `CellReference` uses A1 notation.
-- `setValue(..., at: CellAddress)` does not throw.
+- `setValue(..., at: CellAddress)` does not throw and ignores negative row/column indices.
 - `setValue(..., at: String)` throws for invalid A1.
-- `save(to:)` with same source path performs in-place atomic replace behavior.
-- `saveInPlace()` is explicit in-place save API.
+- `addSheet(named:)` auto-suffixes duplicate names (`Name`, `Name (2)`, ...).
+- `EditableSheet.addTable(named:...)` throws `duplicateTableName` for duplicates in the same sheet.
+- `save(to:)` writes to the given destination and updates the document working path to that destination.
+- `saveInPlace()` performs atomic in-place replace on the current working path.
 
 ## Related docs
 

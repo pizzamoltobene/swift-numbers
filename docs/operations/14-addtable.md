@@ -28,6 +28,8 @@ func addTable(named: String, rows: Int, columns: Int, onSheetNamed: String) thro
 - `sheetNotFound`
 - `invalidRowIndex`
 - `invalidColumnIndex`
+- `duplicateTableName` (same sheet)
+- `nativeWriteFailed` (ambiguous low-level targeting)
 
 **Visual**
 

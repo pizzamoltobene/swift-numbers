@@ -62,7 +62,7 @@ try document.save(to: outputURL)
 try document.saveInPlace()
 ```
 
-`saveInPlace()` uses temp-write + atomic replace semantics.
+`saveInPlace()` uses temp-write + atomic replace semantics on the current working path.
 
 ## 7) Local private-corpus workflow (optional, local only)
 
@@ -71,7 +71,7 @@ export SWIFT_NUMBERS_PRIVATE_CORPUS="/absolute/path/to/private-corpus"
 ./scripts/update_private_corpus_expectations.py --write
 ```
 
-## 8) Run 0.2.0 release checks
+## 8) Run release checks
 
 ```bash
 ./scripts/release_check_020.sh

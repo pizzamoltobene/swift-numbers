@@ -1,6 +1,6 @@
-# SwiftNumbers Capabilities (v0.2.0)
+# SwiftNumbers Capabilities (v0.2.2.1)
 
-This document is the full capability reference for `SwiftNumbers` `v0.2.0`.
+This document is the full capability reference for `SwiftNumbers` `v0.2.2.1`.
 
 ## 0) How to Read This Document
 
@@ -56,7 +56,7 @@ Core internal modules:
 
 ## 3) Capability Matrix
 
-| Area | Status in v0.2.0 | Notes |
+| Area | Status in v0.2.2.1 | Notes |
 |---|---|---|
 | Open package `.numbers` | Supported | Reads `Index.zip` package form |
 | Open single-file archive `.numbers` | Supported | Reads embedded `Index`/`Index.zip` |
@@ -68,7 +68,7 @@ Core internal modules:
 | Append columns | Supported | Low-level IWA path |
 | Add sheet/table | Supported | Low-level IWA path |
 | Save to new path | Supported | `save(to:)` |
-| Save in place | Supported | same-path `save(to:)` or `saveInPlace()` |
+| Save in place | Supported | in-place on current working path (`save(to: samePath)` or `saveInPlace()`) |
 | Formulas/pivots/charts/etc. | Out of scope | See section 10 |
 
 ## 4) Public Data Model
@@ -174,10 +174,10 @@ This section gives operation-by-operation examples with:
 | Add more records | `appendRow(_:)` | Grows row count |
 | Insert records at position | `insertRow(_:at:)` | Shifts rows below |
 | Add a derived column | `appendColumn(_:)` | Grows column count |
-| Add a new report table | `addTable(...)` | Target sheet must exist |
-| Add a new sheet | `addSheet(named:)` | Creates default `Table 1` |
+| Add a new report table | `addTable(...)` | Target sheet must exist; duplicate table names in the same sheet are rejected |
+| Add a new sheet | `addSheet(named:)` | Creates default `Table 1`; duplicate sheet names are auto-suffixed |
 | Save as new file | `save(to:)` with new path | Source remains untouched |
-| Replace original file | `saveInPlace()` | Atomic replace |
+| Replace current working file | `saveInPlace()` | Atomic replace |
 
 ---
 
@@ -761,6 +761,8 @@ func addTable(named: String, rows: Int, columns: Int, onSheetNamed: String) thro
 - `sheetNotFound`
 - `invalidRowIndex`
 - `invalidColumnIndex`
+- `duplicateTableName` (same sheet)
+- `nativeWriteFailed` (ambiguous low-level targeting)
 
 **Visual**
 
@@ -811,6 +813,7 @@ func addSheet(named: String) -> EditableSheet
 
 - adds a sheet
 - creates default `Table 1` with `1x1`
+- if name already exists, auto-suffixes (`Name`, `Name (2)`, ...)
 
 **Visual**
 
@@ -856,9 +859,10 @@ func save(to outputURL: URL) throws
 
 **Behavior**
 
-- if `outputURL != sourceURL`: writes a new document
-- if `outputURL == sourceURL`: performs atomic in-place replace
-- if no changes and new path: copies source container
+- if `outputURL` equals current working path: performs atomic in-place replace
+- if `outputURL` is a different path: writes a new document and sets that path as the new working path
+- if no changes and `outputURL` is a different path: copies current working container
+- repeated saves continue from the latest successful working path
 
 **Visual**
 
@@ -887,20 +891,21 @@ func saveInPlace() throws
 
 | Attribute | Type | Required | Notes |
 |---|---|---|---|
-| n/a | n/a | n/a | Operates on original source path |
+| n/a | n/a | n/a | Operates on current working path |
 
 **Behavior**
 
 - writes to temp path
-- atomically replaces source file
+- atomically replaces current working file
+- no-op if there are no pending changes
 
 **Visual**
 
 ```mermaid
 flowchart LR
-  A["source.numbers"] --> B["write temp .numbers"]
-  B --> C["atomic replace source"]
-  C --> D["source.numbers updated"]
+  A["working.numbers"] --> B["write temp .numbers"]
+  B --> C["atomic replace working file"]
+  C --> D["working.numbers updated"]
 ```
 
 **Example**
@@ -1339,7 +1344,7 @@ Release helper:
 - outputs `.local/release-check-020.json`
 - includes manual Apple Numbers smoke-check confirmation step
 
-## 10) Out of Scope for v0.2.0
+## 10) Out of Scope for v0.2.2.1
 
 - formulas and formula engine behavior
 - pivot/grouped tables

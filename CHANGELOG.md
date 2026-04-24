@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.2.1] - 2026-04-24
+
+### Changed
+
+- Documentation refresh for post-`0.2.2` behavior:
+  - clarified `save(to:)` working-path semantics across repeated saves
+  - clarified `saveInPlace()` targeting current working document path
+  - documented duplicate-name behavior (`addSheet` auto-suffix, `addTable` duplicate rejection)
+  - documented fail-fast behavior for ambiguous low-level table targeting
+- Updated docs and README version framing from `0.2.2` to `0.2.2.1`.
+
 ## [0.2.2] - 2026-04-24
 
 ### Fixed

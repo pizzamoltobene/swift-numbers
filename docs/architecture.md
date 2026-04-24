@@ -1,6 +1,6 @@
 # Architecture
 
-High-level architecture for `SwiftNumbers v0.2.0`.
+High-level architecture for `SwiftNumbers v0.2.2.1`.
 
 ## Module Layout
 
@@ -39,7 +39,7 @@ flowchart TD
 
 ## Writer Strategy
 
-Primary strategy in `v0.2.0`:
+Primary strategy in `v0.2.2.1`:
 
 - native Swift low-level IWA write path
 
@@ -78,13 +78,14 @@ Transition behavior:
 
 `save(to:)`:
 
-- writes to new path
+- writes to destination path
 - same-path target triggers atomic replace flow
-- no-change write to new path copies source container
+- after successful write, destination becomes the new working baseline
+- no-change write to a new path copies current working container
 
 `saveInPlace()`:
 
-- explicit source replacement API
+- explicit current-working-path replacement API
 - temp file + atomic swap strategy
 
 ## Diagnostics Model
@@ -101,7 +102,7 @@ Typical diagnostic classes:
 - resolver selection/fallback events
 - decode anomalies and patching notes
 
-## Non-goals (v0.2.0)
+## Non-goals (v0.2.2.1)
 
 - formula semantics
 - pivots/charts/comments/advanced formatting fidelity

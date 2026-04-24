@@ -18,20 +18,21 @@ func saveInPlace() throws
 
 | Attribute | Type | Required | Notes |
 |---|---|---|---|
-| n/a | n/a | n/a | Operates on original source path |
+| n/a | n/a | n/a | Operates on current working path |
 
 **Behavior**
 
 - writes to temp path
-- atomically replaces source file
+- atomically replaces current working file
+- no-op if there are no pending changes
 
 **Visual**
 
 ```mermaid
 flowchart LR
-  A["source.numbers"] --> B["write temp .numbers"]
-  B --> C["atomic replace source"]
-  C --> D["source.numbers updated"]
+  A["working.numbers"] --> B["write temp .numbers"]
+  B --> C["atomic replace working file"]
+  C --> D["working.numbers updated"]
 ```
 
 **Example**

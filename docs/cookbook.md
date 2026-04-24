@@ -1,6 +1,6 @@
 # Cookbook
 
-Practical, copy-paste workflows for `SwiftNumbers v0.2.0`.
+Practical, copy-paste workflows for `SwiftNumbers v0.2.2.1`.
 
 All examples use `SwiftNumbersCore`.
 
@@ -215,4 +215,7 @@ try doc.save(to: outputURL)
 - `CellAddress` is zero-based.
 - `CellReference` uses A1 notation.
 - `save(to:)` to the same path uses atomic replace semantics.
+- `saveInPlace()` operates on the current working document path.
+- `addSheet(named:)` auto-suffixes duplicate names.
+- `addTable(...)` rejects duplicate table names in the same sheet.
 - `.date(Date)` is preserved using a stable SwiftNumbers marker in current write path.

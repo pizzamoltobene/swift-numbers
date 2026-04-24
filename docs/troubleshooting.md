@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Common issues and resolution steps for `SwiftNumbers v0.2.0`.
+Common issues and resolution steps for `SwiftNumbers v0.2.2.1`.
 
 ## 1) Open fails for a `.numbers` file
 
@@ -46,6 +46,7 @@ for s in doc.sheets {
 ```
 
 - Ensure exact casing and spacing match.
+- If adding a table, note that duplicate table names in the same sheet now throw `duplicateTableName`.
 
 ## 3) `invalidCellReference`
 
@@ -111,6 +112,7 @@ swift run swiftnumbers dump /abs/file.numbers --format json
 ### Behavior
 
 `saveInPlace()` performs temp-write + atomic replace.
+- It targets the current working document path (the latest successful `save(to:)` destination).
 
 ### Recommendation
 
@@ -151,6 +153,7 @@ swift run -c release swiftnumbers dump /abs/file.numbers
 |---|---|---|
 | `sheetNotFound(name)` | Sheet name not present | List names, fix input |
 | `tableNotFound(sheet, table)` | Table missing in selected sheet | Verify table name/sheet pair |
+| `duplicateTableName(sheet, table)` | Duplicate table name in one sheet | Choose a unique name before `addTable` |
 | `invalidCellReference(raw)` | A1 format invalid | Use valid A1 or `CellAddress` |
 | `invalidRowIndex(i)` | Row index outside allowed range | Validate bounds before insert |
 | `invalidColumnIndex(i)` | Column index invalid | Validate column sizes |

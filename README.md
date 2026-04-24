@@ -32,7 +32,16 @@ Start here: [Docs Hub](docs/index.md)
 For full API/CLI behavior, use [Capabilities](docs/capabilities.md).  
 For practical flows, use [Cookbook](docs/cookbook.md).
 
-## Supported (v0.2.2)
+## Stability Updates (v0.2.2.1)
+
+- `saveInPlace()` now applies to the current working document path.
+  - Example: if you first call `save(to: newURL)`, a later `saveInPlace()` updates `newURL`.
+- `addSheet(named:)` now auto-suffixes duplicate names (`Sheet`, `Sheet (2)`, ...).
+- `addTable(named:...)` now rejects duplicate table names in the same sheet.
+- Writer now fails fast on ambiguous sheet/table targeting instead of silently applying changes to an unintended target.
+- Overlay-backed editable documents now refresh overlay metadata after low-level writes, preventing stale reopen values.
+
+## Supported (v0.2.2.1)
 
 - Open `.numbers` package documents and single-file archive documents
 - Read sheets/tables/metadata and lookup cells by address
@@ -55,7 +64,7 @@ For practical flows, use [Cookbook](docs/cookbook.md).
   - `empty`
   - `date`
 
-## Write Support (v0.2.2)
+## Write Support (v0.2.2.1)
 
 - Native Swift low-level IWA write path currently covers:
   - `setValue` for `string` / `number` / `bool` / `empty` / `date` (`date` uses a stable SwiftNumbers marker)
@@ -68,10 +77,11 @@ For practical flows, use [Cookbook](docs/cookbook.md).
 - `save(to:)` supports both:
   - writing to a new destination
   - same-path atomic in-place replace
+  - repeated saves continue from the latest successful output path
 
-## Out of Scope (v0.2.2)
+## Out of Scope (v0.2.2.1)
 
-- Advanced Numbers features are out of scope in `0.2.2`:
+- Advanced Numbers features are out of scope in `0.2.2.1`:
   - formulas
   - pivot/grouped tables
   - charts
@@ -84,10 +94,10 @@ For practical flows, use [Cookbook](docs/cookbook.md).
 
 ## Install (SwiftPM)
 
-Use the `v0.2.2` tag:
+Use the `v0.2.2.1` tag:
 
 ```swift
-.package(url: "https://github.com/pizzamoltobene/swift-numbers.git", from: "0.2.2")
+.package(url: "https://github.com/pizzamoltobene/swift-numbers.git", from: "0.2.2.1")
 ```
 
 Then add the library target dependency:

@@ -22,9 +22,9 @@ func save(to outputURL: URL) throws
 
 **Behavior**
 
-- if `outputURL != sourceURL`: writes a new document
-- if `outputURL == sourceURL`: performs atomic in-place replace
-- if no changes and new path: copies source container
+- if `outputURL` equals current working path: performs atomic in-place replace
+- if `outputURL` is a different path: writes a new document and sets that path as the new working path
+- if no changes and `outputURL` is a different path: copies current working container
 
 **Visual**
 
