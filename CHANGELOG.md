@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.3.1.1] - 2026-04-24
+
+### Changed
+
+- Documentation cleanup pass:
+  - reduced `README` to a concise landing page
+  - simplified `docs/index.md` into a compact docs hub
+  - shortened `docs/troubleshooting.md` into a focused quick runbook
+- Updated documentation version framing to `v0.3.1.1`.
+
 ## [0.3.1] - 2026-04-24
 
 ### Added
