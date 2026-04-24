@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Common issues and resolution steps for `SwiftNumbers v0.2.2.1`.
+Common issues and resolution steps for `SwiftNumbers v0.3.0`.
 
 ## 1) Open fails for a `.numbers` file
 

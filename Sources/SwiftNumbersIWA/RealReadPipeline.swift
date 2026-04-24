@@ -8,17 +8,56 @@ public enum IWAResolvedCellValue: Hashable, Sendable {
   case string(String)
   case number(Double)
   case bool(Bool)
+  case date(Date)
+  case duration(TimeInterval)
+  case error(String)
+  case richText(String)
+}
+
+public enum IWAResolvedCellKind: Hashable, Sendable {
+  case empty
+  case number
+  case text
+  case formula
+  case date
+  case bool
+  case duration
+  case formulaError
+  case richText
+  case unknown(UInt8)
 }
 
 public struct IWAResolvedCell: Hashable, Sendable {
   public let row: Int
   public let column: Int
   public let value: IWAResolvedCellValue
+  public let kind: IWAResolvedCellKind
+  public let rawCellType: UInt8
+  public let stringID: Int32?
+  public let richTextID: Int32?
+  public let formulaID: Int32?
+  public let formulaErrorID: Int32?
 
-  public init(row: Int, column: Int, value: IWAResolvedCellValue) {
+  public init(
+    row: Int,
+    column: Int,
+    value: IWAResolvedCellValue,
+    kind: IWAResolvedCellKind,
+    rawCellType: UInt8,
+    stringID: Int32? = nil,
+    richTextID: Int32? = nil,
+    formulaID: Int32? = nil,
+    formulaErrorID: Int32? = nil
+  ) {
     self.row = row
     self.column = column
     self.value = value
+    self.kind = kind
+    self.rawCellType = rawCellType
+    self.stringID = stringID
+    self.richTextID = richTextID
+    self.formulaID = formulaID
+    self.formulaErrorID = formulaErrorID
   }
 }
 
@@ -83,27 +122,39 @@ public struct IWAReadDiagnostic: Sendable {
   public let code: String
   public let severity: IWAReadDiagnosticSeverity
   public let message: String
+  public let objectPath: String?
+  public let suggestion: String?
   public let context: [String: String]
 
   public init(
     code: String,
     severity: IWAReadDiagnosticSeverity,
     message: String,
+    objectPath: String? = nil,
+    suggestion: String? = nil,
     context: [String: String] = [:]
   ) {
     self.code = code
     self.severity = severity
     self.message = message
+    self.objectPath = objectPath
+    self.suggestion = suggestion
     self.context = context
   }
 
   public var rendered: String {
-    guard !context.isEmpty else {
-      return "[\(severity.rawValue)] \(code): \(message)"
+    var components = ["[\(severity.rawValue)] \(code): \(message)"]
+    if let objectPath, !objectPath.isEmpty {
+      components.append("path=\(objectPath)")
     }
-
-    let details = context.keys.sorted().map { "\($0)=\(context[$0]!)" }.joined(separator: ", ")
-    return "[\(severity.rawValue)] \(code): \(message) (\(details))"
+    if let suggestion, !suggestion.isEmpty {
+      components.append("suggestion=\(suggestion)")
+    }
+    if !context.isEmpty {
+      let details = context.keys.sorted().map { "\($0)=\(context[$0]!)" }.joined(separator: ", ")
+      components.append(details)
+    }
+    return components.joined(separator: " | ")
   }
 }
 
@@ -231,6 +282,7 @@ public enum IWARealDocumentReader {
     case sheetDecodeMissing = "resolver.sheet.decodeMissing"
     case tableResolveFailed = "resolver.table.resolveFailed"
     case rowStorageMapPatched = "decode.rowStorage.patched"
+    case unsupportedCellTypeDropped = "decode.cell.unsupportedTypeDropped"
   }
 
   public static func read(from inventory: IWAInventory, documentVersion: String?)
@@ -528,13 +580,31 @@ public enum IWARealDocumentReader {
         rowBufferCount: rowBuffers.count
       )
 
-      let cells = decodeCells(
+      let decodeResult = decodeCells(
         rowStorageMap: rowStorageMap,
         rowBuffers: rowBuffers,
         rowCount: rowCount,
         columnCount: columnCount,
         stringLookup: stringLookup
       )
+      if !decodeResult.droppedCellTypeCounts.isEmpty {
+        for (cellType, count) in decodeResult.droppedCellTypeCounts.sorted(by: { $0.key < $1.key }) {
+          addDiagnostic(
+            .unsupportedCellTypeDropped,
+            severity: .warning,
+            message: "Dropped cells with unsupported/undecodable cell type during real-read.",
+            objectPath: "table/\(tableID)",
+            suggestion: "Use metadata fallback dump and share fixture to extend typed decode.",
+            context: [
+              "tableID": tableID,
+              "tableName": tableName,
+              "cellType": String(cellType),
+              "count": String(count),
+            ]
+          )
+        }
+      }
+      let cells = decodeResult.cells
       let merges = decodeMergeRanges(dataStore.mergeRegionMap)
 
       return IWAResolvedTable(
@@ -706,19 +776,25 @@ public enum IWARealDocumentReader {
       return allRows
     }
 
+    private struct DecodedCellsResult {
+      let cells: [IWAResolvedCell]
+      let droppedCellTypeCounts: [UInt8: Int]
+    }
+
     private func decodeCells(
       rowStorageMap: [Int?],
       rowBuffers: [[Data?]],
       rowCount: Int,
       columnCount: Int,
       stringLookup: [UInt32: String]
-    ) -> [IWAResolvedCell] {
+    ) -> DecodedCellsResult {
       guard rowCount > 0, columnCount > 0 else {
-        return []
+        return DecodedCellsResult(cells: [], droppedCellTypeCounts: [:])
       }
 
       var cells: [IWAResolvedCell] = []
       cells.reserveCapacity(min(rowCount * columnCount, 1024))
+      var droppedCellTypeCounts: [UInt8: Int] = [:]
 
       for row in 0..<min(rowCount, rowStorageMap.count) {
         guard let storageIndex = rowStorageMap[row], storageIndex >= 0,
@@ -734,7 +810,15 @@ public enum IWARealDocumentReader {
           guard let buffer = storageRow[column] else {
             continue
           }
-          guard let value = decodeCellValue(buffer: buffer, stringLookup: stringLookup) else {
+          guard let decoded = decodeCellStorage(buffer: buffer, stringLookup: stringLookup) else {
+            if let cellType = detectedCellType(buffer: buffer) {
+              droppedCellTypeCounts[cellType, default: 0] += 1
+            }
+            continue
+          }
+
+          guard let value = decoded.value else {
+            droppedCellTypeCounts[decoded.cellType, default: 0] += 1
             continue
           }
 
@@ -742,13 +826,19 @@ public enum IWARealDocumentReader {
             IWAResolvedCell(
               row: row,
               column: column,
-              value: value
+              value: value,
+              kind: decoded.kind,
+              rawCellType: decoded.cellType,
+              stringID: decoded.stringID,
+              richTextID: decoded.richTextID,
+              formulaID: decoded.formulaID,
+              formulaErrorID: decoded.formulaErrorID
             )
           )
         }
       }
 
-      return cells
+      return DecodedCellsResult(cells: cells, droppedCellTypeCounts: droppedCellTypeCounts)
     }
 
     private func decodeMergeRanges(_ reference: TSP_Reference) -> [IWAResolvedMergeRange] {
@@ -804,6 +894,8 @@ public enum IWARealDocumentReader {
       _ code: DiagnosticCode,
       severity: IWAReadDiagnosticSeverity,
       message: String,
+      objectPath: String? = nil,
+      suggestion: String? = nil,
       context: [String: String] = [:]
     ) {
       diagnostics.append(
@@ -811,6 +903,8 @@ public enum IWARealDocumentReader {
           code: code.rawValue,
           severity: severity,
           message: message,
+          objectPath: objectPath,
+          suggestion: suggestion,
           context: context
         ))
     }
@@ -894,7 +988,17 @@ public enum IWARealDocumentReader {
     return rowData
   }
 
-  static func decodeCellValue(buffer: Data, stringLookup: [UInt32: String]) -> IWAResolvedCellValue?
+  struct DecodedCellStorage: Sendable {
+    let cellType: UInt8
+    let kind: IWAResolvedCellKind
+    let value: IWAResolvedCellValue?
+    let stringID: Int32?
+    let richTextID: Int32?
+    let formulaID: Int32?
+    let formulaErrorID: Int32?
+  }
+
+  static func decodeCellStorage(buffer: Data, stringLookup: [UInt32: String]) -> DecodedCellStorage?
   {
     guard buffer.count >= 12 else {
       return nil
@@ -914,7 +1018,11 @@ public enum IWARealDocumentReader {
     var offset = 12
     var decimalNumber: Double?
     var doubleNumber: Double?
+    var secondsNumber: Double?
     var stringID: Int32?
+    var richTextID: Int32?
+    var formulaID: Int32?
+    var formulaErrorID: Int32?
 
     if (flags & 0x1) != 0 {
       guard offset + 16 <= buffer.count else {
@@ -933,9 +1041,10 @@ public enum IWARealDocumentReader {
     }
 
     if (flags & 0x4) != 0 {
-      guard offset + 8 <= buffer.count else {
+      guard let value = decodeDoubleLittleEndian(buffer, offset: offset) else {
         return nil
       }
+      secondsNumber = value
       offset += 8
     }
 
@@ -947,36 +1056,162 @@ public enum IWARealDocumentReader {
       offset += 4
     }
 
-    switch cellType {
-    case 0:
-      return .empty
-    case 2, 10:
-      // Writer outputs may include both decimal and double payloads.
-      // Prefer IEEE-754 double when present to avoid precision/encoding drift in decimal unpacking.
-      if let doubleNumber {
-        return .number(doubleNumber)
+    if (flags & 0x10) != 0 {
+      guard let value = decodeInt32LittleEndian(buffer, offset: offset) else {
+        return nil
       }
-      if let decimalNumber {
-        return .number(decimalNumber)
+      richTextID = value
+      offset += 4
+    }
+
+    if (flags & 0x20) != 0 {
+      guard offset + 4 <= buffer.count else {
+        return nil
       }
-      return nil
-    case 3:
-      guard let stringID, stringID >= 0 else {
-        return .string("")
+      offset += 4
+    }
+
+    if (flags & 0x40) != 0 {
+      guard offset + 4 <= buffer.count else {
+        return nil
       }
-      let value = stringLookup[UInt32(stringID)] ?? ""
-      return .string(value)
-    case 6:
-      if let doubleNumber {
-        return .bool(doubleNumber > 0)
+      offset += 4
+    }
+
+    if (flags & 0x80) != 0 {
+      guard offset + 4 <= buffer.count else {
+        return nil
       }
-      if let decimalNumber {
-        return .bool(decimalNumber > 0)
+      offset += 4
+    }
+
+    if (flags & 0x100) != 0 {
+      guard offset + 4 <= buffer.count else {
+        return nil
       }
-      return .bool(false)
-    default:
+      offset += 4
+    }
+
+    if (flags & 0x200) != 0 {
+      guard let value = decodeInt32LittleEndian(buffer, offset: offset) else {
+        return nil
+      }
+      formulaID = value
+      offset += 4
+    }
+
+    if (flags & 0x400) != 0 {
+      guard offset + 4 <= buffer.count else {
+        return nil
+      }
+      offset += 4
+    }
+
+    if (flags & 0x800) != 0 {
+      guard let value = decodeInt32LittleEndian(buffer, offset: offset) else {
+        return nil
+      }
+      formulaErrorID = value
+      offset += 4
+    }
+
+    let textValue: String? = {
+      guard let stringID, stringID >= 0 else { return nil }
+      return stringLookup[UInt32(stringID)] ?? ""
+    }()
+
+    let richTextValue: String? = {
+      if let richTextID, richTextID >= 0, let value = stringLookup[UInt32(richTextID)] {
+        return value
+      }
+      return textValue
+    }()
+
+    let numberValue: Double? = doubleNumber ?? decimalNumber
+
+    let decoded: (kind: IWAResolvedCellKind, value: IWAResolvedCellValue?) = {
+      switch cellType {
+      case 0:
+        return (.empty, .empty)
+      case 2, 10:
+        return (.number, numberValue.map(IWAResolvedCellValue.number))
+      case 3:
+        return (.text, .string(textValue ?? ""))
+      case 4:
+        if let textValue {
+          return (.formula, .string(textValue))
+        }
+        if let numberValue {
+          return (.formula, .number(numberValue))
+        }
+        return (.formula, nil)
+      case 5:
+        if let secondsNumber {
+          return (
+            .date,
+            .date(Date(timeIntervalSinceReferenceDate: secondsNumber))
+          )
+        }
+        if let numberValue {
+          return (
+            .date,
+            .date(Date(timeIntervalSinceReferenceDate: numberValue))
+          )
+        }
+        return (.date, nil)
+      case 6:
+        if let numberValue {
+          return (.bool, .bool(numberValue > 0))
+        }
+        return (.bool, .bool(false))
+      case 7:
+        if let numberValue {
+          return (.duration, .duration(numberValue))
+        }
+        return (.duration, nil)
+      case 8:
+        if let textValue, !textValue.isEmpty {
+          return (.formulaError, .error(textValue))
+        }
+        return (.formulaError, .error("#ERROR!"))
+      case 9:
+        return (.richText, .richText(richTextValue ?? ""))
+      default:
+        // Unknown cell types: preserve raw payload best-effort.
+        if let textValue {
+          return (.unknown(cellType), .string(textValue))
+        }
+        if let numberValue {
+          return (.unknown(cellType), .number(numberValue))
+        }
+        return (.unknown(cellType), nil)
+      }
+    }()
+
+    return DecodedCellStorage(
+      cellType: cellType,
+      kind: decoded.kind,
+      value: decoded.value,
+      stringID: stringID,
+      richTextID: richTextID,
+      formulaID: formulaID,
+      formulaErrorID: formulaErrorID
+    )
+  }
+
+  static func decodeCellValue(buffer: Data, stringLookup: [UInt32: String]) -> IWAResolvedCellValue?
+  {
+    decodeCellStorage(buffer: buffer, stringLookup: stringLookup)?.value
+  }
+
+  static func detectedCellType(buffer: Data) -> UInt8? {
+    guard buffer.count >= 2 else {
       return nil
     }
+    guard buffer[0] == 5 else {
+      return nil
+    }
+    return buffer[1]
   }
 
   static func decodeSignedInt16Array(_ data: Data) -> [Int] {

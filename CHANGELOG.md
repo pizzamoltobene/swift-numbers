@@ -2,6 +2,33 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.3.0] - 2026-04-24
+
+### Added
+
+- Read-parity expansion in public read API:
+  - `ReadCellKind`, `ReadCell`, `FormulaRead`
+  - `formula(at:)`, `formula(_:)`, `formulas()`
+  - typed read helpers: `value(_:at:)`, `optionalValue(_:at:)`, `decodeRows(as:)`
+  - extraction helpers: `values(in:)`, `readCells(in:)`, `column(at:from:)`, `readColumn(at:from:)`
+  - table introspection helpers: `rowCount`, `columnCount`, `usedRange`, `populatedCells()`
+- Structured diagnostics model in public dump payload:
+  - `ReadDiagnosticSeverity`, `ReadDiagnostic`
+  - `DocumentDump.structuredDiagnostics`
+- Document convenience helpers:
+  - `sheetNames`, `tableCount`, `tableNames`
+  - `Sheet.tableNames`
+- CLI read enhancements:
+  - `swiftnumbers dump --formulas`
+  - JSON dump now includes `sheetNames`, `tableNames`, `structuredDiagnostics`, and per-table `usedRange`.
+- New tests for formula read API, typed extraction helpers, used-range/populated-cells behavior,
+  structured diagnostics exposure, and updated CLI JSON fields.
+
+### Changed
+
+- Documentation refreshed to `v0.3.0` framing and updated read-capability coverage.
+- Out-of-scope wording clarified: formula read is supported; formula write/engine semantics remain out of scope.
+
 ## [0.2.2.1] - 2026-04-24
 
 ### Changed

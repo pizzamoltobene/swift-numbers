@@ -73,7 +73,7 @@ Print structural summary and diagnostics.
 ### Usage
 
 ```bash
-swiftnumbers dump <file.numbers> [--format text|json]
+swiftnumbers dump <file.numbers> [--format text|json] [--formulas]
 ```
 
 ### Arguments and options
@@ -82,6 +82,7 @@ swiftnumbers dump <file.numbers> [--format text|json]
 |---|---|---|---|---|
 | `<file.numbers>` | path | Yes | n/a | Input Numbers document |
 | `--format` | `text` or `json` | No | `text` | Output mode |
+| `--formulas` | flag | No | `false` | Include formula-read details (`formulaID`, raw formula when available, tokenized form, formatted result) |
 
 ### Text output (abridged)
 
@@ -104,7 +105,9 @@ Diagnostics: 0
 | `readPath` | `String` | `real` or `metadataFallback` |
 | `fallbackReason` | `String?` | Why fallback happened |
 | `sheetCount` | `Int` | Number of sheets |
+| `sheetNames` | `[String]` | Ordered sheet names |
 | `tableCount` | `Int` | Number of tables |
+| `tableNames` | `[String]` | Fully-qualified table names (`Sheet/Table`) |
 | `resolvedCellCount` | `Int` | Number of populated cells parsed |
 | `blobCount` | `Int` | Index blob count |
 | `objectCount` | `Int` | IWA object count |
@@ -113,6 +116,9 @@ Diagnostics: 0
 | `typeHistogram` | `[String:Int]` | Type-ID distribution |
 | `unparsedBlobPaths` | `[String]` | Any skipped/failed blobs |
 | `diagnostics` | `[String]` | Human-readable diagnostics |
+| `structuredDiagnostics` | array | Structured diagnostics (`code`, `severity`, `message`, `objectPath`, `suggestion`, `context`, `rendered`) |
+| `formulaCount` | `Int?` | Present only with `--formulas`; number of formula cells found |
+| `formulas` | array? | Present only with `--formulas`; per-formula details |
 | `sheets` | array | Per-sheet/per-table details |
 
 ### JSON output (abridged)
@@ -129,7 +135,10 @@ Diagnostics: 0
   "resolvedCellCount": 420,
   "rootObjectCount": 12,
   "sheetCount": 2,
+  "sheetNames": ["Sales", "Archive"],
   "tableCount": 3,
+  "tableNames": ["Sales/Table 1", "Sales/Table 2", "Archive/Table 1"],
+  "structuredDiagnostics": [],
   "typeHistogram": {
     "6000": 45,
     "6001": 10

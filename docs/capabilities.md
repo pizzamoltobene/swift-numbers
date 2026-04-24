@@ -1,6 +1,6 @@
-# SwiftNumbers Capabilities (v0.2.2.1)
+# SwiftNumbers Capabilities (v0.3.0)
 
-This document is the full capability reference for `SwiftNumbers` `v0.2.2.1`.
+This document is the full capability reference for `SwiftNumbers` `v0.3.0`.
 
 ## 0) How to Read This Document
 
@@ -56,7 +56,7 @@ Core internal modules:
 
 ## 3) Capability Matrix
 
-| Area | Status in v0.2.2.1 | Notes |
+| Area | Status in v0.3.0 | Notes |
 |---|---|---|
 | Open package `.numbers` | Supported | Reads `Index.zip` package form |
 | Open single-file archive `.numbers` | Supported | Reads embedded `Index`/`Index.zip` |
@@ -69,7 +69,7 @@ Core internal modules:
 | Add sheet/table | Supported | Low-level IWA path |
 | Save to new path | Supported | `save(to:)` |
 | Save in place | Supported | in-place on current working path (`save(to: samePath)` or `saveInPlace()`) |
-| Formulas/pivots/charts/etc. | Out of scope | See section 10 |
+| Formula write/engine + pivots/charts/etc. | Out of scope | Read-only formula extraction is supported; write/engine behavior is out of scope |
 
 ## 4) Public Data Model
 
@@ -155,7 +155,7 @@ This section gives operation-by-operation examples with:
 
 | Group | Operations |
 |---|---|
-| Read open/introspection | `open`, `sheets`, `tables`, `metadata`, `cell(at:)`, `dump`, `renderDump` |
+| Read open/introspection | `open`, `sheets`, `firstSheet`, `sheet(named:)`, `sheet(at:)`, `tables`, `firstTable`, `table(named:)`, `table(at:)`, `metadata`, `cell(at:)`, `cell(row:column:)`, `cell("A1")`, `readCell(...)`, `formula(...)`, `formulas()`, `rows()/rows(valuesOnly:)/rows(lazy:)`, `column(named:)`, `values(in:)`, `decodeRows(as:)`, typed `value(_:at:)`, `formattedValue(...)`, `mergeRange(...)`, `isMergedCell(...)`, `dump`, `renderDump` |
 | Editable open/navigation | `EditableNumbersDocument.open`, `sheet(named:)`, `table(named:)`, `cell(_:)`, `cell(at: CellReference)` |
 | Editable mutation | `setValue`, `appendRow`, `insertRow`, `appendColumn`, `addTable`, `addSheet` |
 | Save | `save(to:)`, `saveInPlace()` |
@@ -168,7 +168,17 @@ This section gives operation-by-operation examples with:
 |---|---|---|
 | Inspect file structure quickly | `dump()`, `renderDump()`, CLI `dump` | Includes diagnostics and read path |
 | List all sheets | `sheets`, CLI `list-sheets` | JSON mode is script-friendly |
-| Read one value | `cell(at:)` | Read-only `Table` API |
+| Read one value | `cell(at:)`, `cell(row:column:)`, `cell("A1")` | Read-only `Table` API |
+| Read rich cell object | `readCell(...)` | Includes `kind`, `formatted`, merge role, and low-level IDs |
+| Read formulas | `formula(...)`, `formulas()` | Exposes `formulaID`, raw formula when available, parsed tokens, formatted result |
+| Read all table rows | `rows()` | Returns rectangular `[[CellValue]]` with `.empty` fill |
+| Read a column by header | `column(named:)` | Header lookup on selected header row |
+| Read A1 range | `values(in:)`, `readCells(in:)` | Supports `A1:D5000` style extraction |
+| Typed reads | `value(_:at:)`, `optionalValue(_:at:)` | Strongly typed value extraction with explicit errors |
+| Decode rows into model | `decodeRows(as:)` | Maps header row to `Decodable` properties |
+| Read display-friendly value | `formattedValue(...)` | Returns string form; empty in-range cell => `""` |
+| Lookup by index/name | `sheet(at:)`, `sheet(named:)`, `table(at:)`, `table(named:)`, subscripts | Document/sheet convenience traversal |
+| Detect merged cells | `mergeRange(...)`, `isMergedCell(...)` | Uses `Table.metadata.mergeRanges` |
 | Edit one value by A1 | `setValue(_:at: String)` | Throws on invalid A1 |
 | Edit one value by indices | `setValue(_:at: CellAddress)` | Zero-based row/column |
 | Add more records | `appendRow(_:)` | Grows row count |
@@ -1344,9 +1354,9 @@ Release helper:
 - outputs `.local/release-check-020.json`
 - includes manual Apple Numbers smoke-check confirmation step
 
-## 10) Out of Scope for v0.2.2.1
+## 10) Out of Scope for v0.3.0
 
-- formulas and formula engine behavior
+- formula write and formula engine behavior
 - pivot/grouped tables
 - charts
 - comments

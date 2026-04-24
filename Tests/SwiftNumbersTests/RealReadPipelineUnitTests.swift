@@ -65,6 +65,99 @@ final class RealReadPipelineUnitTests: XCTestCase {
     )
   }
 
+  func testDecodeCellValueFallsBackForUnknownTypeUsingStringPayload() {
+    let unknownStringBuffer = makeCellBuffer(type: 17, flags: 0x8) { data in
+      appendInt32(42, to: &data)
+    }
+    let lookup: [UInt32: String] = [42: "Fallback String"]
+
+    XCTAssertEqual(
+      IWARealDocumentReader.decodeCellValue(buffer: unknownStringBuffer, stringLookup: lookup),
+      .string("Fallback String")
+    )
+  }
+
+  func testDecodeCellValueFallsBackForUnknownTypeUsingNumberPayload() {
+    let unknownNumberBuffer = makeCellBuffer(type: 23, flags: 0x2) { data in
+      appendDouble(12.25, to: &data)
+    }
+
+    XCTAssertEqual(
+      IWARealDocumentReader.decodeCellValue(
+        buffer: unknownNumberBuffer,
+        stringLookup: [:]
+      ),
+      .number(12.25)
+    )
+  }
+
+  func testDecodeCellTypeDetection() {
+    var valid = Data(repeating: 0, count: 12)
+    valid[0] = 5
+    valid[1] = 77
+    XCTAssertEqual(IWARealDocumentReader.detectedCellType(buffer: valid), 77)
+
+    var wrongVersion = Data(repeating: 0, count: 12)
+    wrongVersion[0] = 4
+    wrongVersion[1] = 77
+    XCTAssertNil(IWARealDocumentReader.detectedCellType(buffer: wrongVersion))
+
+    XCTAssertNil(IWARealDocumentReader.detectedCellType(buffer: Data([5])))
+  }
+
+  func testDecodeCellValueUnknownTypeWithoutPayloadReturnsNil() {
+    let unknownWithoutPayload = makeCellBuffer(type: 91, flags: 0) { _ in }
+    XCTAssertNil(
+      IWARealDocumentReader.decodeCellValue(
+        buffer: unknownWithoutPayload,
+        stringLookup: [:]
+      )
+    )
+  }
+
+  func testDecodeCellStorageSupportsDateDurationFormulaAndRichTextKinds() {
+    let dateBuffer = makeCellBuffer(type: 5, flags: 0x4) { data in
+      appendDouble(120.0, to: &data)
+    }
+    let durationBuffer = makeCellBuffer(type: 7, flags: 0x2) { data in
+      appendDouble(95.0, to: &data)
+    }
+    let formulaBuffer = makeCellBuffer(type: 4, flags: 0x202) { data in
+      appendDouble(7.5, to: &data)
+      appendInt32(55, to: &data)
+    }
+    let richTextBuffer = makeCellBuffer(type: 9, flags: 0x10) { data in
+      appendInt32(8, to: &data)
+    }
+
+    let dateDecoded = IWARealDocumentReader.decodeCellStorage(buffer: dateBuffer, stringLookup: [:])
+    XCTAssertEqual(dateDecoded?.kind, .date)
+    XCTAssertNotNil(dateDecoded?.value)
+
+    let durationDecoded = IWARealDocumentReader.decodeCellStorage(
+      buffer: durationBuffer,
+      stringLookup: [:]
+    )
+    XCTAssertEqual(durationDecoded?.kind, .duration)
+    XCTAssertEqual(durationDecoded?.value, .duration(95.0))
+
+    let formulaDecoded = IWARealDocumentReader.decodeCellStorage(
+      buffer: formulaBuffer,
+      stringLookup: [:]
+    )
+    XCTAssertEqual(formulaDecoded?.kind, .formula)
+    XCTAssertEqual(formulaDecoded?.formulaID, 55)
+    XCTAssertEqual(formulaDecoded?.value, .number(7.5))
+
+    let richTextDecoded = IWARealDocumentReader.decodeCellStorage(
+      buffer: richTextBuffer,
+      stringLookup: [8: "RT payload"]
+    )
+    XCTAssertEqual(richTextDecoded?.kind, .richText)
+    XCTAssertEqual(richTextDecoded?.richTextID, 8)
+    XCTAssertEqual(richTextDecoded?.value, .richText("RT payload"))
+  }
+
   func testUnsupportedVersionDiagnostic() {
     let warning = NumbersDocumentVersion.unsupportedVersionDiagnostic(for: "99.0.1")
     XCTAssertNotNil(warning)

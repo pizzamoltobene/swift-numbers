@@ -40,14 +40,19 @@ public struct NumbersDocument: Sendable {
     let readPath: DocumentReadPath
     var fallbackReason: String?
     var diagnostics = realRead.diagnostics
+    var structuredDiagnostics = realRead.structuredDiagnostics.map(mapReadDiagnostic)
 
     if let metadata, shouldPreferEditableMetadataOverlay(metadata) {
       sheets = mapMetadataSheets(metadata)
       readPath = .metadataFallback
       fallbackReason = "Using SwiftNumbers editable metadata overlay."
-      diagnostics.append(
-        "[info] read-path.editable-overlay: Prioritizing metadata overlay produced by SwiftNumbers writer."
+      let marker = ReadDiagnostic(
+        code: "read-path.editable-overlay",
+        severity: .info,
+        message: "Prioritizing metadata overlay produced by SwiftNumbers writer."
       )
+      diagnostics.append(marker.rendered)
+      structuredDiagnostics.append(marker)
     } else if !realRead.sheets.isEmpty {
       sheets = mapResolvedSheets(realRead.sheets)
       readPath = .real
@@ -59,8 +64,13 @@ public struct NumbersDocument: Sendable {
         .first(where: { $0.severity == .error || $0.severity == .warning })?
         .rendered
         ?? "Real-read path returned no sheets."
-      diagnostics.append(
-        "[warning] read-path.fallback: Falling back to metadata decode path. (\(fallbackReason!))")
+      let marker = ReadDiagnostic(
+        code: "read-path.fallback",
+        severity: .warning,
+        message: "Falling back to metadata decode path. (\(fallbackReason!))"
+      )
+      diagnostics.append(marker.rendered)
+      structuredDiagnostics.append(marker)
     } else {
       sheets = []
       readPath = .real
@@ -83,7 +93,8 @@ public struct NumbersDocument: Sendable {
       fallbackReason: fallbackReason,
       typeHistogram: inventory.typeHistogram,
       unparsedBlobPaths: inventory.unparsedBlobPaths,
-      diagnostics: diagnostics
+      diagnostics: diagnostics,
+      structuredDiagnostics: structuredDiagnostics
     )
 
     return NumbersDocument(sourceURL: url, sheets: sheets, dumpInfo: dump)
@@ -91,6 +102,43 @@ public struct NumbersDocument: Sendable {
 
   public func dump() -> DocumentDump {
     dumpInfo
+  }
+
+  public var firstSheet: Sheet? {
+    sheets.first
+  }
+
+  public var sheetNames: [String] {
+    sheets.map(\.name)
+  }
+
+  public var tableCount: Int {
+    sheets.reduce(0) { $0 + $1.tables.count }
+  }
+
+  public var tableNames: [String] {
+    sheets.flatMap { sheet in
+      sheet.tables.map { "\(sheet.name)/\($0.name)" }
+    }
+  }
+
+  public subscript(_ index: Int) -> Sheet? {
+    sheet(at: index)
+  }
+
+  public subscript(_ name: String) -> Sheet? {
+    sheet(named: name)
+  }
+
+  public func sheet(named name: String) -> Sheet? {
+    sheets.first(where: { $0.name == name })
+  }
+
+  public func sheet(at index: Int) -> Sheet? {
+    guard index >= 0, index < sheets.count else {
+      return nil
+    }
+    return sheets[index]
   }
 
   public func renderDump() -> String {
@@ -149,7 +197,9 @@ public struct NumbersDocument: Sendable {
     sheets.map { sheet in
       let tables = sheet.tables.map { table in
         var cells: [CellAddress: CellValue] = [:]
+        var readCells: [CellAddress: ReadCell] = [:]
         cells.reserveCapacity(table.cells.count)
+        readCells.reserveCapacity(table.cells.count)
 
         for cell in table.cells {
           let address = CellAddress(row: cell.row, column: cell.column)
@@ -169,8 +219,27 @@ public struct NumbersDocument: Sendable {
             value = .number(number)
           case .bool(let bool):
             value = .bool(bool)
+          case .date(let date):
+            value = .date(date)
+          case .duration(let seconds):
+            value = .number(seconds)
+          case .error(let message):
+            value = .string(message)
+          case .richText(let text):
+            value = .string(text)
           }
           cells[address] = value
+          readCells[address] = ReadCell(
+            address: address,
+            value: value,
+            kind: mapResolvedCellKind(cell.kind),
+            formatted: formatReadValue(value),
+            rawCellType: cell.rawCellType,
+            stringID: cell.stringID,
+            richTextID: cell.richTextID,
+            formulaID: cell.formulaID,
+            formulaErrorID: cell.formulaErrorID
+          )
         }
 
         let merges = table.merges.map { merge in
@@ -190,7 +259,8 @@ public struct NumbersDocument: Sendable {
             columnCount: table.columnCount,
             mergeRanges: merges
           ),
-          cells: cells
+          cells: cells,
+          readCells: readCells
         )
       }
 
@@ -215,7 +285,9 @@ public struct NumbersDocument: Sendable {
         }
 
         var cells: [CellAddress: CellValue] = [:]
+        var readCells: [CellAddress: ReadCell] = [:]
         cells.reserveCapacity(table.cells.count)
+        readCells.reserveCapacity(table.cells.count)
         for cell in table.cells {
           let address = CellAddress(row: Int(cell.row), column: Int(cell.column))
           let value: CellValue
@@ -238,6 +310,12 @@ public struct NumbersDocument: Sendable {
           }
 
           cells[address] = value
+          readCells[address] = ReadCell(
+            address: address,
+            value: value,
+            kind: mapCellKindFromValue(value),
+            formatted: formatReadValue(value)
+          )
         }
 
         return Table(
@@ -248,7 +326,8 @@ public struct NumbersDocument: Sendable {
             columnCount: Int(table.columnCount),
             mergeRanges: ranges
           ),
-          cells: cells
+          cells: cells,
+          readCells: readCells
         )
       }
 
@@ -289,5 +368,92 @@ public struct NumbersDocument: Sendable {
 
     formatter.formatOptions = [.withInternetDateTime]
     return formatter.date(from: isoString)
+  }
+
+  private static func mapResolvedCellKind(_ kind: IWAResolvedCellKind) -> ReadCellKind {
+    switch kind {
+    case .empty:
+      return .empty
+    case .number:
+      return .number
+    case .text:
+      return .text
+    case .formula:
+      return .formula
+    case .date:
+      return .date
+    case .bool:
+      return .bool
+    case .duration:
+      return .duration
+    case .formulaError:
+      return .formulaError
+    case .richText:
+      return .richText
+    case .unknown(let raw):
+      return .unknown(raw)
+    }
+  }
+
+  private static func mapReadDiagnostic(_ diagnostic: IWAReadDiagnostic) -> ReadDiagnostic {
+    ReadDiagnostic(
+      code: diagnostic.code,
+      severity: mapReadDiagnosticSeverity(diagnostic.severity),
+      message: diagnostic.message,
+      objectPath: diagnostic.objectPath,
+      suggestion: diagnostic.suggestion,
+      context: diagnostic.context
+    )
+  }
+
+  private static func mapReadDiagnosticSeverity(
+    _ severity: IWAReadDiagnosticSeverity
+  ) -> ReadDiagnosticSeverity {
+    switch severity {
+    case .info:
+      return .info
+    case .warning:
+      return .warning
+    case .error:
+      return .error
+    }
+  }
+
+  private static func mapCellKindFromValue(_ value: CellValue) -> ReadCellKind {
+    switch value {
+    case .empty:
+      return .empty
+    case .string:
+      return .text
+    case .number:
+      return .number
+    case .bool:
+      return .bool
+    case .date:
+      return .date
+    }
+  }
+
+  private static func formatReadValue(_ value: CellValue) -> String {
+    switch value {
+    case .empty:
+      return ""
+    case .string(let string):
+      return string
+    case .number(let number):
+      let formatter = NumberFormatter()
+      formatter.locale = Locale(identifier: "en_US_POSIX")
+      formatter.numberStyle = .decimal
+      formatter.usesGroupingSeparator = false
+      formatter.maximumFractionDigits = 15
+      formatter.minimumFractionDigits = 0
+      return formatter.string(from: NSNumber(value: number)) ?? String(number)
+    case .bool(let bool):
+      return bool ? "TRUE" : "FALSE"
+    case .date(let date):
+      let formatter = ISO8601DateFormatter()
+      formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+      return formatter.string(from: date)
+    }
   }
 }

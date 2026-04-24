@@ -1,6 +1,6 @@
 # SwiftNumbers Docs
 
-Welcome to the documentation hub for `SwiftNumbers v0.2.2.1`.
+Welcome to the documentation hub for `SwiftNumbers v0.3.0`.
 
 If you are new to the project, start with the 5-minute path below. If you need exact API behavior, jump directly to Capabilities.
 
@@ -26,12 +26,13 @@ If you are new to the project, start with the 5-minute path below. If you need e
 | Understand internals and module boundaries | [Architecture](architecture.md) |
 | Diagnose read/write failures | [Troubleshooting](troubleshooting.md) |
 
-## Product Scope (v0.2.2.1)
+## Product Scope (v0.3.0)
 
 ### Supported
 
 - Read real `.numbers` containers (package and single-file archive)
 - Read sheets/tables/metadata/cells/merges
+- Read formula cells (`formula(...)`, `formulas()`)
 - Edit tabular data:
   - `setValue`
   - `appendRow`
@@ -49,11 +50,12 @@ If you are new to the project, start with the 5-minute path below. If you need e
 - CLI:
   - `swiftnumbers list-sheets`
   - `swiftnumbers dump`
+  - `swiftnumbers dump --formulas`
   - `--format text|json`
 
 ### Not In Scope
 
-- formulas
+- formula write/engine behavior
 - pivot/grouped tables
 - charts
 - comments

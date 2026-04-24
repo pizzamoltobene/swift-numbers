@@ -12,6 +12,30 @@ final class CLIOutputFormatTests: XCTestCase {
     XCTAssertEqual(decoded?["sheetCount"] as? Int, 1)
     XCTAssertEqual(decoded?["tableCount"] as? Int, 1)
     XCTAssertEqual(decoded?["resolvedCellCount"] as? Int, 6)
+    XCTAssertEqual(decoded?["sheetNames"] as? [String], ["Sheet 1"])
+    XCTAssertEqual(decoded?["tableNames"] as? [String], ["Sheet 1/Table 1"])
+
+    let structured = decoded?["structuredDiagnostics"] as? [[String: Any]]
+    XCTAssertNotNil(structured)
+  }
+
+  func testDumpSupportsJSONFormatWithFormulasFlag() throws {
+    let fixture = FixtureLocator.fixtureURL(named: "simple-table.numbers")
+    let output = try runCLI(arguments: ["dump", fixture.path, "--format", "json", "--formulas"])
+    let payload = try XCTUnwrap(output.data(using: .utf8))
+    let decoded = try JSONSerialization.jsonObject(with: payload) as? [String: Any]
+
+    XCTAssertEqual(decoded?["formulaCount"] as? Int, 0)
+    let formulas = decoded?["formulas"] as? [[String: Any]]
+    XCTAssertEqual(formulas?.count, 0)
+  }
+
+  func testDumpSupportsTextFormatWithFormulasFlag() throws {
+    let fixture = FixtureLocator.fixtureURL(named: "simple-table.numbers")
+    let output = try runCLI(arguments: ["dump", fixture.path, "--formulas"])
+
+    XCTAssertTrue(output.contains("Formulas: 0"))
+    XCTAssertTrue(output.contains("<none>"))
   }
 
   func testListSheetsSupportsJSONFormat() throws {

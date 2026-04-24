@@ -1,6 +1,6 @@
 # API Reference
 
-Exact public API reference for `SwiftNumbersCore` in `v0.2.2.1`.
+Exact public API reference for `SwiftNumbersCore` in `v0.3.0`.
 
 ## Import
 
@@ -100,6 +100,39 @@ public struct Table: Hashable, Sendable {
   public let metadata: TableMetadata
   public init(id: String, name: String, metadata: TableMetadata, cells: [CellAddress: CellValue] = [:])
   public func cell(at address: CellAddress) -> CellValue?
+  public func cell(row: Int, column: Int) -> CellValue?
+  public func cell(_ reference: String) -> CellValue?
+  public func readCell(at address: CellAddress) -> ReadCell?
+  public func readCell(_ reference: String) -> ReadCell?
+  public func formula(at address: CellAddress) -> FormulaRead?
+  public func formula(_ reference: String) -> FormulaRead?
+  public func formulas() -> [FormulaRead]
+  public var rowCount: Int { get }
+  public var columnCount: Int { get }
+  public var usedRange: CellRange? { get }
+  public func populatedCells(sorted: Bool = true) -> [ReadCell]
+  public func rows() -> [[CellValue]]
+  public func rows(valuesOnly: Bool = true) -> [[CellValue]]
+  public func rows(lazy: Bool) -> AnySequence<[CellValue]>
+  public func readRows() -> [[ReadCell]]
+  public func column(named name: String, headerRow: Int = 0, includeHeader: Bool = false) throws -> [CellValue]
+  public func column(at index: Int, from startRow: Int = 0) throws -> [CellValue]
+  public func readColumn(at index: Int, from startRow: Int = 0) throws -> [ReadCell]
+  public func values(in rangeReference: String) throws -> [[CellValue]]
+  public func readCells(in rangeReference: String) throws -> [[ReadCell]]
+  public func value<T>(_ type: T.Type, at address: CellAddress) throws -> T
+  public func value<T>(_ type: T.Type, at reference: String) throws -> T
+  public func optionalValue<T>(_ type: T.Type, at address: CellAddress) throws -> T?
+  public func optionalValue<T>(_ type: T.Type, at reference: String) throws -> T?
+  public func decodeRows<Row: Decodable>(as type: Row.Type, headerRow: Int = 0, decoder: JSONDecoder = JSONDecoder()) throws -> [Row]
+  public func formattedValue(at address: CellAddress) -> String?
+  public func formattedValue(at address: CellAddress, options: ReadFormattingOptions = .default) -> String?
+  public func formattedValue(_ reference: String) -> String?
+  public func formattedValue(_ reference: String, options: ReadFormattingOptions = .default) -> String?
+  public func mergeRange(containing address: CellAddress) -> MergeRange?
+  public func mergeRange(containing reference: String) -> MergeRange?
+  public func isMergedCell(at address: CellAddress) -> Bool
+  public func isMergedCell(_ reference: String) -> Bool
   public var allCells: [CellAddress: CellValue] { get }
   public var populatedCellCount: Int { get }
 }
@@ -113,6 +146,12 @@ public struct Sheet: Hashable, Sendable {
   public let name: String
   public let tables: [Table]
   public init(id: String, name: String, tables: [Table])
+  public var firstTable: Table? { get }
+  public var tableNames: [String] { get }
+  public subscript(_ index: Int) -> Table? { get }
+  public subscript(_ name: String) -> Table? { get }
+  public func table(named name: String) -> Table?
+  public func table(at index: Int) -> Table?
 }
 ```
 
@@ -132,6 +171,21 @@ public struct DocumentDump: Sendable {
   public let typeHistogram: [UInt32: Int]
   public let unparsedBlobPaths: [String]
   public let diagnostics: [String]
+  public let structuredDiagnostics: [ReadDiagnostic]
+}
+```
+
+### `CellRange`
+
+```swift
+public struct CellRange: Hashable, Sendable {
+  public let start: CellAddress
+  public let end: CellAddress
+  public init(start: CellAddress, end: CellAddress)
+  public var rowCount: Int { get }
+  public var columnCount: Int { get }
+  public var a1: String { get }
+  public func contains(_ address: CellAddress) -> Bool
 }
 ```
 
@@ -147,6 +201,110 @@ public struct CellReference: Hashable, Sendable, CustomStringConvertible {
 }
 ```
 
+### `ReadCell`
+
+```swift
+public struct ReadCell: Hashable, Sendable {
+  public let address: CellAddress
+  public let value: CellValue
+  public let kind: ReadCellKind
+  public let formatted: String
+  public let rawCellType: UInt8?
+  public let stringID: Int32?
+  public let richTextID: Int32?
+  public let formulaID: Int32?
+  public let formulaErrorID: Int32?
+  public let mergeRange: MergeRange?
+  public let mergeRole: MergeRole
+  public var isMerged: Bool { get }
+}
+```
+
+### `ReadDiagnosticSeverity`
+
+```swift
+public enum ReadDiagnosticSeverity: String, Sendable {
+  case info
+  case warning
+  case error
+}
+```
+
+### `ReadDiagnostic`
+
+```swift
+public struct ReadDiagnostic: Hashable, Sendable {
+  public let code: String
+  public let severity: ReadDiagnosticSeverity
+  public let message: String
+  public let objectPath: String?
+  public let suggestion: String?
+  public let context: [String: String]
+  public var rendered: String { get }
+}
+```
+
+### `FormulaRead`
+
+```swift
+public struct FormulaRead: Hashable, Sendable {
+  public let address: CellAddress
+  public let reference: String
+  public let formulaID: Int32?
+  public let rawFormula: String?
+  public let parsedTokens: [String]
+  public let astSummary: String?
+  public let result: CellValue
+  public let resultFormatted: String
+}
+```
+
+### `ReadCellKind`
+
+```swift
+public enum ReadCellKind: Hashable, Sendable {
+  case empty
+  case text
+  case number
+  case bool
+  case date
+  case duration
+  case formula
+  case formulaError
+  case richText
+  case unknown(UInt8)
+}
+```
+
+### `ReadFormattingOptions`
+
+```swift
+public struct ReadFormattingOptions: Hashable, Sendable {
+  public init(
+    localeIdentifier: String = "en_US_POSIX",
+    timeZoneIdentifier: String? = nil,
+    usesGroupingSeparator: Bool = false,
+    maximumFractionDigits: Int = 15,
+    includeFractionalSeconds: Bool = true
+  )
+  public static let `default`: ReadFormattingOptions
+}
+```
+
+### `TableReadError: LocalizedError`
+
+```swift
+public enum TableReadError: LocalizedError {
+  case invalidCellReference(String)
+  case invalidRangeReference(String)
+  case outOfBounds(CellAddress)
+  case missingValue(CellAddress)
+  case typeMismatch(expected: String, actual: CellValue)
+  case headerNotFound(String)
+  case decodingFailed(String)
+}
+```
+
 ## Public Read API
 
 ### `NumbersDocument`
@@ -157,6 +315,14 @@ public struct NumbersDocument: Sendable {
   public let sheets: [Sheet]
 
   public static func open(at url: URL) throws -> NumbersDocument
+  public var firstSheet: Sheet? { get }
+  public var sheetNames: [String] { get }
+  public var tableCount: Int { get }
+  public var tableNames: [String] { get }
+  public subscript(_ index: Int) -> Sheet? { get }
+  public subscript(_ name: String) -> Sheet? { get }
+  public func sheet(named name: String) -> Sheet?
+  public func sheet(at index: Int) -> Sheet?
   public func dump() -> DocumentDump
   public func renderDump() -> String
 }
