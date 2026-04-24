@@ -72,7 +72,7 @@ public struct NumbersContainer: Sendable {
     if isDirectory {
       let metadataURL = rootURL.appendingPathComponent("Metadata", isDirectory: true)
       guard FileManager.default.fileExists(atPath: metadataURL.path) else {
-        throw NumbersContainerError.metadataNotFound(rootURL)
+        return nil
       }
 
       let target = metadataURL.appendingPathComponent(filename, isDirectory: false)

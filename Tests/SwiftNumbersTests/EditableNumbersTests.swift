@@ -3,6 +3,7 @@ import XCTest
 
 @testable import SwiftNumbersContainer
 @testable import SwiftNumbersCore
+@testable import SwiftNumbersProto
 
 final class CellReferenceTests: XCTestCase {
   func testParsesA1Reference() throws {
@@ -21,6 +22,7 @@ final class CellReferenceTests: XCTestCase {
     XCTAssertThrowsError(try CellReference("1A"))
     XCTAssertThrowsError(try CellReference("A0"))
     XCTAssertThrowsError(try CellReference(""))
+    XCTAssertThrowsError(try CellReference(String(repeating: "A", count: 64) + "1"))
   }
 }
 
@@ -121,6 +123,38 @@ final class EditableNumbersDocumentTests: XCTestCase {
     let reopenedPrimary = try XCTUnwrap(reopened.firstSheet?.firstTable)
     XCTAssertGreaterThanOrEqual(reopenedPrimary.metadata.rowCount, 6)
     XCTAssertGreaterThanOrEqual(reopenedPrimary.metadata.columnCount, 4)
+  }
+
+  func testAddTableRejectsDuplicateTableNameInSheet() throws {
+    let fixture = FixtureLocator.fixtureURL(named: "simple-table.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let sheet = try XCTUnwrap(editable.firstSheet)
+    let existing = try XCTUnwrap(sheet.firstTable)
+
+    XCTAssertThrowsError(
+      try sheet.addTable(
+        named: existing.name,
+        rows: 1,
+        columns: 1
+      )
+    )
+  }
+
+  func testAddSheetAutoSuffixesDuplicateSheetName() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let originalName = try XCTUnwrap(editable.firstSheet?.name)
+
+    let added = editable.addSheet(named: originalName)
+    XCTAssertNotEqual(added.name, originalName)
+    XCTAssertTrue(added.name.hasPrefix(originalName + " ("))
+
+    let output = temporaryArchiveOutputURL("editable-duplicate-sheet-name.numbers")
+    try editable.save(to: output)
+
+    let reopened = try EditableNumbersDocument.open(at: output)
+    _ = try reopened.sheet(named: originalName)
+    _ = try reopened.sheet(named: added.name)
   }
 
   func testNoOpSaveCopiesSourceContainer() throws {
@@ -327,5 +361,225 @@ final class EditableNumbersDocumentTests: XCTestCase {
     let reopened = try EditableNumbersDocument.open(at: workingCopy)
     let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
     XCTAssertEqual(reopenedTable.cell(at: CellAddress(row: 0, column: 0)), .string("Same Path"))
+  }
+
+  func testSaveInPlaceAfterSaveToNewPathTargetsLatestWorkingDocument() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let sourceCopy = try makeWorkingCopy(
+      from: fixture,
+      name: "editable-saveinplace-source.numbers",
+      isDirectory: false
+    )
+    let outputCopy = temporaryArchiveOutputURL("editable-saveinplace-output.numbers")
+
+    let editable = try EditableNumbersDocument.open(at: sourceCopy)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    table.setValue(.string("V1"), at: CellAddress(row: 0, column: 0))
+    try editable.save(to: outputCopy)
+
+    table.setValue(.string("V2"), at: CellAddress(row: 0, column: 0))
+    try editable.saveInPlace()
+
+    let reopenedOutput = try EditableNumbersDocument.open(at: outputCopy)
+    let reopenedOutputTable = try XCTUnwrap(reopenedOutput.firstSheet?.firstTable)
+    XCTAssertEqual(reopenedOutputTable.cell(at: CellAddress(row: 0, column: 0)), .string("V2"))
+
+    let reopenedSource = try EditableNumbersDocument.open(at: sourceCopy)
+    let reopenedSourceTable = try XCTUnwrap(reopenedSource.firstSheet?.firstTable)
+    XCTAssertNil(reopenedSourceTable.cell(at: CellAddress(row: 0, column: 0)))
+  }
+
+  func testSetValueIgnoresNegativeCellAddress() throws {
+    let fixture = FixtureLocator.fixtureURL(named: "simple-table.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    table.setValue(.string("NEG"), at: CellAddress(row: -1, column: 0))
+    table.setValue(.string("NEG"), at: CellAddress(row: 0, column: -1))
+
+    XCTAssertFalse(editable.hasChanges)
+    XCTAssertEqual(editable.dirtyState, .clean)
+    XCTAssertEqual(table.cell(at: CellAddress(row: 0, column: 0)), .string("Name"))
+  }
+
+  func testSaveInPlaceDoesNotReplayOperations() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let workingCopy = try makeWorkingCopy(
+      from: fixture,
+      name: "editable-in-place-replay-guard.numbers",
+      isDirectory: false
+    )
+
+    let editable = try EditableNumbersDocument.open(at: workingCopy)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+    let baselineRows = table.metadata.rowCount
+
+    table.appendRow([.string("Only Once")])
+    try editable.saveInPlace()
+    try editable.saveInPlace()
+
+    let reopened = try EditableNumbersDocument.open(at: workingCopy)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    XCTAssertEqual(reopenedTable.metadata.rowCount, baselineRows + 1)
+  }
+
+  func testDateMarkerLookingStringRoundTripsAsString() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+    let markerLookingString = "__SWIFTNUMBERS_DATE__:2024-05-16T00:00:00Z"
+
+    table.setValue(.string(markerLookingString), at: CellAddress(row: 0, column: 0))
+
+    let output = temporaryArchiveOutputURL("editable-date-marker-string-roundtrip.numbers")
+    try editable.save(to: output)
+
+    let reopened = try EditableNumbersDocument.open(at: output)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    XCTAssertEqual(
+      reopenedTable.cell(at: CellAddress(row: 0, column: 0)),
+      .string(markerLookingString)
+    )
+  }
+
+  func testLowLevelSaveRefreshesEditableOverlayWhenSourceHasOverlayMetadata() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let sourceWithOverlay = temporaryArchiveOutputURL("editable-overlay-source.numbers")
+
+    var metadata = Swiftnumbers_DocumentMetadata()
+    metadata.documentID = "swiftnumbers-editable-v1:test"
+
+    var sheet = Swiftnumbers_SheetMetadata()
+    sheet.sheetID = "sheet-1"
+    sheet.name = "Sheet 1"
+
+    var table = Swiftnumbers_TableMetadata()
+    table.tableID = "table-1"
+    table.name = "Table 1"
+    table.rowCount = 1
+    table.columnCount = 1
+
+    var cell = Swiftnumbers_Cell()
+    cell.row = 0
+    cell.column = 0
+    cell.value = .stringValue("OLD")
+    table.cells = [cell]
+    sheet.tables = [table]
+    metadata.sheets = [sheet]
+
+    try NumbersContainer.copyContainer(
+      from: fixture,
+      to: sourceWithOverlay,
+      replacingMetadataFiles: ["DocumentMetadata.json": try metadata.jsonUTF8Data()]
+    )
+
+    let editable = try EditableNumbersDocument.open(at: sourceWithOverlay)
+    let editableTable = try XCTUnwrap(editable.firstSheet?.firstTable)
+    XCTAssertEqual(editableTable.cell(at: CellAddress(row: 0, column: 0)), .string("OLD"))
+
+    editableTable.setValue(.string("NEW"), at: CellAddress(row: 0, column: 0))
+
+    let output = temporaryArchiveOutputURL("editable-overlay-refreshed-output.numbers")
+    try editable.save(to: output)
+
+    let reopened = try EditableNumbersDocument.open(at: output)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    XCTAssertEqual(reopenedTable.cell(at: CellAddress(row: 0, column: 0)), .string("NEW"))
+  }
+
+  func testSaveFailsFastForAmbiguousAddTableOnDuplicateSheetNames() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let sourceWithOverlay = temporaryArchiveOutputURL(
+      "editable-ambiguous-sheet-overlay-source.numbers"
+    )
+
+    var metadata = Swiftnumbers_DocumentMetadata()
+    metadata.documentID = "swiftnumbers-editable-v1:ambiguous"
+
+    func makeTable(id: String, name: String) -> Swiftnumbers_TableMetadata {
+      var table = Swiftnumbers_TableMetadata()
+      table.tableID = id
+      table.name = name
+      table.rowCount = 1
+      table.columnCount = 1
+      return table
+    }
+
+    var firstSheet = Swiftnumbers_SheetMetadata()
+    firstSheet.sheetID = "sheet-1"
+    firstSheet.name = "Dup"
+    firstSheet.tables = [makeTable(id: "table-1", name: "T1")]
+
+    var secondSheet = Swiftnumbers_SheetMetadata()
+    secondSheet.sheetID = "sheet-2"
+    secondSheet.name = "Dup"
+    secondSheet.tables = [makeTable(id: "table-2", name: "T2")]
+
+    metadata.sheets = [firstSheet, secondSheet]
+
+    try NumbersContainer.copyContainer(
+      from: fixture,
+      to: sourceWithOverlay,
+      replacingMetadataFiles: ["DocumentMetadata.json": try metadata.jsonUTF8Data()]
+    )
+
+    let editable = try EditableNumbersDocument.open(at: sourceWithOverlay)
+    _ = try editable.addTable(named: "New Table", rows: 1, columns: 1, onSheetNamed: "Dup")
+
+    let output = temporaryArchiveOutputURL("editable-ambiguous-sheet-overlay-output.numbers")
+    XCTAssertThrowsError(try editable.save(to: output))
+  }
+
+  func testSecondSaveWithoutNewMutationsUsesLastSavedState() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    table.setValue(.string("Persisted"), at: CellAddress(row: 0, column: 0))
+    let firstOutput = temporaryArchiveOutputURL("editable-first-save.numbers")
+    try editable.save(to: firstOutput)
+
+    XCTAssertFalse(editable.hasChanges)
+    XCTAssertEqual(editable.dirtyState, .clean)
+
+    let secondOutput = temporaryArchiveOutputURL("editable-second-save.numbers")
+    try editable.save(to: secondOutput)
+
+    let reopened = try EditableNumbersDocument.open(at: secondOutput)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    XCTAssertEqual(reopenedTable.cell(at: CellAddress(row: 0, column: 0)), .string("Persisted"))
+  }
+
+  func testFallbackMetadataUsesEditableDocumentIDPrefix() throws {
+    let fixture = FixtureLocator.fixtureURL(named: "simple-table.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+    table.setValue(.string("Fallback Overlay"), at: CellAddress(row: 0, column: 0))
+
+    let output = temporaryOutputURL("editable-fallback-prefix.numbers")
+    try editable.save(to: output)
+
+    let container = try NumbersContainer.open(at: output)
+    let metadataData = try XCTUnwrap(container.readMetadataFile(named: "DocumentMetadata.json"))
+    let metadata = try Swiftnumbers_DocumentMetadata(jsonUTF8Data: metadataData)
+    XCTAssertTrue(metadata.documentID.hasPrefix("swiftnumbers-editable-v1:"))
+  }
+
+  func testSaveToLatestOutputPathPerformsInPlaceUpdate() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    table.setValue(.string("V1"), at: CellAddress(row: 0, column: 0))
+    let output = temporaryArchiveOutputURL("editable-latest-output-in-place.numbers")
+    try editable.save(to: output)
+
+    table.setValue(.string("V2"), at: CellAddress(row: 0, column: 0))
+    try editable.save(to: output)
+
+    let reopened = try EditableNumbersDocument.open(at: output)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    XCTAssertEqual(reopenedTable.cell(at: CellAddress(row: 0, column: 0)), .string("V2"))
   }
 }

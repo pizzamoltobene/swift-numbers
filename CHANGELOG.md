@@ -2,6 +2,41 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.2] - 2026-04-24
+
+### Fixed
+
+- `saveInPlace()` semantics now target the current working document path after `save(to:)`
+  (instead of implicitly mutating only the original open-path).
+- Repeated save calls no longer replay structural operations; mutation journal and dirty flags
+  are cleared only after a successful write.
+- Source baseline for subsequent saves now tracks the last successful destination, preventing
+  stale-source copy behavior across multi-save workflows.
+- Low-level write success now refreshes editable overlay metadata when source documents were
+  originally overlay-backed, avoiding stale overlay values on reopen.
+- Guarded invalid negative `CellAddress` writes to prevent inconsistent in-memory state.
+- Added overflow-safe A1 column parsing for very long column labels.
+- Protected editable date marker encoding by escaping conflicting user strings to avoid
+  string/date misclassification on round-trip.
+- Container metadata reads now return `nil` when package metadata directory is absent instead
+  of throwing.
+- Added duplicate-name hardening for write paths:
+  - duplicate table names in a sheet are rejected in editable API
+  - duplicate sheet names created via `addSheet(named:)` are auto-suffixed
+  - ambiguous low-level `addTable` targeting now fails fast with a clear error
+
+### Added
+
+- Regression tests for:
+  - replay-safe repeated saves
+  - latest-path in-place save semantics
+  - date-marker-looking string round-trip
+  - overlay refresh correctness after low-level writes
+  - duplicate table-name rejection
+  - duplicate sheet-name suffixing
+  - ambiguous `addTable` fail-fast behavior
+  - metadata read behavior when `Metadata/` directory is missing
+
 ## [0.2.1] - 2026-04-23
 
 ### Fixed

@@ -6,6 +6,7 @@ import SwiftProtobuf
 
 enum IWASetCellWriter {
   private static let editableDateMarkerPrefix = "__SWIFTNUMBERS_DATE__:"
+  private static let editableStringEscapePrefix = "__SWIFTNUMBERS_STRING__:"
 
   private enum TypeID {
     static let documentArchive: UInt32 = 1
@@ -1461,7 +1462,7 @@ enum IWASetCellWriter {
     case .bool(let bool):
       return encodeNumericCell(value: bool ? 1.0 : 0.0, typeID: 6)
     case .string(let string):
-      let stringID = try resolveStringID(for: string, context: &context)
+      let stringID = try resolveStringID(for: encodeStoredString(string), context: &context)
       return encodeStringCell(stringID: stringID)
     case .date(let date):
       let marker = editableDateMarkerPrefix + formatDate(date)
@@ -1765,5 +1766,12 @@ enum IWASetCellWriter {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     return formatter.string(from: date)
+  }
+
+  private static func encodeStoredString(_ string: String) -> String {
+    if string.hasPrefix(editableDateMarkerPrefix) || string.hasPrefix(editableStringEscapePrefix) {
+      return editableStringEscapePrefix + string
+    }
+    return string
   }
 }

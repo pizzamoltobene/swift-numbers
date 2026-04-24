@@ -7,6 +7,7 @@ import SwiftProtobuf
 public enum EditableNumbersError: LocalizedError {
   case sheetNotFound(String)
   case tableNotFound(sheet: String, table: String)
+  case duplicateTableName(sheet: String, table: String)
   case invalidCellReference(String)
   case invalidRowIndex(Int)
   case invalidColumnIndex(Int)
@@ -18,6 +19,8 @@ public enum EditableNumbersError: LocalizedError {
       return "Sheet not found: \(name)"
     case .tableNotFound(let sheet, let table):
       return "Table not found: \(sheet)/\(table)"
+    case .duplicateTableName(let sheet, let table):
+      return "Table already exists: \(sheet)/\(table)"
     case .invalidCellReference(let raw):
       return "Invalid cell reference: \(raw)"
     case .invalidRowIndex(let row):
@@ -82,7 +85,13 @@ public struct CellReference: Hashable, Sendable, CustomStringConvertible {
       guard scalar.value >= 65, scalar.value <= 90 else {
         throw EditableNumbersError.invalidCellReference(source)
       }
-      value = (value * 26) + Int(scalar.value - 64)
+      let digit = Int(scalar.value - 64)
+      let (multiplied, didOverflowMultiply) = value.multipliedReportingOverflow(by: 26)
+      let (next, didOverflowAdd) = multiplied.addingReportingOverflow(digit)
+      guard !didOverflowMultiply, !didOverflowAdd else {
+        throw EditableNumbersError.invalidCellReference(source)
+      }
+      value = next
     }
     guard value > 0 else {
       throw EditableNumbersError.invalidCellReference(source)
@@ -109,6 +118,7 @@ public final class EditableNumbersDocument {
   public private(set) var dirtyState: DocumentDirtyState = .clean
 
   private var operations: [EditOperation] = []
+  private var workingSourceURL: URL
   private let sourceDocumentID: String?
 
   public var hasChanges: Bool {
@@ -120,7 +130,9 @@ public final class EditableNumbersDocument {
   }
 
   private init(sourceURL: URL, sourceDocumentID: String?) {
-    self.sourceURL = sourceURL.standardizedFileURL
+    let normalized = sourceURL.standardizedFileURL
+    self.sourceURL = normalized
+    self.workingSourceURL = normalized
     self.sourceDocumentID = sourceDocumentID
   }
 
@@ -148,6 +160,7 @@ public final class EditableNumbersDocument {
 
   @discardableResult
   public func addSheet(named name: String) -> EditableSheet {
+    let resolvedName = uniqueSheetName(from: normalizedSheetName(name))
     let sheetID = "sheet-\(UUID().uuidString.lowercased())"
     let table = EditableTable(
       id: "table-\(UUID().uuidString.lowercased())",
@@ -156,18 +169,18 @@ public final class EditableNumbersDocument {
       columnCount: 1,
       mergeRanges: [],
       cells: [:],
-      ownerSheetName: name,
+      ownerSheetName: resolvedName,
       mutationSink: makeMutationSink()
     )
     let sheet = EditableSheet(
       id: sheetID,
-      name: name,
+      name: resolvedName,
       tables: [table],
       ownerDocument: self,
       mutationSink: makeMutationSink()
     )
     sheets.append(sheet)
-    record(.addSheet(name: name), structureDirty: true)
+    record(.addSheet(name: resolvedName), structureDirty: true)
     return sheet
   }
 
@@ -181,19 +194,29 @@ public final class EditableNumbersDocument {
 
   public func save(to outputURL: URL) throws {
     let destination = outputURL.standardizedFileURL
-    if destination.path == sourceURL.path {
-      try saveInPlace()
+    if destination.path == workingSourceURL.path {
+      guard hasChanges else {
+        return
+      }
+      try persistInPlace(at: destination)
       return
     }
 
+    try write(to: destination)
+    markSaved()
+    workingSourceURL = destination
+  }
+
+  private func write(to destinationURL: URL) throws {
     if operations.isEmpty {
-      try copyContainer(from: sourceURL, to: destination)
+      try copyContainer(from: workingSourceURL, to: destinationURL)
       return
     }
+    try validateOperationAddressability()
 
     try NativeWriterBackend.save(
-      sourceURL: sourceURL,
-      destinationURL: destination,
+      sourceURL: workingSourceURL,
+      destinationURL: destinationURL,
       sourceDocumentID: sourceDocumentID,
       operations: operations,
       sheets: sheets
@@ -205,10 +228,14 @@ public final class EditableNumbersDocument {
       return
     }
 
+    try persistInPlace(at: workingSourceURL)
+  }
+
+  private func persistInPlace(at targetURL: URL) throws {
     let fileManager = FileManager.default
-    let parent = sourceURL.deletingLastPathComponent()
+    let parent = targetURL.deletingLastPathComponent()
     let tempURL = parent.appendingPathComponent(
-      ".swiftnumbers-save-\(UUID().uuidString)-\(sourceURL.lastPathComponent)",
+      ".swiftnumbers-save-\(UUID().uuidString)-\(targetURL.lastPathComponent)",
       isDirectory: false
     )
     defer {
@@ -217,20 +244,31 @@ public final class EditableNumbersDocument {
       }
     }
 
-    try save(to: tempURL)
+    try write(to: tempURL)
 
     do {
       _ = try fileManager.replaceItemAt(
-        sourceURL,
+        targetURL,
         withItemAt: tempURL,
         backupItemName: nil,
         options: [.usingNewMetadataOnly]
       )
     } catch {
-      if fileManager.fileExists(atPath: sourceURL.path) {
-        try fileManager.removeItem(at: sourceURL)
+      if fileManager.fileExists(atPath: targetURL.path) {
+        try fileManager.removeItem(at: targetURL)
       }
-      try fileManager.moveItem(at: tempURL, to: sourceURL)
+      try fileManager.moveItem(at: tempURL, to: targetURL)
+    }
+
+    markSaved()
+    workingSourceURL = targetURL
+  }
+
+  private func markSaved() {
+    operations.removeAll(keepingCapacity: true)
+    dirtyState = .clean
+    for sheet in sheets {
+      sheet.markClean()
     }
   }
 
@@ -278,10 +316,71 @@ public final class EditableNumbersDocument {
     try NumbersContainer.copyContainer(from: sourceURL, to: destinationURL)
   }
 
+  private func validateOperationAddressability() throws {
+    let hasAddTableOperation = operations.contains {
+      if case .addTable = $0 {
+        return true
+      }
+      return false
+    }
+    if hasAddTableOperation {
+      let duplicateSheetNames = Dictionary(grouping: sheets, by: \.name)
+        .filter { $0.value.count > 1 }
+        .keys
+        .sorted()
+      if !duplicateSheetNames.isEmpty {
+        let names = duplicateSheetNames.joined(separator: ", ")
+        throw EditableNumbersError.nativeWriteFailed(
+          "Ambiguous sheet name(s) for addTable operation: \(names)")
+      }
+    }
+
+    var tableNameKeys: [SheetTableNameKey: Int] = [:]
+    for sheet in sheets {
+      for table in sheet.tables {
+        let key = SheetTableNameKey(sheet: sheet.name, table: table.name)
+        tableNameKeys[key, default: 0] += 1
+      }
+    }
+    if let duplicateKey = tableNameKeys.first(where: { $0.value > 1 })?.key {
+      throw EditableNumbersError.nativeWriteFailed(
+        "Ambiguous table identity for write operation: \(duplicateKey.sheet)/\(duplicateKey.table)"
+      )
+    }
+  }
+
   private static func loadSourceMetadataDocumentID(from url: URL) throws -> String? {
     let container = try NumbersContainer.open(at: url)
     return try MetadataLoader.loadDocumentMetadata(from: container)?.documentID
   }
+
+  private func normalizedSheetName(_ raw: String) -> String {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !trimmed.isEmpty {
+      return trimmed
+    }
+    return "Sheet \(max(sheets.count + 1, 1))"
+  }
+
+  private func uniqueSheetName(from candidate: String) -> String {
+    guard sheets.contains(where: { $0.name == candidate }) else {
+      return candidate
+    }
+
+    var index = 2
+    while true {
+      let suffixed = "\(candidate) (\(index))"
+      if !sheets.contains(where: { $0.name == suffixed }) {
+        return suffixed
+      }
+      index += 1
+    }
+  }
+}
+
+private struct SheetTableNameKey: Hashable {
+  let sheet: String
+  let table: String
 }
 
 public final class EditableSheet {
@@ -326,10 +425,14 @@ public final class EditableSheet {
     guard columns >= 0 else {
       throw EditableNumbersError.invalidColumnIndex(columns)
     }
+    let resolvedName = normalizedTableName(name)
+    guard !tables.contains(where: { $0.name == resolvedName }) else {
+      throw EditableNumbersError.duplicateTableName(sheet: self.name, table: resolvedName)
+    }
 
     let table = EditableTable(
       id: "table-\(UUID().uuidString.lowercased())",
-      name: name,
+      name: resolvedName,
       rowCount: rows,
       columnCount: columns,
       mergeRanges: [],
@@ -340,11 +443,26 @@ public final class EditableSheet {
     tables.append(table)
     isDirty = true
     mutationSink(
-      .addTable(sheetName: self.name, tableName: name, rows: rows, columns: columns),
+      .addTable(sheetName: self.name, tableName: resolvedName, rows: rows, columns: columns),
       true
     )
     _ = ownerDocument  // keeps lifetime explicit
     return table
+  }
+
+  fileprivate func markClean() {
+    isDirty = false
+    for table in tables {
+      table.markClean()
+    }
+  }
+
+  private func normalizedTableName(_ raw: String) -> String {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !trimmed.isEmpty {
+      return trimmed
+    }
+    return "Table \(max(tables.count + 1, 1))"
   }
 }
 
@@ -412,6 +530,10 @@ public final class EditableTable {
   }
 
   public func setValue(_ value: CellValue, at address: CellAddress) {
+    guard address.row >= 0, address.column >= 0 else {
+      return
+    }
+
     let structureChanged = ensureCapacity(for: address)
     if value == .empty {
       cells.removeValue(forKey: address)
@@ -529,6 +651,12 @@ public final class EditableTable {
       dirtyCells.insert(address)
     }
   }
+
+  fileprivate func markClean() {
+    isDirty = false
+    isStructureDirty = false
+    dirtyCells.removeAll(keepingCapacity: true)
+  }
 }
 
 public final class EditableCell {
@@ -575,6 +703,11 @@ private enum NativeWriterBackend {
           destinationURL: destinationURL,
           operations: lowLevelOperations
         )
+        try refreshEditableOverlayIfNeeded(
+          destinationURL: destinationURL,
+          sourceDocumentID: sourceDocumentID,
+          sheets: sheets
+        )
         return
       } catch {
         // The low-level path is still being hardened; keep metadata overlay as
@@ -617,13 +750,62 @@ private enum NativeWriterBackend {
     }
   }
 
+  private static func refreshEditableOverlayIfNeeded(
+    destinationURL: URL,
+    sourceDocumentID: String?,
+    sheets: [EditableSheet]
+  ) throws {
+    guard let sourceDocumentID, sourceDocumentID.hasPrefix(editableDocumentIDPrefix) else {
+      return
+    }
+
+    let metadata = buildMetadata(sourceDocumentID: sourceDocumentID, sheets: sheets)
+    let jsonData = try metadata.jsonUTF8Data()
+
+    let fileManager = FileManager.default
+    let tempURL = destinationURL.deletingLastPathComponent().appendingPathComponent(
+      ".swiftnumbers-overlay-\(UUID().uuidString)-\(destinationURL.lastPathComponent)",
+      isDirectory: false
+    )
+    defer {
+      if fileManager.fileExists(atPath: tempURL.path) {
+        try? fileManager.removeItem(at: tempURL)
+      }
+    }
+
+    try NumbersContainer.copyContainer(
+      from: destinationURL,
+      to: tempURL,
+      replacingMetadataFiles: ["DocumentMetadata.json": jsonData]
+    )
+
+    do {
+      _ = try fileManager.replaceItemAt(
+        destinationURL,
+        withItemAt: tempURL,
+        backupItemName: nil,
+        options: [.usingNewMetadataOnly]
+      )
+    } catch {
+      if fileManager.fileExists(atPath: destinationURL.path) {
+        try fileManager.removeItem(at: destinationURL)
+      }
+      try fileManager.moveItem(at: tempURL, to: destinationURL)
+    }
+  }
+
   private static func buildMetadata(
     sourceDocumentID: String?,
     sheets: [EditableSheet]
   ) -> Swiftnumbers_DocumentMetadata {
     var metadata = Swiftnumbers_DocumentMetadata()
-    if let sourceDocumentID, !sourceDocumentID.isEmpty {
+    if let sourceDocumentID,
+      !sourceDocumentID.isEmpty,
+      sourceDocumentID.hasPrefix(editableDocumentIDPrefix)
+    {
       metadata.documentID = sourceDocumentID
+    } else if let sourceDocumentID, !sourceDocumentID.isEmpty {
+      metadata.documentID = editableDocumentIDPrefix + sourceDocumentID
     } else {
       metadata.documentID = editableDocumentIDPrefix + UUID().uuidString.lowercased()
     }
@@ -664,7 +846,7 @@ private enum NativeWriterBackend {
             case .empty:
               return nil
             case .string(let string):
-              mappedCell.value = .stringValue(string)
+              mappedCell.value = .stringValue(encodeStoredString(string))
             case .number(let number):
               mappedCell.value = .numberValue(number)
             case .bool(let bool):
@@ -696,4 +878,13 @@ private enum NativeWriterBackend {
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     return formatter.string(from: date)
   }
+
+  private static func encodeStoredString(_ string: String) -> String {
+    if string.hasPrefix(editableDateMarkerPrefix) || string.hasPrefix(editableStringEscapePrefix) {
+      return editableStringEscapePrefix + string
+    }
+    return string
+  }
 }
+
+private let editableStringEscapePrefix = "__SWIFTNUMBERS_STRING__:"

@@ -68,6 +68,25 @@ final class ReferenceCompatibilityTests: XCTestCase {
     }
   }
 
+  func testReadMetadataFileReturnsNilWhenPackageHasNoMetadataDirectory() throws {
+    let source = FixtureLocator.fixtureURL(named: "simple-table.numbers")
+    let workingCopy = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+      .appendingPathComponent(
+        "swift-numbers-no-metadata-\(UUID().uuidString).numbers",
+        isDirectory: true
+      )
+    defer { try? FileManager.default.removeItem(at: workingCopy) }
+
+    try FileManager.default.copyItem(at: source, to: workingCopy)
+    try FileManager.default.removeItem(
+      at: workingCopy.appendingPathComponent("Metadata", isDirectory: true)
+    )
+
+    let container = try NumbersContainer.open(at: workingCopy)
+    XCTAssertNil(try container.readMetadataFile(named: "DocumentMetadata.json"))
+    XCTAssertNil(try container.readMetadataFile(named: "DocumentMetadata.pb"))
+  }
+
   private func makeTemporaryNumbersDirectory(encrypted: Bool) throws -> URL {
     let fixture = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
       .appendingPathComponent("swift-numbers-\(UUID().uuidString).numbers", isDirectory: true)

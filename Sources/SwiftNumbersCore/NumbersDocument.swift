@@ -158,7 +158,9 @@ public struct NumbersDocument: Sendable {
           case .empty:
             value = .empty
           case .string(let string):
-            if let date = decodeEditableDateMarker(string) {
+            if let escaped = decodeEscapedEditableString(string) {
+              value = .string(escaped)
+            } else if let date = decodeEditableDateMarker(string) {
               value = .date(date)
             } else {
               value = .string(string)
@@ -220,7 +222,9 @@ public struct NumbersDocument: Sendable {
 
           switch cell.value {
           case .stringValue(let string):
-            if let date = decodeEditableDateMarker(string) {
+            if let escaped = decodeEscapedEditableString(string) {
+              value = .string(escaped)
+            } else if let date = decodeEditableDateMarker(string) {
               value = .date(date)
             } else {
               value = .string(string)
@@ -260,6 +264,14 @@ public struct NumbersDocument: Sendable {
     _ metadata: Swiftnumbers_DocumentMetadata
   ) -> Bool {
     metadata.documentID.hasPrefix("swiftnumbers-editable-v1:")
+  }
+
+  private static func decodeEscapedEditableString(_ raw: String) -> String? {
+    let prefix = "__SWIFTNUMBERS_STRING__:"
+    guard raw.hasPrefix(prefix) else {
+      return nil
+    }
+    return String(raw.dropFirst(prefix.count))
   }
 
   private static func decodeEditableDateMarker(_ raw: String) -> Date? {

@@ -32,7 +32,7 @@ Start here: [Docs Hub](docs/index.md)
 For full API/CLI behavior, use [Capabilities](docs/capabilities.md).  
 For practical flows, use [Cookbook](docs/cookbook.md).
 
-## Supported (v0.2.0)
+## Supported (v0.2.2)
 
 - Open `.numbers` package documents and single-file archive documents
 - Read sheets/tables/metadata and lookup cells by address
@@ -55,7 +55,7 @@ For practical flows, use [Cookbook](docs/cookbook.md).
   - `empty`
   - `date`
 
-## Write Support (v0.2.0)
+## Write Support (v0.2.2)
 
 - Native Swift low-level IWA write path currently covers:
   - `setValue` for `string` / `number` / `bool` / `empty` / `date` (`date` uses a stable SwiftNumbers marker)
@@ -69,9 +69,9 @@ For practical flows, use [Cookbook](docs/cookbook.md).
   - writing to a new destination
   - same-path atomic in-place replace
 
-## Out of Scope (v0.2.0)
+## Out of Scope (v0.2.2)
 
-- Advanced Numbers features are out of scope in `0.2.0`:
+- Advanced Numbers features are out of scope in `0.2.2`:
   - formulas
   - pivot/grouped tables
   - charts
@@ -84,10 +84,10 @@ For practical flows, use [Cookbook](docs/cookbook.md).
 
 ## Install (SwiftPM)
 
-Use the `v0.2.0` tag:
+Use the `v0.2.2` tag:
 
 ```swift
-.package(url: "https://github.com/pizzamoltobene/swift-numbers.git", from: "0.2.0")
+.package(url: "https://github.com/pizzamoltobene/swift-numbers.git", from: "0.2.2")
 ```
 
 Then add the library target dependency:
