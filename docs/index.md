@@ -1,6 +1,6 @@
 # SwiftNumbers Docs
 
-Documentation hub for `SwiftNumbers v0.3.1.1`.
+Documentation hub for `SwiftNumbers v0.3.2`.
 
 ## Start Here
 
@@ -20,7 +20,7 @@ Documentation hub for `SwiftNumbers v0.3.1.1`.
 | Failure triage | [Troubleshooting](troubleshooting.md) |
 | Internal architecture | [Architecture](architecture.md) |
 
-## Scope (v0.3.1.1)
+## Scope (v0.3.2)
 
 Supported:
 - Real `.numbers` read path (with diagnostics and fallback safety path)

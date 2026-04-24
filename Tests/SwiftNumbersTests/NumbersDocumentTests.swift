@@ -483,4 +483,35 @@ final class NumbersDocumentTests: XCTestCase {
       "1h 1m 1s"
     )
   }
+
+  func testFormattedValueISO8601FallsBackToUTCForInvalidTimeZone() {
+    let address = CellAddress(row: 0, column: 0)
+    let referenceDate = Date(timeIntervalSinceReferenceDate: 0)
+    let table = Table(
+      id: "fmt-timezone",
+      name: "Formatting",
+      metadata: TableMetadata(rowCount: 1, columnCount: 1, mergeRanges: []),
+      cells: [address: .date(referenceDate)],
+      readCells: [
+        address: ReadCell(
+          address: address,
+          value: .date(referenceDate),
+          kind: .date,
+          formatted: "2001-01-01T00:00:00Z"
+        )
+      ]
+    )
+
+    let value = table.formattedValue(
+      "A1",
+      options: ReadFormattingOptions(
+        localeIdentifier: "en_US_POSIX",
+        timeZoneIdentifier: "Invalid/TimeZone",
+        includeFractionalSeconds: false,
+        dateFormatMode: .iso8601,
+        preferCellNumberFormatHints: false
+      )
+    )
+    XCTAssertEqual(value, "2001-01-01T00:00:00Z")
+  }
 }

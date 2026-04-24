@@ -451,13 +451,13 @@ enum IWASetCellWriter {
       let sheetName =
         decodedSheet?.name.isEmpty == false ? decodedSheet!.name : "Sheet \(sheetIndex + 1)"
       let drawableRefs = decodedSheet?.drawableInfos ?? []
+      let tableInfoObjectIDs = candidateTableInfoObjectIDs(
+        forSheetObjectID: sheetObjectID,
+        drawableRefs: drawableRefs,
+        recordsByObjectID: recordsByObjectID
+      )
 
-      for drawableRef in drawableRefs {
-        let tableInfoObjectID = drawableRef.identifier
-        guard tableInfoObjectID > 0 else {
-          continue
-        }
-
+      for tableInfoObjectID in tableInfoObjectIDs {
         guard
           let tableInfo: TST_TableInfoArchive = decodeMessage(
             objectID: tableInfoObjectID,
@@ -540,6 +540,56 @@ enum IWASetCellWriter {
     }
 
     return contexts
+  }
+
+  static func candidateTableInfoObjectIDs(
+    forSheetObjectID sheetObjectID: UInt64,
+    drawableRefs: [TSP_Reference],
+    recordsByObjectID: [UInt64: [IWAObjectRecord]]
+  ) -> [UInt64] {
+    var orderedIDs: [UInt64] = []
+    var seenIDs = Set<UInt64>()
+
+    func appendIfNeeded(_ objectID: UInt64) {
+      guard objectID > 0 else {
+        return
+      }
+      guard !seenIDs.contains(objectID) else {
+        return
+      }
+      orderedIDs.append(objectID)
+      seenIDs.insert(objectID)
+    }
+
+    // Keep explicit sheet drawable order first.
+    for reference in drawableRefs {
+      appendIfNeeded(reference.identifier)
+    }
+
+    // Include any additional tables linked by parent relationship but absent from drawableInfos.
+    let tableInfoObjectIDs = recordsByObjectID
+      .filter { _, records in records.contains(where: { $0.typeID == TypeID.tableInfoArchive }) }
+      .map(\.key)
+      .sorted()
+
+    for tableInfoObjectID in tableInfoObjectIDs where !seenIDs.contains(tableInfoObjectID) {
+      guard
+        let tableInfo: TST_TableInfoArchive = decodeMessage(
+          objectID: tableInfoObjectID,
+          typeID: TypeID.tableInfoArchive,
+          recordsByObjectID: recordsByObjectID
+        ),
+        tableInfo.hasSuper,
+        tableInfo.super.hasParent,
+        tableInfo.super.parent.identifier == sheetObjectID
+      else {
+        continue
+      }
+
+      appendIfNeeded(tableInfoObjectID)
+    }
+
+    return orderedIDs
   }
 
   private static func buildSheetContexts(

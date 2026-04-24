@@ -1204,9 +1204,7 @@ public struct Table: Hashable, Sendable {
         options.includeFractionalSeconds
         ? [.withInternetDateTime, .withFractionalSeconds]
         : [.withInternetDateTime]
-      if let timeZone = userTimeZone(for: options) {
-        formatter.timeZone = timeZone
-      }
+      formatter.timeZone = userTimeZone(for: options) ?? TimeZone(secondsFromGMT: 0)
       return formatter.string(from: value)
     case .styled(let dateStyle, let timeStyle):
       let formatter = DateFormatter()

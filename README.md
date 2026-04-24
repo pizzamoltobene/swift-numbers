@@ -15,7 +15,7 @@
 ## Install (SwiftPM)
 
 ```swift
-.package(url: "https://github.com/pizzamoltobene/swift-numbers.git", from: "0.3.1.1")
+.package(url: "https://github.com/pizzamoltobene/swift-numbers.git", from: "0.3.2")
 ```
 
 ```swift
@@ -58,7 +58,7 @@ Start here: [Docs Hub](docs/index.md)
 
 ## Scope Snapshot
 
-- Supported in `v0.3.1.1`: core read/edit/save workflows for tabular data.
+- Supported in `v0.3.2`: core read/edit/save workflows for tabular data.
 - Out of scope: formula write engine, pivots, charts, comments, full layout/styling parity, encrypted files.
 
 For the exact matrix, use [Capabilities](docs/capabilities.md).

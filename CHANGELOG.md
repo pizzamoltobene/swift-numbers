@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.3.2] - 2026-04-24
+
+### Fixed
+
+- Real-read resolver/table discovery hardening:
+  - skip non-table drawables when traversing `sheet.drawableInfos` (no false `tableResolveFailed` warnings)
+  - merge drawable-based and parent-linked table discovery so partial drawable lists do not drop tables
+  - add deterministic per-table resolution cache to avoid duplicate table decode and duplicated diagnostics
+- Formula-read stability improvements:
+  - support unknown `.function` argument counts via `unknownFunctionNumArgs`
+  - treat `BEGIN_THUNK` / `END_THUNK` as structural AST markers (no unsupported-node warning noise)
+  - expose and test deterministic unsupported AST summaries only for truly unsupported nodes
+- Date ISO8601 formatting now falls back to UTC when an invalid `timeZoneIdentifier` is provided.
+
+### Added
+
+- Regression tests for:
+  - non-table drawable skipping and parent-table merge traversal
+  - unknown function argument count fallback
+  - thunk-boundary marker handling in formula rendering
+  - ISO8601 invalid-timezone UTC fallback
+  - table candidate ID discovery for low-level writer path
+
 ## [0.3.1.1] - 2026-04-24
 
 ### Changed

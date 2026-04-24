@@ -130,6 +130,14 @@ final class RealReadPipelineUnitTests: XCTestCase {
     let richTextBuffer = makeCellBuffer(type: 9, flags: 0x10) { data in
       appendInt32(8, to: &data)
     }
+    let formulaResultNumberBuffer = makeCellBuffer(type: 2, flags: 0x202) { data in
+      appendDouble(99.75, to: &data)
+      appendInt32(77, to: &data)
+    }
+    let formulaErrorFromNumberBuffer = makeCellBuffer(type: 2, flags: 0x802) { data in
+      appendDouble(0, to: &data)
+      appendInt32(88, to: &data)
+    }
 
     let dateDecoded = IWARealDocumentReader.decodeCellStorage(buffer: dateBuffer, stringLookup: [:])
     XCTAssertEqual(dateDecoded?.kind, .date)
@@ -157,6 +165,22 @@ final class RealReadPipelineUnitTests: XCTestCase {
     XCTAssertEqual(richTextDecoded?.kind, .richText)
     XCTAssertEqual(richTextDecoded?.richTextID, 8)
     XCTAssertEqual(richTextDecoded?.value, .richText("RT payload"))
+
+    let formulaResultNumberDecoded = IWARealDocumentReader.decodeCellStorage(
+      buffer: formulaResultNumberBuffer,
+      stringLookup: [:]
+    )
+    XCTAssertEqual(formulaResultNumberDecoded?.kind, .formula)
+    XCTAssertEqual(formulaResultNumberDecoded?.formulaID, 77)
+    XCTAssertEqual(formulaResultNumberDecoded?.value, .number(99.75))
+
+    let formulaErrorFromNumberDecoded = IWARealDocumentReader.decodeCellStorage(
+      buffer: formulaErrorFromNumberBuffer,
+      stringLookup: [:]
+    )
+    XCTAssertEqual(formulaErrorFromNumberDecoded?.kind, .formulaError)
+    XCTAssertEqual(formulaErrorFromNumberDecoded?.formulaErrorID, 88)
+    XCTAssertEqual(formulaErrorFromNumberDecoded?.value, .error("#ERROR!"))
   }
 
   func testDecodeCellStorageParsesStyleAndFormatIdentifiers() {
@@ -220,6 +244,153 @@ final class RealReadPipelineUnitTests: XCTestCase {
     let result = IWARealDocumentReader.read(from: inventory, documentVersion: nil)
     let noSheets = result.structuredDiagnostics.first { $0.code == "resolver.sheet.empty" }
     XCTAssertEqual(noSheets?.context["objectID"], "10")
+  }
+
+  func testResolverSkipsNonTableDrawableReferencesWithoutWarning() throws {
+    var document = TN_DocumentArchive()
+    document.sheets = [reference(200)]
+
+    var sheet = TN_SheetArchive()
+    sheet.name = "Main"
+    sheet.drawableInfos = [reference(300)]
+
+    let documentPayload = try document.serializedData()
+    let sheetPayload = try sheet.serializedData()
+
+    let records = [
+      IWAObjectRecord(
+        objectID: 100,
+        typeID: 1,
+        payloadSize: documentPayload.count,
+        payloadData: documentPayload,
+        sourceBlobPath: "Doc.iwa",
+        objectReferences: [200]
+      ),
+      IWAObjectRecord(
+        objectID: 200,
+        typeID: 2,
+        payloadSize: sheetPayload.count,
+        payloadData: sheetPayload,
+        sourceBlobPath: "Sheet.iwa",
+        objectReferences: [300]
+      ),
+      // Drawable object that is not a TableInfo archive.
+      IWAObjectRecord(
+        objectID: 300,
+        typeID: 9999,
+        payloadSize: 0,
+        sourceBlobPath: "Drawable.iwa"
+      ),
+    ]
+
+    let inventory = IWAInventory(records: records, unparsedBlobPaths: [])
+    let result = IWARealDocumentReader.read(from: inventory, documentVersion: nil)
+
+    XCTAssertEqual(result.sheets.count, 1)
+    XCTAssertEqual(result.sheets.first?.tables.count, 0)
+    XCTAssertFalse(
+      result.structuredDiagnostics.contains { $0.code == "resolver.table.resolveFailed" }
+    )
+  }
+
+  func testResolverMergesParentTraversalTablesWhenDrawableListIsPartial() throws {
+    var document = TN_DocumentArchive()
+    document.sheets = [reference(200)]
+
+    var sheet = TN_SheetArchive()
+    sheet.name = "Main"
+    // Only one table is listed directly in drawableInfos.
+    sheet.drawableInfos = [reference(300)]
+
+    var firstTableInfo = TST_TableInfoArchive()
+    var firstDrawable = TSD_DrawableArchive()
+    firstDrawable.parent = reference(200)
+    firstTableInfo.super = firstDrawable
+    firstTableInfo.tableModel = reference(400)
+
+    var firstTableModel = TST_TableModelArchive()
+    firstTableModel.tableID = "table-400"
+    firstTableModel.tableName = "Table A"
+    firstTableModel.numberOfRows = 0
+    firstTableModel.numberOfColumns = 0
+
+    var secondTableInfo = TST_TableInfoArchive()
+    var secondDrawable = TSD_DrawableArchive()
+    secondDrawable.parent = reference(200)
+    secondTableInfo.super = secondDrawable
+    secondTableInfo.tableModel = reference(401)
+
+    var secondTableModel = TST_TableModelArchive()
+    secondTableModel.tableID = "table-401"
+    secondTableModel.tableName = "Table B"
+    secondTableModel.numberOfRows = 0
+    secondTableModel.numberOfColumns = 0
+
+    let documentPayload = try document.serializedData()
+    let sheetPayload = try sheet.serializedData()
+    let firstTableInfoPayload = try firstTableInfo.serializedData()
+    let firstTableModelPayload = try firstTableModel.serializedData()
+    let secondTableInfoPayload = try secondTableInfo.serializedData()
+    let secondTableModelPayload = try secondTableModel.serializedData()
+
+    let records = [
+      IWAObjectRecord(
+        objectID: 100,
+        typeID: 1,
+        payloadSize: documentPayload.count,
+        payloadData: documentPayload,
+        sourceBlobPath: "Doc.iwa",
+        objectReferences: [200]
+      ),
+      IWAObjectRecord(
+        objectID: 200,
+        typeID: 2,
+        payloadSize: sheetPayload.count,
+        payloadData: sheetPayload,
+        sourceBlobPath: "Sheet.iwa",
+        objectReferences: [300]
+      ),
+      IWAObjectRecord(
+        objectID: 300,
+        typeID: 6000,
+        payloadSize: firstTableInfoPayload.count,
+        payloadData: firstTableInfoPayload,
+        sourceBlobPath: "TableA.iwa",
+        objectReferences: [200, 400]
+      ),
+      IWAObjectRecord(
+        objectID: 400,
+        typeID: 6001,
+        payloadSize: firstTableModelPayload.count,
+        payloadData: firstTableModelPayload,
+        sourceBlobPath: "TableAModel.iwa"
+      ),
+      IWAObjectRecord(
+        objectID: 301,
+        typeID: 6000,
+        payloadSize: secondTableInfoPayload.count,
+        payloadData: secondTableInfoPayload,
+        sourceBlobPath: "TableB.iwa",
+        objectReferences: [200, 401]
+      ),
+      IWAObjectRecord(
+        objectID: 401,
+        typeID: 6001,
+        payloadSize: secondTableModelPayload.count,
+        payloadData: secondTableModelPayload,
+        sourceBlobPath: "TableBModel.iwa"
+      ),
+    ]
+
+    let inventory = IWAInventory(records: records, unparsedBlobPaths: [])
+    let result = IWARealDocumentReader.read(from: inventory, documentVersion: nil)
+
+    XCTAssertEqual(result.sheets.count, 1)
+    XCTAssertEqual(result.sheets.first?.tables.count, 2)
+    XCTAssertEqual(
+      Set(result.sheets.first?.tables.map(\.name) ?? []),
+      Set(["Table A", "Table B"])
+    )
   }
 
   func testSplitRowStorageBuffersReturnsNilCellsWhenOffsetsMissing() {
@@ -330,7 +501,7 @@ final class RealReadPipelineUnitTests: XCTestCase {
 
     var function = TSCE_ASTNodeArrayArchive.Node()
     function.nodeType = .function
-    function.functionIndex = 1
+    function.functionIndex = 168
     function.functionNumArgs = 2
 
     var ast = TSCE_ASTNodeArrayArchive()
@@ -346,6 +517,146 @@ final class RealReadPipelineUnitTests: XCTestCase {
         hostColumn: 0
       ),
       "=SUM(1,2)"
+    )
+  }
+
+  func testRenderFormulaUsesUnknownFunctionNameFallback() {
+    var arg = TSCE_ASTNodeArrayArchive.Node()
+    arg.nodeType = .number
+    arg.numberValue = 2
+
+    var function = TSCE_ASTNodeArrayArchive.Node()
+    function.nodeType = .function
+    function.functionIndex = 999
+    function.functionNumArgs = 1
+    function.unknownFunctionName = "CUSTOMFUNC"
+
+    var ast = TSCE_ASTNodeArrayArchive()
+    ast.nodes = [arg, function]
+
+    var archive = TSCE_FormulaArchive()
+    archive.astNodeArray = ast
+
+    XCTAssertEqual(
+      IWARealDocumentReader.renderFormula(
+        archive: archive,
+        hostRow: 0,
+        hostColumn: 0
+      ),
+      "=CUSTOMFUNC(2)"
+    )
+  }
+
+  func testRenderFormulaUsesUnknownFunctionNumArgsForFunctionFallback() {
+    var firstArg = TSCE_ASTNodeArrayArchive.Node()
+    firstArg.nodeType = .number
+    firstArg.numberValue = 2
+
+    var secondArg = TSCE_ASTNodeArrayArchive.Node()
+    secondArg.nodeType = .number
+    secondArg.numberValue = 5
+
+    var function = TSCE_ASTNodeArrayArchive.Node()
+    function.nodeType = .function
+    function.functionIndex = 999
+    function.functionNumArgs = 0
+    function.unknownFunctionName = "CUSTOMFUNC"
+    function.unknownFunctionNumArgs = 2
+
+    var ast = TSCE_ASTNodeArrayArchive()
+    ast.nodes = [firstArg, secondArg, function]
+
+    var archive = TSCE_FormulaArchive()
+    archive.astNodeArray = ast
+
+    XCTAssertEqual(
+      IWARealDocumentReader.renderFormula(
+        archive: archive,
+        hostRow: 0,
+        hostColumn: 0
+      ),
+      "=CUSTOMFUNC(2,5)"
+    )
+  }
+
+  func testRenderFormulaFallsBackForUnsupportedLetNode() {
+    var number = TSCE_ASTNodeArrayArchive.Node()
+    number.nodeType = .number
+    number.numberValue = 1
+
+    var letBind = TSCE_ASTNodeArrayArchive.Node()
+    letBind.nodeType = .letBind
+
+    var ast = TSCE_ASTNodeArrayArchive()
+    ast.nodes = [number, letBind]
+
+    var archive = TSCE_FormulaArchive()
+    archive.astNodeArray = ast
+
+    XCTAssertEqual(
+      IWARealDocumentReader.renderFormula(
+        archive: archive,
+        hostRow: 0,
+        hostColumn: 0
+      ),
+      "=UNSUPPORTED_AST(LET_BIND)"
+    )
+  }
+
+  func testRenderFormulaIgnoresThunkBoundaryMarkersInFallbackSummary() {
+    var number = TSCE_ASTNodeArrayArchive.Node()
+    number.nodeType = .number
+    number.numberValue = 1
+
+    var beginThunk = TSCE_ASTNodeArrayArchive.Node()
+    beginThunk.nodeType = .beginThunk
+
+    var letBind = TSCE_ASTNodeArrayArchive.Node()
+    letBind.nodeType = .letBind
+
+    var endThunk = TSCE_ASTNodeArrayArchive.Node()
+    endThunk.nodeType = .endThunk
+
+    var ast = TSCE_ASTNodeArrayArchive()
+    ast.nodes = [number, beginThunk, letBind, endThunk]
+
+    var archive = TSCE_FormulaArchive()
+    archive.astNodeArray = ast
+
+    XCTAssertEqual(
+      IWARealDocumentReader.renderFormula(
+        archive: archive,
+        hostRow: 0,
+        hostColumn: 0
+      ),
+      "=UNSUPPORTED_AST(LET_BIND)"
+    )
+  }
+
+  func testRenderFormulaFallbackSummaryIsSortedAndDeterministic() {
+    var number = TSCE_ASTNodeArrayArchive.Node()
+    number.nodeType = .number
+    number.numberValue = 1
+
+    var lambda = TSCE_ASTNodeArrayArchive.Node()
+    lambda.nodeType = .lambda
+
+    var letBind = TSCE_ASTNodeArrayArchive.Node()
+    letBind.nodeType = .letBind
+
+    var ast = TSCE_ASTNodeArrayArchive()
+    ast.nodes = [number, lambda, letBind]
+
+    var archive = TSCE_FormulaArchive()
+    archive.astNodeArray = ast
+
+    XCTAssertEqual(
+      IWARealDocumentReader.renderFormula(
+        archive: archive,
+        hostRow: 0,
+        hostColumn: 0
+      ),
+      "=UNSUPPORTED_AST(LAMBDA,LET_BIND)"
     )
   }
 
@@ -375,5 +686,11 @@ final class RealReadPipelineUnitTests: XCTestCase {
   private func appendDouble(_ value: Double, to data: inout Data) {
     var bits = value.bitPattern.littleEndian
     data.append(Data(bytes: &bits, count: MemoryLayout<UInt64>.size))
+  }
+
+  private func reference(_ objectID: UInt64) -> TSP_Reference {
+    var reference = TSP_Reference()
+    reference.identifier = objectID
+    return reference
   }
 }

@@ -417,6 +417,7 @@ public enum IWARealDocumentReader {
     case rowStorageMapPatched = "decode.rowStorage.patched"
     case unsupportedCellTypeDropped = "decode.cell.unsupportedTypeDropped"
     case formulaDecodeFailed = "decode.formula.failed"
+    case formulaUnsupportedAstNodes = "decode.formula.unsupportedAstNodes"
   }
 
   public static func read(from inventory: IWAInventory, documentVersion: String?)
@@ -440,10 +441,14 @@ public enum IWARealDocumentReader {
     let inventory: IWAInventory
     private var diagnostics: [IWAReadDiagnostic]
     private let recordsByObjectID: [UInt64: [IWAObjectRecord]]
+    private var resolvedTableCache: [UInt64: IWAResolvedTable]
+    private var unresolvedTableObjectIDs: Set<UInt64>
 
     init(inventory: IWAInventory, diagnostics: [IWAReadDiagnostic]) {
       self.inventory = inventory
       self.diagnostics = diagnostics
+      self.resolvedTableCache = [:]
+      self.unresolvedTableObjectIDs = []
 
       var grouped: [UInt64: [IWAObjectRecord]] = [:]
       for record in inventory.records {
@@ -522,9 +527,8 @@ public enum IWARealDocumentReader {
         let drawableRefs = decodedSheet?.drawableInfos ?? []
 
         var tables = resolveTables(fromDrawableRefs: drawableRefs)
-        if tables.isEmpty {
-          tables = resolveTablesByParent(sheetObjectID: sheetObjectID)
-        }
+        let parentTables = resolveTablesByParent(sheetObjectID: sheetObjectID)
+        tables = mergeTables(primary: tables, additional: parentTables)
 
         sheets.append(
           IWAResolvedSheet(
@@ -601,6 +605,14 @@ public enum IWARealDocumentReader {
 
       for ref in refs {
         let tableInfoObjectID = ref.identifier
+        guard tableInfoObjectID > 0 else {
+          continue
+        }
+        // Sheets can reference non-table drawables (charts, shapes, etc.).
+        // Only attempt table resolution for objects that actually expose TableInfo records.
+        guard hasRecord(objectID: tableInfoObjectID, typeID: TypeID.tableInfoArchive) else {
+          continue
+        }
         guard let table = resolveTable(tableInfoObjectID: tableInfoObjectID) else {
           addDiagnostic(
             .tableResolveFailed,
@@ -619,6 +631,27 @@ public enum IWARealDocumentReader {
       }
 
       return tables
+    }
+
+    private func hasRecord(objectID: UInt64, typeID: UInt32) -> Bool {
+      recordsByObjectID[objectID]?.contains(where: { $0.typeID == typeID }) == true
+    }
+
+    private func mergeTables(
+      primary: [IWAResolvedTable],
+      additional: [IWAResolvedTable]
+    ) -> [IWAResolvedTable] {
+      guard !additional.isEmpty else {
+        return primary
+      }
+
+      var merged = primary
+      var seenIDs = Set(primary.map(\.id))
+      for table in additional where !seenIDs.contains(table.id) {
+        merged.append(table)
+        seenIDs.insert(table.id)
+      }
+      return merged
     }
 
     private mutating func resolveTablesByParent(sheetObjectID: UInt64) -> [IWAResolvedTable] {
@@ -667,6 +700,12 @@ public enum IWARealDocumentReader {
       guard tableInfoObjectID > 0 else {
         return nil
       }
+      if let cached = resolvedTableCache[tableInfoObjectID] {
+        return cached
+      }
+      if unresolvedTableObjectIDs.contains(tableInfoObjectID) {
+        return nil
+      }
 
       guard
         let tableInfo: TST_TableInfoArchive = decode(
@@ -675,15 +714,18 @@ public enum IWARealDocumentReader {
           as: TST_TableInfoArchive.self
         )
       else {
+        unresolvedTableObjectIDs.insert(tableInfoObjectID)
         return nil
       }
 
       guard tableInfo.hasTableModel else {
+        unresolvedTableObjectIDs.insert(tableInfoObjectID)
         return nil
       }
 
       let tableModelObjectID = tableInfo.tableModel.identifier
       guard tableModelObjectID > 0 else {
+        unresolvedTableObjectIDs.insert(tableInfoObjectID)
         return nil
       }
 
@@ -694,6 +736,7 @@ public enum IWARealDocumentReader {
           as: TST_TableModelArchive.self
         )
       else {
+        unresolvedTableObjectIDs.insert(tableInfoObjectID)
         return nil
       }
 
@@ -759,10 +802,33 @@ public enum IWARealDocumentReader {
           )
         }
       }
+      if !decodeResult.formulaUnsupportedNodeCounts.isEmpty {
+        let unsupportedSummary = decodeResult.formulaUnsupportedNodeCounts
+          .keys
+          .sorted()
+          .map { key in
+            "\(key)=\(decodeResult.formulaUnsupportedNodeCounts[key] ?? 0)"
+          }
+          .joined(separator: ",")
+        addDiagnostic(
+          .formulaUnsupportedAstNodes,
+          severity: .warning,
+          message: "Encountered unsupported formula AST nodes; using best-effort fallback rendering.",
+          objectPath: "table/\(tableID)",
+          suggestion: "Extend TSCE AST decode for full formula fidelity on advanced functions.",
+          context: [
+            "tableID": tableID,
+            "tableName": tableName,
+            "affectedFormulaCells": String(decodeResult.formulasWithUnsupportedNodes),
+            "fallbackFormulaCells": String(decodeResult.formulasUsingFallback),
+            "unsupportedNodeTypes": unsupportedSummary,
+          ]
+        )
+      }
       let cells = decodeResult.cells
       let merges = decodeMergeRanges(dataStore.mergeRegionMap)
 
-      return IWAResolvedTable(
+      let resolved = IWAResolvedTable(
         id: tableID,
         name: tableName,
         rowCount: rowCount,
@@ -770,6 +836,8 @@ public enum IWARealDocumentReader {
         merges: merges,
         cells: cells
       )
+      resolvedTableCache[tableInfoObjectID] = resolved
+      return resolved
     }
 
     private func decodeStringTable(_ reference: TSP_Reference) -> [UInt32: String] {
@@ -821,6 +889,8 @@ public enum IWARealDocumentReader {
       let rawFormula: String?
       let tokens: [String]
       let astSummary: String?
+      let unsupportedNodeCounts: [String: Int]
+      let usedUnsupportedFallback: Bool
     }
 
     private func decodeFormulaTable(_ reference: TSP_Reference) -> [Int32: TSCE_FormulaArchive] {
@@ -987,19 +1057,40 @@ public enum IWARealDocumentReader {
     ) -> DecodedFormula {
       let nodes = archive.astNodeArray.nodes
       guard !nodes.isEmpty else {
-        return DecodedFormula(rawFormula: nil, tokens: [], astSummary: "Decoded TSCE AST (0 nodes)")
+        return DecodedFormula(
+          rawFormula: nil,
+          tokens: [],
+          astSummary: "Decoded TSCE AST (0 nodes)",
+          unsupportedNodeCounts: [:],
+          usedUnsupportedFallback: false
+        )
       }
 
       let nodeNames = nodes.map { IWARealDocumentReader.nodeTypeName($0.nodeType) }
       let astSummary = "Decoded TSCE AST (\(nodes.count) nodes): \(nodeNames.joined(separator: " -> "))"
-      let raw = IWARealDocumentReader.renderFormula(
+      let render = IWARealDocumentReader.renderFormulaDetailed(
         nodes: nodes,
         hostRow: hostRow,
         hostColumn: hostColumn
       )
+      let raw: String? = {
+        guard let rendered = render.rendered, !rendered.isEmpty else {
+          return nil
+        }
+        if rendered.hasPrefix("=") {
+          return rendered
+        }
+        return "=" + rendered
+      }()
       let tokens = raw.map(IWARealDocumentReader.tokenizeFormula) ?? []
 
-      return DecodedFormula(rawFormula: raw, tokens: tokens, astSummary: astSummary)
+      return DecodedFormula(
+        rawFormula: raw,
+        tokens: tokens,
+        astSummary: astSummary,
+        unsupportedNodeCounts: render.unsupportedNodeCounts,
+        usedUnsupportedFallback: render.usedUnsupportedFallback
+      )
     }
 
     private mutating func decodeRowStorageMap(
@@ -1496,6 +1587,9 @@ public enum IWARealDocumentReader {
     private struct DecodedCellsResult {
       let cells: [IWAResolvedCell]
       let droppedCellTypeCounts: [UInt8: Int]
+      let formulaUnsupportedNodeCounts: [String: Int]
+      let formulasWithUnsupportedNodes: Int
+      let formulasUsingFallback: Int
     }
 
     private func decodeCells(
@@ -1510,12 +1604,21 @@ public enum IWARealDocumentReader {
       styleDefaults: TableStyleDefaults
     ) -> DecodedCellsResult {
       guard rowCount > 0, columnCount > 0 else {
-        return DecodedCellsResult(cells: [], droppedCellTypeCounts: [:])
+        return DecodedCellsResult(
+          cells: [],
+          droppedCellTypeCounts: [:],
+          formulaUnsupportedNodeCounts: [:],
+          formulasWithUnsupportedNodes: 0,
+          formulasUsingFallback: 0
+        )
       }
 
       var cells: [IWAResolvedCell] = []
       cells.reserveCapacity(min(rowCount * columnCount, 1024))
       var droppedCellTypeCounts: [UInt8: Int] = [:]
+      var formulaUnsupportedNodeCounts: [String: Int] = [:]
+      var formulasWithUnsupportedNodes = 0
+      var formulasUsingFallback = 0
       var cellStyleCache: [UInt64: DecodedCellStyle?] = [:]
       var textStyleCache: [UInt64: DecodedTextStyle?] = [:]
       var richTextCache: [Int32: IWAResolvedRichText?] = [:]
@@ -1562,6 +1665,15 @@ public enum IWARealDocumentReader {
             formulaRaw = formula.rawFormula
             formulaTokens = formula.tokens
             formulaASTSummary = formula.astSummary
+            if !formula.unsupportedNodeCounts.isEmpty {
+              formulasWithUnsupportedNodes += 1
+              for (nodeName, count) in formula.unsupportedNodeCounts {
+                formulaUnsupportedNodeCounts[nodeName, default: 0] += count
+              }
+            }
+            if formula.usedUnsupportedFallback {
+              formulasUsingFallback += 1
+            }
           }
 
           let richText: IWAResolvedRichText? = {
@@ -1658,7 +1770,13 @@ public enum IWARealDocumentReader {
         }
       }
 
-      return DecodedCellsResult(cells: cells, droppedCellTypeCounts: droppedCellTypeCounts)
+      return DecodedCellsResult(
+        cells: cells,
+        droppedCellTypeCounts: droppedCellTypeCounts,
+        formulaUnsupportedNodeCounts: formulaUnsupportedNodeCounts,
+        formulasWithUnsupportedNodes: formulasWithUnsupportedNodes,
+        formulasUsingFallback: formulasUsingFallback
+      )
     }
 
     private func decodeMergeRanges(_ reference: TSP_Reference) -> [IWAResolvedMergeRange] {
@@ -2108,10 +2226,33 @@ public enum IWARealDocumentReader {
       }
     }()
 
+    let effectiveKind: IWAResolvedCellKind = {
+      if let formulaErrorID, formulaErrorID >= 0 {
+        return .formulaError
+      }
+      if let formulaID, formulaID >= 0 {
+        return .formula
+      }
+      return decoded.kind
+    }()
+
+    let effectiveValue: IWAResolvedCellValue? = {
+      if effectiveKind == .formulaError {
+        if case .error = decoded.value {
+          return decoded.value
+        }
+        if let textValue, !textValue.isEmpty {
+          return .error(textValue)
+        }
+        return .error("#ERROR!")
+      }
+      return decoded.value
+    }()
+
     return DecodedCellStorage(
       cellType: cellType,
-      kind: decoded.kind,
-      value: decoded.value,
+      kind: effectiveKind,
+      value: effectiveValue,
       stringID: stringID,
       richTextID: richTextID,
       cellStyleID: cellStyleID,
@@ -2137,11 +2278,12 @@ public enum IWARealDocumentReader {
     hostRow: Int,
     hostColumn: Int
   ) -> String? {
-    let rendered = renderFormula(
+    let render = renderFormulaDetailed(
       nodes: archive.astNodeArray.nodes,
       hostRow: hostRow,
       hostColumn: hostColumn
     )
+    let rendered = render.rendered
 
     guard let rendered, !rendered.isEmpty else {
       return nil
@@ -2157,12 +2299,36 @@ public enum IWARealDocumentReader {
     hostRow: Int,
     hostColumn: Int
   ) -> String? {
+    renderFormulaDetailed(
+      nodes: nodes,
+      hostRow: hostRow,
+      hostColumn: hostColumn
+    ).rendered
+  }
+
+  private struct FormulaRenderResult {
+    let rendered: String?
+    let unsupportedNodeCounts: [String: Int]
+    let usedUnsupportedFallback: Bool
+  }
+
+  private static func renderFormulaDetailed(
+    nodes: [TSCE_ASTNodeArrayArchive.Node],
+    hostRow: Int,
+    hostColumn: Int
+  ) -> FormulaRenderResult {
     guard !nodes.isEmpty else {
-      return nil
+      return FormulaRenderResult(
+        rendered: nil,
+        unsupportedNodeCounts: [:],
+        usedUnsupportedFallback: false
+      )
     }
 
     var stack: [String] = []
     stack.reserveCapacity(nodes.count)
+    var unsupportedNodeCounts: [String: Int] = [:]
+    var usedUnsupportedFallback = false
 
     func pop() -> String {
       stack.popLast() ?? ""
@@ -2176,6 +2342,11 @@ public enum IWARealDocumentReader {
 
     func push(_ value: String) {
       stack.append(value)
+    }
+
+    func markUnsupported(_ nodeType: TSCE_ASTNodeArrayArchive.NodeType) {
+      let name = nodeTypeName(nodeType)
+      unsupportedNodeCounts[name, default: 0] += 1
     }
 
     for node in nodes {
@@ -2223,15 +2394,31 @@ public enum IWARealDocumentReader {
       case .percent:
         push("\(pop())%")
       case .function:
-        let count = Int(node.functionNumArgs)
+        let resolvedName = Self.functionName(for: node.functionIndex)
+        let isUnknownFunctionIndex = resolvedName.hasPrefix("FUNC_")
+        let count: Int = {
+          let directCount = Int(node.functionNumArgs)
+          if directCount > 0 {
+            return directCount
+          }
+          if isUnknownFunctionIndex {
+            return Int(node.unknownFunctionNumArgs)
+          }
+          return directCount
+        }()
         var args: [String] = []
         args.reserveCapacity(max(count, 0))
         for _ in 0..<count {
           args.append(pop())
         }
         let orderedArgs = args.reversed().joined(separator: ",")
-        let functionName = functionName(for: node.functionIndex)
-        push("\(functionName)(\(orderedArgs))")
+        let renderedFunctionName: String = {
+          if isUnknownFunctionIndex, !node.unknownFunctionName.isEmpty {
+            return node.unknownFunctionName
+          }
+          return resolvedName
+        }()
+        push("\(renderedFunctionName)(\(orderedArgs))")
       case .number:
         push(formattedNumber(node.numberValue, decimalLow: node.decimalLow, decimalHigh: node.decimalHigh))
       case .bool:
@@ -2312,18 +2499,60 @@ public enum IWARealDocumentReader {
           push(node.whitespace + top)
         }
       case .thunk:
-        let thunk = renderFormula(nodes: node.thunkNodeArray.nodes, hostRow: hostRow, hostColumn: hostColumn)
-        if let thunk, !thunk.isEmpty {
-          push(thunk)
+        let thunk = renderFormulaDetailed(
+          nodes: node.thunkNodeArray.nodes,
+          hostRow: hostRow,
+          hostColumn: hostColumn
+        )
+        for (nodeName, count) in thunk.unsupportedNodeCounts {
+          unsupportedNodeCounts[nodeName, default: 0] += count
         }
-      case .beginThunk, .endThunk, .uidRef, .letBind, .var, .endScope, .lambda, .beginLambdaThunk,
+        if thunk.usedUnsupportedFallback {
+          usedUnsupportedFallback = true
+        }
+        if let thunkRendered = thunk.rendered, !thunkRendered.isEmpty {
+          push(thunkRendered)
+        }
+      case .beginThunk, .endThunk:
+        continue
+      case .uidRef, .letBind, .var, .endScope, .lambda, .beginLambdaThunk,
         .endLambdaThunk, .linkedCellRef, .linkedColumnRef, .linkedRowRef, .categoryRef, .viewTractRef,
         .intersection, .spillRange, .unknown:
+        markUnsupported(node.nodeType)
         continue
       }
     }
 
-    return stack.last
+    let rendered = stack.last
+    let hasFallbackCriticalUnsupportedNodes = unsupportedNodeCounts.keys.contains {
+      isFallbackCriticalUnsupportedNodeName($0)
+    }
+    if hasFallbackCriticalUnsupportedNodes {
+      usedUnsupportedFallback = true
+      let summary = unsupportedNodeCounts.keys.sorted().joined(separator: ",")
+      return FormulaRenderResult(
+        rendered: "UNSUPPORTED_AST(\(summary))",
+        unsupportedNodeCounts: unsupportedNodeCounts,
+        usedUnsupportedFallback: usedUnsupportedFallback
+      )
+    }
+
+    return FormulaRenderResult(
+      rendered: rendered,
+      unsupportedNodeCounts: unsupportedNodeCounts,
+      usedUnsupportedFallback: usedUnsupportedFallback
+    )
+  }
+
+  private static func isFallbackCriticalUnsupportedNodeName(_ name: String) -> Bool {
+    switch name {
+    case "UID_REF", "LET_BIND", "VAR", "END_SCOPE", "LAMBDA", "BEGIN_LAMBDA_THUNK",
+      "END_LAMBDA_THUNK", "LINKED_CELL_REF", "LINKED_COLUMN_REF", "LINKED_ROW_REF",
+      "CATEGORY_REF", "VIEW_TRACT_REF", "INTERSECTION", "SPILL_RANGE", "UNKNOWN":
+      return true
+    default:
+      return false
+    }
   }
 
   static func nodeTypeName(_ type: TSCE_ASTNodeArrayArchive.NodeType) -> String {
@@ -2642,43 +2871,353 @@ public enum IWARealDocumentReader {
     return formatter.string(from: NSNumber(value: value)) ?? String(value)
   }
 
-  // Small curated subset for common analytical functions.
+  // Extended Numbers formula function map for readable rawFormula rendering.
   private static let knownFunctionNames: [UInt32: String] = [
-    1: "SUM",
-    2: "AVERAGE",
-    3: "COUNT",
-    4: "COUNTA",
-    5: "MIN",
-    6: "MAX",
-    7: "IF",
-    8: "AND",
-    9: "OR",
-    10: "NOT",
-    11: "ROUND",
-    12: "ROUNDUP",
-    13: "ROUNDDOWN",
-    14: "ABS",
-    15: "INT",
-    16: "MOD",
-    17: "POWER",
-    18: "SQRT",
-    19: "LOG",
-    20: "EXP",
-    21: "TODAY",
-    22: "NOW",
-    23: "DATE",
-    24: "TIME",
-    25: "YEAR",
-    26: "MONTH",
-    27: "DAY",
-    28: "HOUR",
-    29: "MINUTE",
-    30: "SECOND",
-    31: "VLOOKUP",
-    32: "HLOOKUP",
-    33: "INDEX",
-    34: "MATCH",
-    35: "XLOOKUP",
+    1: "ABS",
+    2: "ACCRINT",
+    3: "ACCRINTM",
+    4: "ACOS",
+    5: "ACOSH",
+    6: "ADDRESS",
+    7: "AND",
+    8: "AREAS",
+    9: "ASIN",
+    10: "ASINH",
+    11: "ATAN",
+    12: "ATAN2",
+    13: "ATANH",
+    14: "AVEDEV",
+    15: "AVERAGE",
+    16: "AVERAGEA",
+    17: "CEILING",
+    18: "CHAR",
+    19: "CHOOSE",
+    20: "CLEAN",
+    21: "CODE",
+    22: "COLUMN",
+    23: "COLUMNS",
+    24: "COMBIN",
+    25: "CONCATENATE",
+    26: "CONFIDENCE",
+    27: "CORREL",
+    28: "COS",
+    29: "COSH",
+    30: "COUNT",
+    31: "COUNTA",
+    32: "COUNTBLANK",
+    33: "COUNTIF",
+    34: "COUPDAYBS",
+    35: "COUPDAYS",
+    36: "COUPDAYSNC",
+    37: "COUPNUM",
+    38: "COVAR",
+    39: "DATE",
+    40: "DATEDIF",
+    41: "DAY",
+    42: "DB",
+    43: "DDB",
+    44: "DEGREES",
+    45: "DISC",
+    46: "DOLLAR",
+    47: "EDATE",
+    48: "EVEN",
+    49: "EXACT",
+    50: "EXP",
+    51: "FACT",
+    52: "FALSE",
+    53: "FIND",
+    54: "FIXED",
+    55: "FLOOR",
+    56: "FORECAST",
+    57: "FV",
+    58: "GCD",
+    59: "HLOOKUP",
+    60: "HOUR",
+    61: "HYPERLINK",
+    62: "IF",
+    63: "INDEX",
+    64: "INDIRECT",
+    65: "INT",
+    66: "INTERCEPT",
+    67: "IPMT",
+    68: "IRR",
+    69: "ISBLANK",
+    70: "ISERROR",
+    71: "ISEVEN",
+    72: "ISODD",
+    73: "ISPMT",
+    74: "LARGE",
+    75: "LCM",
+    76: "LEFT",
+    77: "LEN",
+    78: "LN",
+    79: "LOG",
+    80: "LOG10",
+    81: "LOOKUP",
+    82: "LOWER",
+    83: "MATCH",
+    84: "MAX",
+    85: "MAXA",
+    86: "MEDIAN",
+    87: "MID",
+    88: "MIN",
+    89: "MINA",
+    90: "MINUTE",
+    91: "MIRR",
+    92: "MOD",
+    93: "MODE",
+    94: "MONTH",
+    95: "MROUND",
+    96: "NOT",
+    97: "NOW",
+    98: "NPER",
+    99: "NPV",
+    100: "ODD",
+    101: "OFFSET",
+    102: "OR",
+    103: "PERCENTILE",
+    104: "PI",
+    105: "PMT",
+    106: "POISSON",
+    107: "POWER",
+    108: "PPMT",
+    109: "PRICE",
+    110: "PRICEDISC",
+    111: "PRICEMAT",
+    112: "PROB",
+    113: "PRODUCT",
+    114: "PROPER",
+    115: "PV",
+    116: "QUOTIENT",
+    117: "RADIANS",
+    118: "RAND",
+    119: "RANDBETWEEN",
+    120: "RANK",
+    121: "RATE",
+    122: "REPLACE",
+    123: "REPT",
+    124: "RIGHT",
+    125: "ROMAN",
+    126: "ROUND",
+    127: "ROUNDDOWN",
+    128: "ROUNDUP",
+    129: "ROW",
+    130: "ROWS",
+    131: "SEARCH",
+    132: "SECOND",
+    133: "SIGN",
+    134: "SIN",
+    135: "SINH",
+    136: "SLN",
+    137: "SLOPE",
+    138: "SMALL",
+    139: "SQRT",
+    140: "STDEV",
+    141: "STDEVA",
+    142: "STDEVP",
+    143: "STDEVPA",
+    144: "SUBSTITUTE",
+    145: "SUMIF",
+    146: "SUMPRODUCT",
+    147: "SUMSQ",
+    148: "SYD",
+    149: "T",
+    150: "TAN",
+    151: "TANH",
+    152: "TIME",
+    153: "TIMEVALUE",
+    154: "TODAY",
+    155: "TRIM",
+    156: "TRUE",
+    157: "TRUNC",
+    158: "UPPER",
+    159: "VALUE",
+    160: "VAR",
+    161: "VARA",
+    162: "VARP",
+    163: "VARPA",
+    164: "VDB",
+    165: "VLOOKUP",
+    166: "WEEKDAY",
+    167: "YEAR",
+    168: "SUM",
+    185: "EFFECT",
+    186: "NOMINAL",
+    187: "NORMDIST",
+    188: "NORMSDIST",
+    189: "NORMINV",
+    190: "NORMSINV",
+    191: "YIELD",
+    192: "YIELDDISC",
+    193: "YIELDMAT",
+    194: "BONDDURATION",
+    195: "BONDMDURATION",
+    196: "ERF",
+    197: "ERFC",
+    198: "STANDARDIZE",
+    199: "INTRATE",
+    200: "RECEIVED",
+    201: "CUMIPMT",
+    202: "CUMPRINC",
+    203: "EOMONTH",
+    204: "WORKDAY",
+    205: "MONTHNAME",
+    206: "WEEKNUM",
+    207: "DUR2HOURS",
+    208: "DUR2MINUTES",
+    209: "DUR2SECONDS",
+    210: "DUR2DAYS",
+    211: "DUR2WEEKS",
+    212: "DURATION",
+    213: "EXPONDIST",
+    214: "YEARFRAC",
+    215: "ZTEST",
+    216: "SUMX2MY2",
+    217: "SUMX2PY2",
+    218: "SUMXMY2",
+    219: "SQRTPI",
+    220: "TRANSPOSE",
+    221: "DEVSQ",
+    222: "FREQUENCY",
+    223: "DELTA",
+    224: "FACTDOUBLE",
+    225: "GESTEP",
+    226: "PERCENTRANK",
+    227: "GAMMALN",
+    228: "DATEVALUE",
+    229: "GAMMADIST",
+    230: "GAMMAINV",
+    231: "SUMIFS",
+    232: "AVERAGEIFS",
+    233: "COUNTIFS",
+    234: "AVERAGEIF",
+    235: "IFERROR",
+    236: "DAYNAME",
+    237: "BESSELJ",
+    238: "BESSELY",
+    239: "LOGNORMDIST",
+    240: "LOGINV",
+    241: "TDIST",
+    242: "BINOMDIST",
+    243: "NEGBINOMDIST",
+    244: "FDIST",
+    245: "PERMUT",
+    246: "CHIDIST",
+    247: "CHITEST",
+    248: "TTEST",
+    249: "QUARTILE",
+    250: "MULTINOMIAL",
+    251: "CRITBINOM",
+    252: "BASETONUM",
+    253: "NUMTOBASE",
+    254: "TINV",
+    255: "CONVERT",
+    256: "CHIINV",
+    257: "FINV",
+    258: "BETADIST",
+    259: "BETAINV",
+    260: "NETWORKDAYS",
+    261: "DAYS360",
+    262: "HARMEAN",
+    263: "GEOMEAN",
+    264: "DEC2HEX",
+    265: "DEC2BIN",
+    266: "DEC2OCT",
+    267: "BIN2HEX",
+    268: "BIN2DEC",
+    269: "BIN2OCT",
+    270: "OCT2BIN",
+    271: "OCT2DEC",
+    272: "OCT2HEX",
+    273: "HEX2BIN",
+    274: "HEX2DEC",
+    275: "HEX2OCT",
+    276: "LINEST",
+    277: "DUR2MILLISECONDS",
+    278: "STRIPDURATION",
+    280: "INTERSECT.RANGES",
+    285: "UNION.RANGES",
+    286: "SERIESSUM",
+    287: "POLYNOMIAL",
+    288: "WEIBULL",
+    289: "CONFIDENCE.T",
+    290: "COVARIANCE.S",
+    291: "MODE.MULT",
+    292: "PERCENTILE.EXC",
+    293: "PERCENTRANK.EXC",
+    294: "QUARTILE.EXC",
+    295: "RANK.AVG",
+    296: "FIND.CASEINSENSITIVE",
+    297: "PLAINTEXT",
+    298: "STOCK",
+    299: "STOCKH",
+    300: "CURRENCY",
+    301: "CURRENCYH",
+    302: "CURRENCYCONVERT",
+    303: "CURRENCYCODE",
+    304: "ISNUMBER",
+    305: "ISTEXT",
+    306: "ISDATE",
+    309: "MAXIFS",
+    310: "MINIFS",
+    311: "XIRR",
+    312: "XNPV",
+    313: "IFS",
+    314: "XLOOKUP",
+    315: "XMATCH",
+    316: "SUBTOTAL",
+    317: "COUNTMATCHES",
+    318: "TEXTBEFORE",
+    319: "TEXTBETWEEN",
+    320: "TEXTAFTER",
+    321: "REGEX",
+    322: "REFERENCE.NAME",
+    323: "FORMULATEXT",
+    324: "REGEX.EXTRACT",
+    325: "GETPIVOTDATA",
+    328: "TEXTJOIN",
+    329: "CONCAT",
+    330: "BITAND",
+    331: "BITOR",
+    332: "BITXOR",
+    333: "BITLSHIFT",
+    334: "BITRSHIFT",
+    335: "ISOWEEKNUM",
+    336: "SWITCH",
+    338: "SEQUENCE",
+    341: "ARRAYTOTEXT",
+    342: "FILTER",
+    343: "SORT",
+    344: "SORTBY",
+    345: "UNIQUE",
+    346: "RANDARRAY",
+    347: "TEXTSPLIT",
+    348: "TOCOL",
+    349: "TOROW",
+    350: "TAKE",
+    351: "DROP",
+    352: "EXPAND",
+    353: "CHOOSEROWS",
+    354: "CHOOSECOLS",
+    355: "HSTACK",
+    356: "VSTACK",
+    357: "WRAPCOLS",
+    358: "WRAPROWS",
+    359: "MDETERM",
+    360: "MINVERSE",
+    361: "MMULT",
+    362: "MUNIT",
+    363: "LET",
+    364: "LAMBDA",
+    365: "MAKEARRAY",
+    366: "MAP",
+    367: "REDUCE",
+    368: "SCAN",
+    369: "BYROW",
+    370: "BYCOL",
+    371: "ISOMITTED",
+    372: "LAMBDA.APPLY",
+    373: "ISNUMBERORDATE",
   ]
 
   static func detectedCellType(buffer: Data) -> UInt8? {

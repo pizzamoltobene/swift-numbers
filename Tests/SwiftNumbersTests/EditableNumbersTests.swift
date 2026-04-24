@@ -3,6 +3,7 @@ import XCTest
 
 @testable import SwiftNumbersContainer
 @testable import SwiftNumbersCore
+@testable import SwiftNumbersIWA
 @testable import SwiftNumbersProto
 
 final class CellReferenceTests: XCTestCase {
@@ -581,5 +582,100 @@ final class EditableNumbersDocumentTests: XCTestCase {
     let reopened = try EditableNumbersDocument.open(at: output)
     let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
     XCTAssertEqual(reopenedTable.cell(at: CellAddress(row: 0, column: 0)), .string("V2"))
+  }
+}
+
+final class IWASetCellWriterTests: XCTestCase {
+  func testCandidateTableInfoObjectIDsIncludesParentOnlyTables() throws {
+    var tableInfoA = TST_TableInfoArchive()
+    var drawableA = TSD_DrawableArchive()
+    drawableA.parent = reference(200)
+    tableInfoA.super = drawableA
+
+    var tableInfoB = TST_TableInfoArchive()
+    var drawableB = TSD_DrawableArchive()
+    drawableB.parent = reference(200)
+    tableInfoB.super = drawableB
+
+    var tableInfoOtherSheet = TST_TableInfoArchive()
+    var drawableOther = TSD_DrawableArchive()
+    drawableOther.parent = reference(201)
+    tableInfoOtherSheet.super = drawableOther
+
+    let payloadA = try tableInfoA.serializedData()
+    let payloadB = try tableInfoB.serializedData()
+    let payloadOther = try tableInfoOtherSheet.serializedData()
+
+    let recordsByObjectID: [UInt64: [IWAObjectRecord]] = [
+      300: [
+        IWAObjectRecord(
+          objectID: 300,
+          typeID: 6000,
+          payloadSize: payloadA.count,
+          payloadData: payloadA,
+          sourceBlobPath: "A.iwa"
+        )
+      ],
+      301: [
+        IWAObjectRecord(
+          objectID: 301,
+          typeID: 6000,
+          payloadSize: payloadB.count,
+          payloadData: payloadB,
+          sourceBlobPath: "B.iwa"
+        )
+      ],
+      302: [
+        IWAObjectRecord(
+          objectID: 302,
+          typeID: 6000,
+          payloadSize: payloadOther.count,
+          payloadData: payloadOther,
+          sourceBlobPath: "Other.iwa"
+        )
+      ],
+    ]
+
+    let ids = IWASetCellWriter.candidateTableInfoObjectIDs(
+      forSheetObjectID: 200,
+      drawableRefs: [reference(300)],
+      recordsByObjectID: recordsByObjectID
+    )
+
+    XCTAssertEqual(ids, [300, 301])
+  }
+
+  func testCandidateTableInfoObjectIDsDeduplicatesDrawableAndParentMatches() throws {
+    var tableInfo = TST_TableInfoArchive()
+    var drawable = TSD_DrawableArchive()
+    drawable.parent = reference(500)
+    tableInfo.super = drawable
+    let payload = try tableInfo.serializedData()
+
+    let recordsByObjectID: [UInt64: [IWAObjectRecord]] = [
+      700: [
+        IWAObjectRecord(
+          objectID: 700,
+          typeID: 6000,
+          payloadSize: payload.count,
+          payloadData: payload,
+          sourceBlobPath: "Table.iwa"
+        )
+      ]
+    ]
+
+    let ids = IWASetCellWriter.candidateTableInfoObjectIDs(
+      forSheetObjectID: 500,
+      drawableRefs: [reference(700), reference(700)],
+      recordsByObjectID: recordsByObjectID
+    )
+
+    XCTAssertEqual(ids, [700])
+  }
+
+  private func reference(_ objectID: UInt64) -> TSP_Reference {
+    var reference = TSP_Reference()
+    reference.identifier = objectID
+    return reference
   }
 }
