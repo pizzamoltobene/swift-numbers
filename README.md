@@ -15,7 +15,7 @@ It is also an open experiment in automated library development with a recurring 
 
 ## Autonomous Release Experiment
 
-This project runs an automated development loop with a one-minute watchdog cadence and continuous queue execution.
+This project runs an automated development loop with a one-hour watchdog cadence and continuous queue execution.
 Each cycle is intended to:
 
 - pick the next roadmap task
