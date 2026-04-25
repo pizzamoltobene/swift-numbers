@@ -81,7 +81,7 @@ Long-lived improvement policy is defined in [Autopilot Policy](autopilot-policy.
   - Definition of done: tests cover combinations of `setValue`, `insertRow`, `appendColumn`, and `saveInPlace`.
   - Validation: targeted tests pass and `swift test` remains green.
 
-- [IN_PROGRESS] `SN-R11` Add regression test for package vs single-file archive consistency on read APIs. (started 2026-04-25)
+- [DONE] `SN-R11` Add regression test for package vs single-file archive consistency on read APIs. (2026-04-25)
   - Definition of done: same logical fixture is exercised in both container forms with equivalent read results.
   - Validation: new consistency test plus full `swift test`.
 
