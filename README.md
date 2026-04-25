@@ -97,7 +97,4 @@ For the exact matrix, use [Capabilities](docs/capabilities.md).
 
 ## License
 
-Dual-license model:
-
-- Open source: `AGPL-3.0` ([LICENSE-AGPL-3.0](LICENSE-AGPL-3.0))
-- Commercial: [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md)
+`AGPL-3.0` ([LICENSE-AGPL-3.0](LICENSE-AGPL-3.0))
