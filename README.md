@@ -3,14 +3,35 @@
 ![SwiftNumbers Logo](docs/assets/swiftnumbers-logo.png)
 
 `SwiftNumbers` is a native Swift library and CLI for reading and editing Apple `.numbers` documents.
+It is also an open experiment in automated library development with a recurring delivery loop.
 
 ## Why SwiftNumbers
 
 - Swift-native stack (`SwiftPM`, macOS 13+)
 - Read real `.numbers` files (package + single-file archive)
 - Edit tabular data and save valid `.numbers` output
-- CLI for inspection and automation (`dump`, `list-sheets`)
+- CLI for inspection and automation (`list-sheets`, `list-tables`, `read-cell`, `read-range`, `dump`)
 - Structured diagnostics for safer debugging
+
+## Autonomous Release Experiment
+
+This project runs an automated development loop with a one-minute watchdog cadence and continuous queue execution.
+Each cycle is intended to:
+
+- pick the next roadmap task
+- implement one small reviewable change
+- run validation (`swift build`, `swift test`)
+- update docs/changelog when behavior changes
+- publish a release when all gates pass
+
+The goal is transparent, high-frequency, high-quality iteration with readable release notes and docs.
+
+Primary long-horizon areas:
+
+- read compatibility and diagnostics
+- write safety and roundtrip correctness
+- formula support (read + write)
+- pivot-table support (safe read/write behavior)
 
 ## Install (SwiftPM)
 
@@ -28,7 +49,18 @@
 swift build
 swift test
 swift run swiftnumbers list-sheets Tests/Fixtures/multi-sheet.numbers
-swift run swiftnumbers dump Tests/Fixtures/simple-table.numbers --format json
+swift run swiftnumbers list-tables Tests/Fixtures/multi-sheet.numbers --format json
+swift run swiftnumbers list-formulas Tests/Fixtures/simple-table.numbers --format json
+swift run swiftnumbers read-column Tests/Fixtures/simple-table.numbers 0 --sheet "Sheet 1" --table "Table 1" --from-row 1 --format json
+swift run swiftnumbers read-column Tests/Fixtures/simple-table.numbers --header "Name" --sheet "Sheet 1" --table "Table 1" --format json
+swift run swiftnumbers read-column Tests/Fixtures/simple-table.numbers --header "Name" --sheet "Sheet 1" --table "Table 1" --jsonl
+swift run swiftnumbers read-table Tests/Fixtures/simple-table.numbers --sheet "Sheet 1" --table "Table 1" --from-row 1 --from-column 0 --max-rows 2 --max-columns 2 --format json
+swift run swiftnumbers read-table Tests/Fixtures/simple-table.numbers --sheet "Sheet 1" --table "Table 1" --from-row 1 --from-column 0 --max-rows 2 --max-columns 2 --jsonl
+swift run swiftnumbers read-cell Tests/Fixtures/simple-table.numbers A1 --sheet "Sheet 1" --table "Table 1" --format json
+swift run swiftnumbers read-cell Tests/Fixtures/multi-sheet.numbers A1 --sheet-index 1 --table-index 1 --format json
+swift run swiftnumbers read-range Tests/Fixtures/simple-table.numbers A2:B3 --sheet "Sheet 1" --table "Table 1" --format json
+swift run swiftnumbers read-range Tests/Fixtures/simple-table.numbers A2:B3 --sheet "Sheet 1" --table "Table 1" --jsonl
+swift run swiftnumbers dump Tests/Fixtures/simple-table.numbers --format json --cells --formatting
 ```
 
 ## Minimal Example

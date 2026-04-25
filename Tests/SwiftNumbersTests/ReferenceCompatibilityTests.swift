@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 
 @testable import SwiftNumbersContainer
@@ -87,6 +88,47 @@ final class ReferenceCompatibilityTests: XCTestCase {
     XCTAssertNil(try container.readMetadataFile(named: "DocumentMetadata.pb"))
   }
 
+  func testReadAPIsAreConsistentBetweenPackageAndSingleFileArchive() throws {
+    let packageFixture = FixtureLocator.fixtureURL(named: "simple-table.numbers")
+    let archiveFixture = try makeSingleFileArchive(fromPackageFixture: packageFixture)
+    defer { try? FileManager.default.removeItem(at: archiveFixture) }
+
+    let packageDocument = try NumbersDocument.open(at: packageFixture)
+    let archiveDocument = try NumbersDocument.open(at: archiveFixture)
+
+    XCTAssertEqual(packageDocument.sheetNames, archiveDocument.sheetNames)
+    XCTAssertEqual(packageDocument.tableCount, archiveDocument.tableCount)
+    XCTAssertEqual(packageDocument.tableNames, archiveDocument.tableNames)
+
+    let packageSheet = try XCTUnwrap(packageDocument.sheets.first)
+    let archiveSheet = try XCTUnwrap(archiveDocument.sheets.first)
+    let packageTable = try XCTUnwrap(packageSheet.tables.first)
+    let archiveTable = try XCTUnwrap(archiveSheet.tables.first)
+
+    XCTAssertEqual(packageTable.metadata.rowCount, archiveTable.metadata.rowCount)
+    XCTAssertEqual(packageTable.metadata.columnCount, archiveTable.metadata.columnCount)
+    XCTAssertEqual(packageTable.rows(), archiveTable.rows())
+
+    let addresses = [
+      CellAddress(row: 0, column: 0),  // A1
+      CellAddress(row: 1, column: 1),  // B2
+      CellAddress(row: 2, column: 1),  // B3
+      CellAddress(row: 3, column: 2),  // C4
+    ]
+    for address in addresses {
+      XCTAssertEqual(
+        packageTable.cell(at: address),
+        archiveTable.cell(at: address),
+        "Mismatch at row=\(address.row), column=\(address.column)"
+      )
+      XCTAssertEqual(
+        packageTable.readCell(at: address)?.kind,
+        archiveTable.readCell(at: address)?.kind,
+        "ReadCell kind mismatch at row=\(address.row), column=\(address.column)"
+      )
+    }
+  }
+
   private func makeTemporaryNumbersDirectory(encrypted: Bool) throws -> URL {
     let fixture = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
       .appendingPathComponent("swift-numbers-\(UUID().uuidString).numbers", isDirectory: true)
@@ -100,5 +142,35 @@ final class ReferenceCompatibilityTests: XCTestCase {
     try Data([0x01]).write(to: fixture.appendingPathComponent(".iwpv2", isDirectory: false))
     try Data([0x01]).write(to: fixture.appendingPathComponent(".iwph", isDirectory: false))
     return fixture
+  }
+
+  private func makeSingleFileArchive(fromPackageFixture packageURL: URL) throws -> URL {
+    let archiveURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+      .appendingPathComponent("swift-numbers-\(UUID().uuidString).numbers", isDirectory: false)
+
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+    process.arguments = [
+      "-c",
+      "-k",
+      "--sequesterRsrc",
+      "--keepParent",
+      packageURL.path,
+      archiveURL.path,
+    ]
+
+    try process.run()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+      throw NSError(
+        domain: "ReferenceCompatibilityTests",
+        code: Int(process.terminationStatus),
+        userInfo: [
+          NSLocalizedDescriptionKey: "ditto archive conversion failed with status \(process.terminationStatus)"
+        ]
+      )
+    }
+
+    return archiveURL
   }
 }

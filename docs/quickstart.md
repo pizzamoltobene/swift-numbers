@@ -74,10 +74,36 @@ export SWIFT_NUMBERS_PRIVATE_CORPUS="/absolute/path/to/private-corpus"
 ## 8) Run release checks
 
 ```bash
-./scripts/release_check_020.sh
+./scripts/release_check.sh
 # After manual Numbers.app smoke checks:
-SWIFT_NUMBERS_NUMBERS_APP_OK=1 ./scripts/release_check_020.sh
+SWIFT_NUMBERS_NUMBERS_APP_OK=1 ./scripts/release_check.sh
 ```
+
+Release metadata gate requirements for the target changelog section:
+
+- `### Summary` (with at least one bullet)
+- `### Breaking Changes` (with at least one bullet, `- None.` allowed)
+- `### Rollback Hint` (with at least one bullet)
+
+Template: `scripts/release-notes-template.md`
+
+## 9) Dry-run release pipeline
+
+```bash
+SWIFT_NUMBERS_NUMBERS_APP_OK=1 ./scripts/release_publish.sh --tag v0.3.2 --dry-run
+```
+
+## 10) Autorelease one completed fix
+
+```bash
+SWIFT_NUMBERS_TASK_ID=SN-RXX ./scripts/release_autofix.sh
+```
+
+This command:
+
+- promotes `Unreleased` changelog notes into the next patch version
+- creates a release commit
+- pushes tag/release through `./scripts/release_publish.sh`
 
 ## Next Steps
 

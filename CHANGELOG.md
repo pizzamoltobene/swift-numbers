@@ -2,6 +2,42 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Summary
+
+- Pending.
+
+### Breaking Changes
+
+- None.
+
+### Rollback Hint
+
+- Revert to the previous stable tag and redeploy package artifacts.
+
+## [0.3.3] - 2026-04-25
+
+### Summary
+
+- Release pipeline now validates required release-note metadata from changelog sections.
+
+### Breaking Changes
+
+- None.
+
+### Rollback Hint
+
+- Roll back by re-publishing the previous stable tag and reverting the release automation changes.
+
+### Changed
+
+- Replaced hard-coded release helper with version-agnostic `./scripts/release_check.sh`.
+- Release check JSON now reports dynamic `releaseTarget` (from `SWIFT_NUMBERS_RELEASE_TARGET` or latest `CHANGELOG.md` entry) and `releaseTargetSource`.
+- `./scripts/release_check_020.sh` remains as a deprecated compatibility wrapper that forwards to `release_check.sh`.
+- Added `./scripts/release_publish.sh` release pipeline (dry-run + publish mode) to validate gates, create/push tags, and publish GitHub releases with changelog-derived notes.
+- Added release metadata gate requiring `Summary`, `Breaking Changes`, and `Rollback Hint` sections in the target changelog entry.
+
 ## [0.3.2] - 2026-04-24
 
 ### Fixed

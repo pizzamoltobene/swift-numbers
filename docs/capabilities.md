@@ -21,7 +21,7 @@ Quick jump:
 
 - Open/read basics: section `5.1` to `5.6`
 - Editable operations: section `5.7` to `5.17`
-- CLI: section `5.18` and `5.19`
+- CLI: section `5.18` to `5.19`
 - State helpers and typed references: section `5.20` to `5.25`
 
 ## 1) Scope Summary
@@ -62,7 +62,7 @@ Core internal modules:
 | Open single-file archive `.numbers` | Supported | Reads embedded `Index`/`Index.zip` |
 | Read sheets/tables/cells | Supported | Real-read first, metadata fallback as needed |
 | Read merge ranges | Supported | Exposed via `Table.metadata.mergeRanges` |
-| CLI `dump` and `list-sheets` | Supported | Text and JSON modes |
+| CLI `dump`, `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, and `read-range` | Supported | Text and JSON modes (`read-column/read-table/read-range` also support `--jsonl`) |
 | Edit cell values | Supported | `string`, `number`, `bool`, `empty`, `date` |
 | Append/insert rows | Supported | Low-level IWA path |
 | Append columns | Supported | Low-level IWA path |
@@ -160,7 +160,7 @@ This section gives operation-by-operation examples with:
 | Editable mutation | `setValue`, `appendRow`, `insertRow`, `appendColumn`, `addTable`, `addSheet` |
 | Save | `save(to:)`, `saveInPlace()` |
 | Runtime capability/state | `canSaveEditableDocuments`, `hasChanges`, `dirtyState`, `firstSheet`, `firstTable` |
-| CLI | `swiftnumbers list-sheets`, `swiftnumbers dump` |
+| CLI | `swiftnumbers list-sheets`, `swiftnumbers list-tables`, `swiftnumbers list-formulas`, `swiftnumbers read-column`, `swiftnumbers read-table`, `swiftnumbers read-cell`, `swiftnumbers read-range`, `swiftnumbers dump` |
 
 ### Task-to-Operation Cheat Sheet
 
@@ -168,6 +168,12 @@ This section gives operation-by-operation examples with:
 |---|---|---|
 | Inspect file structure quickly | `dump()`, `renderDump()`, CLI `dump` | Includes diagnostics and read path |
 | List all sheets | `sheets`, CLI `list-sheets` | JSON mode is script-friendly |
+| List all tables | CLI `list-tables` | Supports `--sheet` filter and JSON stats |
+| List formula cells | CLI `list-formulas` | Supports `--sheet`/`--table` filters and JSON output |
+| Read one column (CLI) | CLI `read-column` | Select by zero-based index or `--header`, with typed snapshots |
+| Inspect table window (CLI) | CLI `read-table` | Windowed rows x columns read with truncation flags; supports `--jsonl` stream |
+| Inspect one cell deeply | CLI `read-cell` | Value + formatted + style + merge + formula snapshot |
+| Inspect a range deeply | CLI `read-range` | Emits typed range snapshots with A1 coordinates in text/JSON; supports `--jsonl` stream |
 | Read one value | `cell(at:)`, `cell(row:column:)`, `cell("A1")` | Read-only `Table` API |
 | Read rich cell object | `readCell(...)` | Includes `kind`, `readValue`, `formulaResult`, `formatted`, merge role, IDs, plus `richText` runs and read-only `style` snapshot when available |
 | Read formulas | `formula(...)`, `formulas()`, `formulaResult(...)` | Exposes `formulaID`, raw formula, parsed tokens, AST summary, computed value/result formatting |
@@ -966,6 +972,288 @@ swiftnumbers list-sheets <file.numbers> [--format text|json]
 
 ---
 
+### 5.18.1 `swiftnumbers list-tables`
+
+**Purpose**
+
+Print table inventory across sheets with optional sheet filter and table stats.
+
+**Command**
+
+```bash
+swiftnumbers list-tables <file.numbers> [--sheet "<Sheet Name>"] [--format text|json]
+```
+
+**Attributes**
+
+| Attribute | Type | Required | Notes |
+|---|---|---|---|
+| `<file.numbers>` | path | Yes | Input `.numbers` |
+| `--sheet` | string | No | Exact sheet name filter |
+| `--format` | `text`/`json` | No | Default `text` |
+
+**Visual output (text)**
+
+```text
+1. Sheet A/Table A1 rows=3 cols=2 populated=6 formulas=0 merges=0 used=A1:B3
+2. Sheet B/Table B1 rows=2 cols=2 populated=4 formulas=0 merges=0 used=A1:B2
+```
+
+**Visual output (json, abbreviated)**
+
+```json
+{
+  "sheetFilter": "Sheet B",
+  "tableCount": 2,
+  "tables": [
+    {
+      "index": 1,
+      "sheetName": "Sheet B",
+      "tableName": "Table B1",
+      "rowCount": 2,
+      "columnCount": 2,
+      "populatedCellCount": 4,
+      "formulaCount": 0,
+      "usedRange": "A1:B2"
+    }
+  ]
+}
+```
+
+---
+
+### 5.18.2 `swiftnumbers list-formulas`
+
+**Purpose**
+
+List formula cells with raw/tokenized details and formatted results, optionally scoped to sheet/table.
+
+**Command**
+
+```bash
+swiftnumbers list-formulas <file.numbers> [--sheet "<Sheet Name>"] [--table "<Table Name>"] [--format text|json]
+```
+
+**Attributes**
+
+| Attribute | Type | Required | Notes |
+|---|---|---|---|
+| `<file.numbers>` | path | Yes | Input `.numbers` |
+| `--sheet` | string | No | Exact sheet name filter |
+| `--table` | string | No | Exact table name filter |
+| `--format` | `text`/`json` | No | Default `text` |
+
+**Visual output (json, abbreviated)**
+
+```json
+{
+  "sheetFilter": "Sheet 1",
+  "tableFilter": "Table 1",
+  "formulaCount": 0,
+  "formulas": []
+}
+```
+
+---
+
+### 5.18.3 `swiftnumbers read-column`
+
+**Purpose**
+
+Inspect one column with typed read snapshots, selected by zero-based index or by header. Each returned cell includes richer read metadata (`readValue`, merge role, and when available: `style`, `richText`, `formula`).
+
+**Command**
+
+```bash
+swiftnumbers read-column <file.numbers> [<column-index>] (--sheet "<Sheet Name>" | --sheet-index <n>) (--table "<Table Name>" | --table-index <n>) [--from-row <row>] [--header "<Header>"] [--header-row <row>] [--include-header] [--format text|json] [--jsonl]
+```
+
+**Attributes**
+
+| Attribute | Type | Required | Notes |
+|---|---|---|---|
+| `<file.numbers>` | path | Yes | Input `.numbers` |
+| `<column-index>` | int | No* | Zero-based column index (`0` = A). Required unless `--header` is used |
+| `--sheet` | string | Conditional | Exact sheet name (mutually exclusive with `--sheet-index`) |
+| `--sheet-index` | int | Conditional | Zero-based sheet index (mutually exclusive with `--sheet`) |
+| `--table` | string | Conditional | Exact table name (mutually exclusive with `--table-index`) |
+| `--table-index` | int | Conditional | Zero-based table index in selected sheet (mutually exclusive with `--table`) |
+| `--from-row` | int | No | Default `0`; index mode only |
+| `--header` | string | No* | Header label selector (case-insensitive) |
+| `--header-row` | int | No | Default `0`; used with `--header` |
+| `--include-header` | flag | No | Include header row in output with `--header` |
+| `--format` | `text`/`json` | No | Default `text` |
+| `--jsonl` | flag | No | Emit NDJSON stream (one cell per line) |
+
+**Visual output (json, abbreviated)**
+
+```json
+{
+  "selectionMode": "header",
+  "requestedHeader": "Name",
+  "headerRow": 0,
+  "includeHeader": false,
+  "columnIndex": 0,
+  "fromRow": 1,
+  "cellCount": 3,
+  "cells": [
+    {
+      "cellReference": "A2",
+      "kind": "text",
+      "formatted": "Answer",
+      "readValue": { "kind": "string", "string": "Answer" }
+    }
+  ]
+}
+```
+
+---
+
+### 5.18.4 `swiftnumbers read-table`
+
+**Purpose**
+
+Inspect a table window as typed read snapshots (`rows x columns`) with explicit truncation flags. Each cell carries richer read metadata (`readValue`, merge role, and when available: `style`, `richText`, `formula`).
+
+**Command**
+
+```bash
+swiftnumbers read-table <file.numbers> (--sheet "<Sheet Name>" | --sheet-index <n>) (--table "<Table Name>" | --table-index <n>) [--from-row <row>] [--from-column <col>] [--max-rows <n>] [--max-columns <n>] [--format text|json] [--jsonl]
+```
+
+**Attributes**
+
+| Attribute | Type | Required | Notes |
+|---|---|---|---|
+| `<file.numbers>` | path | Yes | Input `.numbers` |
+| `--sheet` | string | Conditional | Exact sheet name (mutually exclusive with `--sheet-index`) |
+| `--sheet-index` | int | Conditional | Zero-based sheet index (mutually exclusive with `--sheet`) |
+| `--table` | string | Conditional | Exact table name (mutually exclusive with `--table-index`) |
+| `--table-index` | int | Conditional | Zero-based table index in selected sheet (mutually exclusive with `--table`) |
+| `--from-row` | int | No | Default `0` |
+| `--from-column` | int | No | Default `0` |
+| `--max-rows` | int | No | Default `100` |
+| `--max-columns` | int | No | Default `50` |
+| `--format` | `text`/`json` | No | Default `text` |
+| `--jsonl` | flag | No | Emit NDJSON stream (one row per line) |
+
+**Visual output (json, abbreviated)**
+
+```json
+{
+  "fromRow": 1,
+  "fromColumn": 0,
+  "resolvedRowCount": 2,
+  "resolvedColumnCount": 2,
+  "truncatedRows": true,
+  "truncatedColumns": true,
+  "cells": [
+    [
+      {
+        "cellReference": "A2",
+        "kind": "text",
+        "formatted": "Answer",
+        "readValue": { "kind": "string", "string": "Answer" }
+      }
+    ]
+  ]
+}
+```
+
+---
+
+### 5.18.5 `swiftnumbers read-cell`
+
+**Purpose**
+
+Inspect one cell with full read snapshot: typed value, read value, formatted output, style, merge role, and formula details.
+
+**Command**
+
+```bash
+swiftnumbers read-cell <file.numbers> <A1> (--sheet "<Sheet Name>" | --sheet-index <n>) (--table "<Table Name>" | --table-index <n>) [--format text|json]
+```
+
+**Attributes**
+
+| Attribute | Type | Required | Notes |
+|---|---|---|---|
+| `<file.numbers>` | path | Yes | Input `.numbers` |
+| `<A1>` | string | Yes | Cell reference (for example `B2`) |
+| `--sheet` | string | Conditional | Exact sheet name (mutually exclusive with `--sheet-index`) |
+| `--sheet-index` | int | Conditional | Zero-based sheet index (mutually exclusive with `--sheet`) |
+| `--table` | string | Conditional | Exact table name (mutually exclusive with `--table-index`) |
+| `--table-index` | int | Conditional | Zero-based table index in selected sheet (mutually exclusive with `--table`) |
+| `--format` | `text`/`json` | No | Default `text` |
+
+**Visual output (json, abbreviated)**
+
+```json
+{
+  "sheetName": "Sheet 1",
+  "tableName": "Table 1",
+  "cellReference": "A1",
+  "kind": "text",
+  "value": { "kind": "string", "string": "Name" },
+  "readValue": { "kind": "string", "string": "Name" },
+  "formatted": "Name",
+  "merge": { "isMerged": false, "role": "none", "range": null }
+}
+```
+
+---
+
+### 5.18.6 `swiftnumbers read-range`
+
+**Purpose**
+
+Inspect a range with typed read snapshots (value/readValue/formatted + merge metadata) in one call, including richer per-cell metadata when available (`style`, `richText`, `formula`).
+
+**Command**
+
+```bash
+swiftnumbers read-range <file.numbers> <A1:D10> (--sheet "<Sheet Name>" | --sheet-index <n>) (--table "<Table Name>" | --table-index <n>) [--format text|json] [--jsonl]
+```
+
+**Attributes**
+
+| Attribute | Type | Required | Notes |
+|---|---|---|---|
+| `<file.numbers>` | path | Yes | Input `.numbers` |
+| `<A1:D10>` | string | Yes | Range reference (for example `A2:B3`) |
+| `--sheet` | string | Conditional | Exact sheet name (mutually exclusive with `--sheet-index`) |
+| `--sheet-index` | int | Conditional | Zero-based sheet index (mutually exclusive with `--sheet`) |
+| `--table` | string | Conditional | Exact table name (mutually exclusive with `--table-index`) |
+| `--table-index` | int | Conditional | Zero-based table index in selected sheet (mutually exclusive with `--table`) |
+| `--format` | `text`/`json` | No | Default `text` |
+| `--jsonl` | flag | No | Emit NDJSON stream (one range row per line) |
+
+**Visual output (json, abbreviated)**
+
+```json
+{
+  "requestedRange": "A2:B3",
+  "resolvedRange": "A2:B3",
+  "rowCount": 2,
+  "columnCount": 2,
+  "cells": [
+    [
+      {
+        "cellReference": "A2",
+        "kind": "text",
+        "formatted": "Answer",
+        "formula": null,
+        "richText": null,
+        "style": null,
+        "readValue": { "kind": "string", "string": "Answer" }
+      }
+    ]
+  ]
+}
+```
+
+---
+
 ### 5.19 `swiftnumbers dump`
 
 **Purpose**
@@ -975,7 +1263,7 @@ Inspect read path, inventory, diagnostics, and table summaries.
 **Command**
 
 ```bash
-swiftnumbers dump <file.numbers> [--format text|json]
+swiftnumbers dump <file.numbers> [--format text|json] [--formulas] [--cells] [--formatting]
 ```
 
 **Attributes**
@@ -984,6 +1272,9 @@ swiftnumbers dump <file.numbers> [--format text|json]
 |---|---|---|---|
 | `<file.numbers>` | path | Yes | Input `.numbers` |
 | `--format` | `text`/`json` | No | Default `text` |
+| `--formulas` | flag | No | Include formula-read details |
+| `--cells` | flag | No | Include populated-cell read snapshots |
+| `--formatting` | flag | No | Include deterministic per-cell formatting profiles |
 
 **Visual output (text, abbreviated)**
 
@@ -1350,9 +1641,14 @@ GitHub CI baseline:
 
 Release helper:
 
-- `./scripts/release_check_020.sh`
-- outputs `.local/release-check-020.json`
+- `./scripts/release_check.sh`
+- outputs `.local/release-check.json` (or custom path passed as the first argument)
 - includes manual Apple Numbers smoke-check confirmation step
+- enforces changelog completeness for release metadata (`Summary`, `Breaking Changes`, `Rollback Hint`)
+- release-note template: `scripts/release-notes-template.md`
+- `./scripts/release_publish.sh --tag vX.Y.Z --dry-run` validates and prints the publish plan
+- `./scripts/release_publish.sh --tag vX.Y.Z` executes tag push + GitHub release publish (requires clean working tree and authenticated `gh`)
+- `./scripts/release_autofix.sh` performs changelog promotion + commit + official release publish for each completed fix cycle
 
 ## 10) Out of Scope for v0.3.1
 

@@ -19,6 +19,9 @@ Documentation hub for `SwiftNumbers v0.3.2`.
 | CLI details and JSON output | [CLI Reference](cli-reference.md) |
 | Failure triage | [Troubleshooting](troubleshooting.md) |
 | Internal architecture | [Architecture](architecture.md) |
+| Infinite improvement rules for Autopilot | [Autopilot Policy](autopilot-policy.md) |
+| Roadmap-driven autonomous loop | [Autopilot Roadmap](autopilot-roadmap.md) |
+| Public autonomous delivery model | [Autonomous Development](autonomous-development.md) |
 
 ## Scope (v0.3.2)
 
@@ -26,7 +29,7 @@ Supported:
 - Real `.numbers` read path (with diagnostics and fallback safety path)
 - Read sheets/tables/cells/formulas/rich read model
 - Editable tabular mutations + save (`save(to:)`, `saveInPlace()`)
-- CLI: `list-sheets`, `dump`, `--format text|json`, `--formulas`
+- CLI: `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, `read-range`, `dump`, `--format text|json`, `--formulas`, `--cells`, `--formatting`
 
 Out of scope:
 - Formula write engine

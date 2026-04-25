@@ -40,54 +40,100 @@ if [[ ! -f "$CODECOV_JSON_PATH" ]]; then
 fi
 
 echo "Coverage JSON: $CODECOV_JSON_PATH"
-python3 - <<'PY' "$CODECOV_JSON_PATH" "$THRESHOLD"
-import json
-import sys
+swift - "$CODECOV_JSON_PATH" "$THRESHOLD" <<'SWIFT'
+import Foundation
+import Darwin
 
-path = sys.argv[1]
-threshold = float(sys.argv[2])
+func fail(_ message: String) -> Never {
+  fputs("\(message)\n", stderr)
+  Darwin.exit(1)
+}
 
-with open(path, "r", encoding="utf-8") as f:
-    payload = json.load(f)
+func intValue(_ raw: Any?) -> Int {
+  if let intValue = raw as? Int {
+    return intValue
+  }
+  if let numberValue = raw as? NSNumber {
+    return numberValue.intValue
+  }
+  return 0
+}
 
-data = payload.get("data", [])
-if not data:
-    print("No coverage data found")
-    raise SystemExit(1)
+let args = CommandLine.arguments
+guard args.count >= 3 else {
+  fail("Expected arguments: <coverage-json-path> <threshold>")
+}
 
-totals = data[0].get("totals", {}).get("lines", {})
-total_covered = int(totals.get("covered", 0))
-total_count = int(totals.get("count", 0))
-total_pct = (total_covered / total_count * 100.0) if total_count else 0.0
-print(f"All code line coverage: {total_covered}/{total_count} ({total_pct:.2f}%)")
+let path = args[1]
+guard let threshold = Double(args[2]) else {
+  fail("Invalid threshold value: \(args[2])")
+}
 
-first_party_prefixes = (
-    "/Sources/SwiftNumbers",
-    "/Sources/swiftnumbers/",
-    "/Tests/SwiftNumbersTests/",
+let url = URL(fileURLWithPath: path)
+let data: Data
+do {
+  data = try Data(contentsOf: url)
+} catch {
+  fail("Failed to read coverage JSON at \(path): \(error)")
+}
+
+let rootObject: Any
+do {
+  rootObject = try JSONSerialization.jsonObject(with: data)
+} catch {
+  fail("Failed to parse coverage JSON at \(path): \(error)")
+}
+
+guard
+  let payload = rootObject as? [String: Any],
+  let dataArray = payload["data"] as? [[String: Any]],
+  let firstEntry = dataArray.first
+else {
+  fail("No coverage data found")
+}
+
+let totals = (firstEntry["totals"] as? [String: Any])?["lines"] as? [String: Any] ?? [:]
+let totalCovered = intValue(totals["covered"])
+let totalCount = intValue(totals["count"])
+let totalPct = totalCount > 0 ? (Double(totalCovered) / Double(totalCount) * 100.0) : 0.0
+print(
+  "All code line coverage: \(totalCovered)/\(totalCount) (\(String(format: "%.2f", totalPct))%)"
 )
 
-first_covered = 0
-first_count = 0
-for file_entry in data[0].get("files", []):
-    filename = file_entry.get("filename", "")
-    if not any(prefix in filename for prefix in first_party_prefixes):
-        continue
-    lines = file_entry.get("summary", {}).get("lines", {})
-    first_covered += int(lines.get("covered", 0))
-    first_count += int(lines.get("count", 0))
+let firstPartyPrefixes = [
+  "/Sources/SwiftNumbers",
+  "/Sources/swiftnumbers/",
+  "/Tests/SwiftNumbersTests/",
+]
 
-if first_count <= 0:
-    print("No first-party coverage entries found.")
-    raise SystemExit(1)
+var firstCovered = 0
+var firstCount = 0
 
-first_pct = (first_covered / first_count * 100.0)
-print(f"First-party line coverage: {first_covered}/{first_count} ({first_pct:.2f}%)")
-print(f"First-party coverage threshold: {threshold:.2f}%")
+let files = firstEntry["files"] as? [[String: Any]] ?? []
+for fileEntry in files {
+  let filename = fileEntry["filename"] as? String ?? ""
+  guard firstPartyPrefixes.contains(where: { filename.contains($0) }) else {
+    continue
+  }
 
-if first_pct < threshold:
-    print(
-        f"Coverage gate failed: first-party coverage {first_pct:.2f}% is below threshold {threshold:.2f}%"
-    )
-    raise SystemExit(1)
-PY
+  let lines = ((fileEntry["summary"] as? [String: Any])?["lines"] as? [String: Any]) ?? [:]
+  firstCovered += intValue(lines["covered"])
+  firstCount += intValue(lines["count"])
+}
+
+guard firstCount > 0 else {
+  fail("No first-party coverage entries found.")
+}
+
+let firstPct = Double(firstCovered) / Double(firstCount) * 100.0
+print(
+  "First-party line coverage: \(firstCovered)/\(firstCount) (\(String(format: "%.2f", firstPct))%)"
+)
+print("First-party coverage threshold: \(String(format: "%.2f", threshold))%")
+
+if firstPct < threshold {
+  fail(
+    "Coverage gate failed: first-party coverage \(String(format: "%.2f", firstPct))% is below threshold \(String(format: "%.2f", threshold))%"
+  )
+}
+SWIFT

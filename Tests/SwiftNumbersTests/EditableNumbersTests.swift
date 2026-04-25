@@ -346,6 +346,52 @@ final class EditableNumbersDocumentTests: XCTestCase {
     )
   }
 
+  func testMixedMutationsRoundTripWithSaveInPlace() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let workingCopy = try makeWorkingCopy(
+      from: fixture,
+      name: "editable-mixed-mutations-save-in-place.numbers",
+      isDirectory: false
+    )
+
+    let editable = try EditableNumbersDocument.open(at: workingCopy)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+    let baselineColumnCount = table.metadata.columnCount
+
+    table.setValue(.string("Initial"), at: CellAddress(row: 0, column: 0))
+    try table.insertRow([.string("Inserted"), .number(7)], at: 0)
+
+    let appendedColumnValues = (0..<max(table.metadata.rowCount, 2)).map { row in
+      CellValue.string("C\(row)")
+    }
+    table.appendColumn(appendedColumnValues)
+    let appendedColumnIndex = max(table.metadata.columnCount - 1, baselineColumnCount)
+
+    try editable.saveInPlace()
+
+    let reopened = try EditableNumbersDocument.open(at: workingCopy)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+
+    let firstRowFirstColumn = reopenedTable.cell(at: CellAddress(row: 0, column: 0))
+    let secondRowFirstColumn = reopenedTable.cell(at: CellAddress(row: 1, column: 0))
+    XCTAssertTrue(
+      [firstRowFirstColumn, secondRowFirstColumn].contains(.string("Initial")),
+      "Expected first two rows to include the original setValue payload."
+    )
+    XCTAssertTrue(
+      [firstRowFirstColumn, secondRowFirstColumn].contains(.string("Inserted")),
+      "Expected first two rows to include the inserted row payload."
+    )
+    let firstRowAppendedColumn = reopenedTable.cell(
+      at: CellAddress(row: 0, column: appendedColumnIndex))
+    let secondRowAppendedColumn = reopenedTable.cell(
+      at: CellAddress(row: 1, column: appendedColumnIndex))
+    XCTAssertTrue(
+      [firstRowAppendedColumn, secondRowAppendedColumn].contains(.string("C0")),
+      "Expected appended column values from appendColumn to persist."
+    )
+  }
+
   func testSaveToSamePathPerformsInPlaceReplace() throws {
     let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
     let workingCopy = try makeWorkingCopy(
