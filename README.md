@@ -15,7 +15,7 @@ It is also an open experiment in automated library development with a recurring 
 
 ## Autonomous Release Experiment
 
-This project runs an automated development loop with an hourly cadence and a bugfix-first delivery model.
+This project runs an automated development loop with a one-hour cadence, continuous queue execution, and a bugfix-first delivery model.
 Each cycle is intended to:
 
 - pick the next roadmap task
