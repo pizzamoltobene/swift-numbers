@@ -1,16 +1,15 @@
 import Foundation
 import SwiftNumbersContainer
 import SwiftNumbersIWA
-import SwiftNumbersProto
 
 public enum NumbersDocumentError: LocalizedError {
-  case metadataMissing
+  case realReadFailed(String)
   case encryptedDocumentUnsupported
 
   public var errorDescription: String? {
     switch self {
-    case .metadataMissing:
-      return "Document metadata is missing (expected Metadata/DocumentMetadata.pb or .json)."
+    case .realReadFailed(let details):
+      return "Swift-native read failed: \(details)"
     case .encryptedDocumentUnsupported:
       return
         "Encrypted .numbers documents are currently unsupported. Re-save without password protection and retry."
@@ -23,6 +22,9 @@ public struct NumbersDocument: Sendable {
   public let sheets: [Sheet]
 
   private let dumpInfo: DocumentDump
+  private static let editableStringEscapePrefix = "__SWIFTNUMBERS_STRING__:"
+  private static let editableDateMarkerPrefix = "__SWIFTNUMBERS_DATE__:"
+  private static let editableFormulaMarkerPrefix = "__SWIFTNUMBERS_FORMULA__:"
 
   public static func open(at url: URL) throws -> NumbersDocument {
     let container = try NumbersContainer.open(at: url)
@@ -30,51 +32,22 @@ public struct NumbersDocument: Sendable {
       throw NumbersDocumentError.encryptedDocumentUnsupported
     }
     let documentVersion = NumbersDocumentVersion.read(from: container)
-    let metadata = try MetadataLoader.loadDocumentMetadata(from: container)
     let blobs = try container.loadIndexBlobs()
     let inventory = try IWAInventoryBuilder.build(from: blobs)
 
     let realRead = IWARealDocumentReader.read(from: inventory, documentVersion: documentVersion)
-
-    let sheets: [Sheet]
-    let readPath: DocumentReadPath
-    var fallbackReason: String?
-    var diagnostics = realRead.diagnostics
-    var structuredDiagnostics = realRead.structuredDiagnostics.map(mapReadDiagnostic)
-
-    if let metadata, shouldPreferEditableMetadataOverlay(metadata) {
-      sheets = mapMetadataSheets(metadata)
-      readPath = .metadataFallback
-      fallbackReason = "Using SwiftNumbers editable metadata overlay."
-      let marker = ReadDiagnostic(
-        code: "read-path.editable-overlay",
-        severity: .info,
-        message: "Prioritizing metadata overlay produced by SwiftNumbers writer."
-      )
-      diagnostics.append(marker.rendered)
-      structuredDiagnostics.append(marker)
-    } else if !realRead.sheets.isEmpty {
-      sheets = mapResolvedSheets(realRead.sheets)
-      readPath = .real
-    } else if let metadata {
-      sheets = mapMetadataSheets(metadata)
-      readPath = .metadataFallback
-      fallbackReason =
+    guard !realRead.sheets.isEmpty else {
+      let reason =
         realRead.structuredDiagnostics
         .first(where: { $0.severity == .error || $0.severity == .warning })?
         .rendered
+        ?? realRead.diagnostics.first
         ?? "Real-read path returned no sheets."
-      let marker = ReadDiagnostic(
-        code: "read-path.fallback",
-        severity: .warning,
-        message: "Falling back to metadata decode path. (\(fallbackReason!))"
-      )
-      diagnostics.append(marker.rendered)
-      structuredDiagnostics.append(marker)
-    } else {
-      sheets = []
-      readPath = .real
+      throw NumbersDocumentError.realReadFailed(reason)
     }
+    let sheets = mapResolvedSheets(realRead.sheets)
+    let diagnostics = realRead.diagnostics
+    let structuredDiagnostics = realRead.structuredDiagnostics.map(mapReadDiagnostic)
 
     let resolvedCellCount =
       sheets
@@ -82,7 +55,7 @@ public struct NumbersDocument: Sendable {
       .reduce(0) { $0 + $1.populatedCellCount }
 
     let dump = DocumentDump(
-      readPath: readPath,
+      readPath: .real,
       sourcePath: url.path,
       documentVersion: documentVersion,
       blobCount: blobs.count,
@@ -90,7 +63,7 @@ public struct NumbersDocument: Sendable {
       objectReferenceEdgeCount: inventory.objectReferenceEdgeCount,
       rootObjectCount: inventory.rootObjectIDs.count,
       resolvedCellCount: resolvedCellCount,
-      fallbackReason: fallbackReason,
+      fallbackReason: nil,
       typeHistogram: inventory.typeHistogram,
       unparsedBlobPaths: inventory.unparsedBlobPaths,
       diagnostics: diagnostics,
@@ -215,6 +188,8 @@ public struct NumbersDocument: Sendable {
               value = .string(escaped)
             } else if let date = decodeEditableDateMarker(string) {
               value = .date(date)
+            } else if let formula = decodeEditableFormulaMarker(string) {
+              value = .formula(formula)
             } else {
               value = .string(string)
             }
@@ -232,13 +207,25 @@ public struct NumbersDocument: Sendable {
             value = .string(cell.richText?.text ?? text)
           }
 
-          let mappedKind = mapResolvedCellKind(cell.kind)
+          let mappedKind: ReadCellKind
+          if case .formula = value, cell.kind != .formula {
+            mappedKind = .formula
+          } else {
+            mappedKind = mapResolvedCellKind(cell.kind)
+          }
           let formattedValue = formatReadValue(value)
           let mappedRichText = mapResolvedRichText(cell.richText)
           let mappedStyle = mapResolvedCellStyle(cell.style)
           let formulaResult: FormulaResultRead?
-          if cell.kind == .formula {
-            let rawFormula = cell.formulaRaw
+          if mappedKind == .formula {
+            let rawFormula: String?
+            if let cellFormula = cell.formulaRaw {
+              rawFormula = cellFormula
+            } else if case .formula(let syntheticFormula) = value {
+              rawFormula = syntheticFormula
+            } else {
+              rawFormula = nil
+            }
             let tokens =
               cell.formulaTokens.isEmpty
               ? (rawFormula.map(tokenizeFormulaForDump) ?? [])
@@ -303,6 +290,25 @@ public struct NumbersDocument: Sendable {
             endColumn: merge.endColumn
           )
         }
+        let objectIdentifiers: TableObjectIdentifiers? = {
+          let tableInfoObjectID = table.tableInfoObjectID > 0 ? table.tableInfoObjectID : nil
+          let tableModelObjectID = table.tableModelObjectID > 0 ? table.tableModelObjectID : nil
+          guard tableInfoObjectID != nil || tableModelObjectID != nil else {
+            return nil
+          }
+          return TableObjectIdentifiers(
+            tableInfoObjectID: tableInfoObjectID,
+            tableModelObjectID: tableModelObjectID
+          )
+        }()
+        let pivotLinks = table.pivotLinks.map { link in
+          PivotLinkMetadata(
+            drawableObjectID: link.drawableObjectID,
+            drawableTypeIDs: link.drawableTypeIDs,
+            linkedTableInfoObjectIDs: link.linkedTableInfoObjectIDs,
+            linkedTableModelObjectIDs: link.linkedTableModelObjectIDs
+          )
+        }
 
         return Table(
           id: table.id,
@@ -310,7 +316,13 @@ public struct NumbersDocument: Sendable {
           metadata: TableMetadata(
             rowCount: table.rowCount,
             columnCount: table.columnCount,
-            mergeRanges: merges
+            mergeRanges: merges,
+            tableNameVisible: table.tableNameVisible,
+            captionVisible: table.captionVisible,
+            captionText: table.captionText,
+            captionTextSupported: table.captionTextSupported,
+            objectIdentifiers: objectIdentifiers,
+            pivotLinks: pivotLinks
           ),
           cells: cells,
           readCells: readCells,
@@ -326,94 +338,19 @@ public struct NumbersDocument: Sendable {
     }
   }
 
-  private static func mapMetadataSheets(_ metadata: Swiftnumbers_DocumentMetadata) -> [Sheet] {
-    metadata.sheets.map { sheet in
-      let tables = sheet.tables.map { table in
-        let ranges = table.merges.map { merge in
-          MergeRange(
-            startRow: Int(merge.startRow),
-            endRow: Int(merge.endRow),
-            startColumn: Int(merge.startColumn),
-            endColumn: Int(merge.endColumn)
-          )
-        }
-
-        var cells: [CellAddress: CellValue] = [:]
-        var readCells: [CellAddress: ReadCell] = [:]
-        cells.reserveCapacity(table.cells.count)
-        readCells.reserveCapacity(table.cells.count)
-        for cell in table.cells {
-          let address = CellAddress(row: Int(cell.row), column: Int(cell.column))
-          let value: CellValue
-
-          switch cell.value {
-          case .stringValue(let string):
-            if let escaped = decodeEscapedEditableString(string) {
-              value = .string(escaped)
-            } else if let date = decodeEditableDateMarker(string) {
-              value = .date(date)
-            } else {
-              value = .string(string)
-            }
-          case .numberValue(let number):
-            value = .number(number)
-          case .boolValue(let bool):
-            value = .bool(bool)
-          case nil:
-            value = .empty
-          }
-
-          cells[address] = value
-          readCells[address] = ReadCell(
-            address: address,
-            value: value,
-            kind: mapCellKindFromValue(value),
-            formatted: formatReadValue(value)
-          )
-        }
-
-        return Table(
-          id: table.tableID,
-          name: table.name,
-          metadata: TableMetadata(
-            rowCount: Int(table.rowCount),
-            columnCount: Int(table.columnCount),
-            mergeRanges: ranges
-          ),
-          cells: cells,
-          readCells: readCells
-        )
-      }
-
-      return Sheet(
-        id: sheet.sheetID,
-        name: sheet.name,
-        tables: tables
-      )
-    }
-  }
-
-  private static func shouldPreferEditableMetadataOverlay(
-    _ metadata: Swiftnumbers_DocumentMetadata
-  ) -> Bool {
-    metadata.documentID.hasPrefix("swiftnumbers-editable-v1:")
-  }
-
   private static func decodeEscapedEditableString(_ raw: String) -> String? {
-    let prefix = "__SWIFTNUMBERS_STRING__:"
-    guard raw.hasPrefix(prefix) else {
+    guard raw.hasPrefix(editableStringEscapePrefix) else {
       return nil
     }
-    return String(raw.dropFirst(prefix.count))
+    return String(raw.dropFirst(editableStringEscapePrefix.count))
   }
 
   private static func decodeEditableDateMarker(_ raw: String) -> Date? {
-    let prefix = "__SWIFTNUMBERS_DATE__:"
-    guard raw.hasPrefix(prefix) else {
+    guard raw.hasPrefix(editableDateMarkerPrefix) else {
       return nil
     }
 
-    let isoString = String(raw.dropFirst(prefix.count))
+    let isoString = String(raw.dropFirst(editableDateMarkerPrefix.count))
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     if let date = formatter.date(from: isoString) {
@@ -422,6 +359,19 @@ public struct NumbersDocument: Sendable {
 
     formatter.formatOptions = [.withInternetDateTime]
     return formatter.date(from: isoString)
+  }
+
+  private static func decodeEditableFormulaMarker(_ raw: String) -> String? {
+    guard raw.hasPrefix(editableFormulaMarkerPrefix) else {
+      return nil
+    }
+
+    let encoded = String(raw.dropFirst(editableFormulaMarkerPrefix.count))
+    let trimmed = encoded.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+      return nil
+    }
+    return trimmed.hasPrefix("=") ? trimmed : "=\(trimmed)"
   }
 
   private static func mapResolvedCellKind(_ kind: IWAResolvedCellKind) -> ReadCellKind {
@@ -465,6 +415,9 @@ public struct NumbersDocument: Sendable {
     case .string(let string):
       if case .date(let date) = fallbackValue {
         return .date(date)
+      }
+      if case .formula(let formula) = fallbackValue {
+        return .string(formula)
       }
       return .string(string)
     case .number(let number):
@@ -516,6 +469,11 @@ public struct NumbersDocument: Sendable {
       horizontalAlignment: style.horizontalAlignment.map(mapResolvedHorizontalAlignment),
       verticalAlignment: style.verticalAlignment.map(mapResolvedVerticalAlignment),
       backgroundColorHex: style.backgroundColorHex,
+      fontName: style.fontName,
+      fontSize: style.fontSize,
+      isBold: style.isBold,
+      isItalic: style.isItalic,
+      textColorHex: style.textColorHex,
       hasTopBorder: style.hasTopBorder,
       hasRightBorder: style.hasRightBorder,
       hasBottomBorder: style.hasBottomBorder,
@@ -604,27 +562,14 @@ public struct NumbersDocument: Sendable {
     }
   }
 
-  private static func mapCellKindFromValue(_ value: CellValue) -> ReadCellKind {
-    switch value {
-    case .empty:
-      return .empty
-    case .string:
-      return .text
-    case .number:
-      return .number
-    case .bool:
-      return .bool
-    case .date:
-      return .date
-    }
-  }
-
   private static func formatReadValue(_ value: CellValue) -> String {
     switch value {
     case .empty:
       return ""
     case .string(let string):
       return string
+    case .formula(let formula):
+      return formula
     case .number(let number):
       let formatter = NumberFormatter()
       formatter.locale = Locale(identifier: "en_US_POSIX")

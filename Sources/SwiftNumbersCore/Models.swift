@@ -13,6 +13,7 @@ public struct CellAddress: Hashable, Sendable {
 public enum CellValue: Sendable, Hashable {
   case empty
   case string(String)
+  case formula(String)
   case number(Double)
   case bool(Bool)
   case date(Date)
@@ -101,6 +102,7 @@ public enum ReadNumberFormatKind: String, Hashable, Sendable {
   case duration
   case text
   case bool
+  case custom
 }
 
 public struct ReadNumberFormat: Hashable, Sendable {
@@ -117,6 +119,11 @@ public struct ReadCellStyle: Hashable, Sendable {
   public let horizontalAlignment: ReadHorizontalAlignment?
   public let verticalAlignment: ReadVerticalAlignment?
   public let backgroundColorHex: String?
+  public let fontName: String?
+  public let fontSize: Double?
+  public let isBold: Bool?
+  public let isItalic: Bool?
+  public let textColorHex: String?
   public let hasTopBorder: Bool
   public let hasRightBorder: Bool
   public let hasBottomBorder: Bool
@@ -127,6 +134,11 @@ public struct ReadCellStyle: Hashable, Sendable {
     horizontalAlignment: ReadHorizontalAlignment? = nil,
     verticalAlignment: ReadVerticalAlignment? = nil,
     backgroundColorHex: String? = nil,
+    fontName: String? = nil,
+    fontSize: Double? = nil,
+    isBold: Bool? = nil,
+    isItalic: Bool? = nil,
+    textColorHex: String? = nil,
     hasTopBorder: Bool = false,
     hasRightBorder: Bool = false,
     hasBottomBorder: Bool = false,
@@ -136,6 +148,11 @@ public struct ReadCellStyle: Hashable, Sendable {
     self.horizontalAlignment = horizontalAlignment
     self.verticalAlignment = verticalAlignment
     self.backgroundColorHex = backgroundColorHex
+    self.fontName = fontName
+    self.fontSize = fontSize
+    self.isBold = isBold
+    self.isItalic = isItalic
+    self.textColorHex = textColorHex
     self.hasTopBorder = hasTopBorder
     self.hasRightBorder = hasRightBorder
     self.hasBottomBorder = hasBottomBorder
@@ -311,6 +328,8 @@ public enum ReadCellValue: Hashable, Sendable {
     case .empty:
       return .empty
     case .string(let text):
+      return .string(text)
+    case .formula(let text):
       return .string(text)
     case .number(let number):
       return .number(number)
@@ -514,15 +533,66 @@ public struct CellRange: Hashable, Sendable {
   }
 }
 
+public struct TableObjectIdentifiers: Hashable, Sendable {
+  public let tableInfoObjectID: UInt64?
+  public let tableModelObjectID: UInt64?
+
+  public init(tableInfoObjectID: UInt64? = nil, tableModelObjectID: UInt64? = nil) {
+    self.tableInfoObjectID = tableInfoObjectID
+    self.tableModelObjectID = tableModelObjectID
+  }
+}
+
+public struct PivotLinkMetadata: Hashable, Sendable {
+  public let drawableObjectID: UInt64
+  public let drawableTypeIDs: [UInt32]
+  public let linkedTableInfoObjectIDs: [UInt64]
+  public let linkedTableModelObjectIDs: [UInt64]
+
+  public init(
+    drawableObjectID: UInt64,
+    drawableTypeIDs: [UInt32],
+    linkedTableInfoObjectIDs: [UInt64],
+    linkedTableModelObjectIDs: [UInt64]
+  ) {
+    self.drawableObjectID = drawableObjectID
+    self.drawableTypeIDs = drawableTypeIDs
+    self.linkedTableInfoObjectIDs = linkedTableInfoObjectIDs
+    self.linkedTableModelObjectIDs = linkedTableModelObjectIDs
+  }
+}
+
 public struct TableMetadata: Hashable, Sendable {
   public let rowCount: Int
   public let columnCount: Int
   public let mergeRanges: [MergeRange]
+  public let tableNameVisible: Bool?
+  public let captionVisible: Bool?
+  public let captionText: String?
+  public let captionTextSupported: Bool
+  public let objectIdentifiers: TableObjectIdentifiers?
+  public let pivotLinks: [PivotLinkMetadata]
 
-  public init(rowCount: Int, columnCount: Int, mergeRanges: [MergeRange]) {
+  public init(
+    rowCount: Int,
+    columnCount: Int,
+    mergeRanges: [MergeRange],
+    tableNameVisible: Bool? = nil,
+    captionVisible: Bool? = nil,
+    captionText: String? = nil,
+    captionTextSupported: Bool = false,
+    objectIdentifiers: TableObjectIdentifiers? = nil,
+    pivotLinks: [PivotLinkMetadata] = []
+  ) {
     self.rowCount = rowCount
     self.columnCount = columnCount
     self.mergeRanges = mergeRanges
+    self.tableNameVisible = tableNameVisible
+    self.captionVisible = captionVisible
+    self.captionText = captionText
+    self.captionTextSupported = captionTextSupported
+    self.objectIdentifiers = objectIdentifiers
+    self.pivotLinks = pivotLinks
   }
 }
 
@@ -1153,7 +1223,7 @@ public struct Table: Hashable, Sendable {
       return .decimal
     case .currency:
       return .currency(code: nil)
-    case .date, .duration, .text, .bool:
+    case .date, .duration, .text, .bool, .custom:
       return nil
     }
   }
@@ -1281,10 +1351,14 @@ public struct Table: Hashable, Sendable {
   }
 
   private static func extractRawFormula(from value: CellValue) -> String? {
-    guard case .string(let text) = value, text.hasPrefix("=") else {
+    switch value {
+    case .formula(let text):
+      return text
+    case .string(let text) where text.hasPrefix("="):
+      return text
+    default:
       return nil
     }
-    return text
   }
 
   private static func tokenizeFormula(_ formula: String) -> [String] {
@@ -1420,6 +1494,8 @@ public struct Table: Hashable, Sendable {
     switch readCell.value {
     case .string(let value) where type == String.self:
       return value as! T
+    case .formula(let value) where type == String.self:
+      return value as! T
     case .number(let value) where type == Double.self:
       return value as! T
     case .bool(let value) where type == Bool.self:
@@ -1458,6 +1534,8 @@ public struct Table: Hashable, Sendable {
     case .empty:
       return NSNull()
     case .string(let text):
+      return text
+    case .formula(let text):
       return text
     case .number(let number):
       return number

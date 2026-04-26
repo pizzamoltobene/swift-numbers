@@ -1,0 +1,125 @@
+{
+  "cells" : [
+    [
+      {
+        "cellReference" : "A3",
+        "column" : 0,
+        "formatted" : "Answer",
+        "isMerged" : false,
+        "kind" : "text",
+        "mergeRole" : "none",
+        "rawCellType" : 3,
+        "readValue" : {
+          "kind" : "string",
+          "string" : "Answer"
+        },
+        "row" : 2,
+        "stringID" : 8,
+        "style" : {
+          "hasBottomBorder" : false,
+          "hasLeftBorder" : false,
+          "hasRightBorder" : false,
+          "hasTopBorder" : false,
+          "horizontalAlignment" : "natural",
+          "verticalAlignment" : "top"
+        },
+        "value" : {
+          "kind" : "string",
+          "string" : "Answer"
+        }
+      },
+      {
+        "cellReference" : "B3",
+        "column" : 1,
+        "formatted" : "42",
+        "isMerged" : false,
+        "kind" : "number",
+        "mergeRole" : "none",
+        "rawCellType" : 2,
+        "readValue" : {
+          "kind" : "number",
+          "number" : 42
+        },
+        "row" : 2,
+        "style" : {
+          "hasBottomBorder" : false,
+          "hasLeftBorder" : false,
+          "hasRightBorder" : false,
+          "hasTopBorder" : false,
+          "horizontalAlignment" : "natural",
+          "verticalAlignment" : "top"
+        },
+        "value" : {
+          "kind" : "number",
+          "number" : 42
+        }
+      }
+    ],
+    [
+      {
+        "cellReference" : "A4",
+        "column" : 0,
+        "formatted" : "Enabled",
+        "isMerged" : false,
+        "kind" : "text",
+        "mergeRole" : "none",
+        "rawCellType" : 3,
+        "readValue" : {
+          "kind" : "string",
+          "string" : "Enabled"
+        },
+        "row" : 3,
+        "stringID" : 9,
+        "style" : {
+          "hasBottomBorder" : false,
+          "hasLeftBorder" : false,
+          "hasRightBorder" : false,
+          "hasTopBorder" : false,
+          "horizontalAlignment" : "natural",
+          "verticalAlignment" : "top"
+        },
+        "value" : {
+          "kind" : "string",
+          "string" : "Enabled"
+        }
+      },
+      {
+        "cellReference" : "B4",
+        "column" : 1,
+        "formatted" : "TRUE",
+        "isMerged" : false,
+        "kind" : "bool",
+        "mergeRole" : "none",
+        "rawCellType" : 6,
+        "readValue" : {
+          "bool" : true,
+          "kind" : "bool"
+        },
+        "row" : 3,
+        "style" : {
+          "hasBottomBorder" : false,
+          "hasLeftBorder" : false,
+          "hasRightBorder" : false,
+          "hasTopBorder" : false,
+          "horizontalAlignment" : "natural",
+          "verticalAlignment" : "top"
+        },
+        "value" : {
+          "bool" : true,
+          "kind" : "bool"
+        }
+      }
+    ]
+  ],
+  "columnCount" : 2,
+  "requestedRange" : "A3:B4",
+  "resolvedRange" : "A3:B4",
+  "rowCount" : 2,
+  "sheetID" : "sheet-904475",
+  "sheetName" : "Sheet 1",
+  "sourcePath" : "<fixture>",
+  "tableColumnCount" : 3,
+  "tableID" : "68B384C7-9E7F-4B90-A1F5-067B81524A6A",
+  "tableName" : "Table 1",
+  "tableRowCount" : 4
+}

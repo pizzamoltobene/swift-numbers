@@ -1,0 +1,36 @@
+{
+  "cellReference" : "A2",
+  "column" : 0,
+  "formatted" : "Name",
+  "kind" : "text",
+  "merge" : {
+    "isMerged" : false,
+    "role" : "none"
+  },
+  "rawCellType" : 3,
+  "readValue" : {
+    "kind" : "string",
+    "string" : "Name"
+  },
+  "row" : 1,
+  "sheetID" : "sheet-904475",
+  "sheetName" : "Sheet 1",
+  "sourcePath" : "<fixture>",
+  "stringID" : 6,
+  "style" : {
+    "hasBottomBorder" : false,
+    "hasLeftBorder" : false,
+    "hasRightBorder" : false,
+    "hasTopBorder" : false,
+    "horizontalAlignment" : "natural",
+    "verticalAlignment" : "top"
+  },
+  "tableColumnCount" : 3,
+  "tableID" : "68B384C7-9E7F-4B90-A1F5-067B81524A6A",
+  "tableName" : "Table 1",
+  "tableRowCount" : 4,
+  "value" : {
+    "kind" : "string",
+    "string" : "Name"
+  }
+}

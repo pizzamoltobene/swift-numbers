@@ -16,6 +16,35 @@ All notable changes to this project are documented in this file.
 
 - Revert to the previous stable tag and redeploy package artifacts.
 
+## [0.3.6] - 2026-04-26
+
+### Summary
+
+- Added grouped-table edit safety guard for structural write paths:
+  unsafe grouped mutations now fail fast with deterministic guidance instead of silently risking row-header corruption.
+- Added a standalone autonomous release policy document with explicit cadence, quality gates, and release pause/resume conditions, linked from README and Docs Hub.
+- Added deterministic batch counter script (`scripts/release_batch_count.sh`) and moved autonomous delivery policy to hourly bugfix-first with release at 15 Unreleased summary items.
+- Added critical-path runtime audit (`scripts/runtime-critical-check.sh`) and wired it into CI/release gates to block Python/Node/Ruby regressions in standard automation scripts.
+- Hardened CLI selector failure UX with deterministic regression coverage for `--sheet/--sheet-index` and `--table/--table-index` conflicts and missing selector cases.
+- Added `export-csv` CLI command with sheet/table selectors, CSV mode selection (`value`, `formatted`, `formula`), and fixture-based regression tests.
+- Added `import-csv` CLI command with sheet/table selectors, header mode (`with-header`/`no-header`), optional date parsing, and fixture-based import regression tests.
+- Added incremental formula-write roundtrip support for editable workflows via `CellValue.formula(String)`, with deterministic persistence and readback coverage for expressions like `=A1+B1` and `=SUM(A1:A5)`.
+- Added writable style mutation API for editable tables via `setStyle(_:at:)` (and `EditableCell.style`) with deterministic save/reopen roundtrip coverage for package and single-file archives.
+- Added writable cell-format mutation API via `setFormat(_:at:)` (and `EditableCell.format`) for number/date/currency/custom format hints, with roundtrip fixture coverage and formatted-output assertions.
+- Added editable merge lifecycle mutations (`mergeCells` / `unmergeCells`) with deterministic overlap checks, low-level IWA merge-region persistence, and roundtrip coverage for merge-role metadata.
+- Added table presentation metadata roundtrip support: editable table-name visibility, caption visibility, and caption text APIs now persist via native IWA write path where caption storage is available.
+- Added pivot-candidate diagnostics in real-read dump path (`resolver.pivot.candidateDetected`) when non-table sheet drawables are linked to table objects, with deterministic resolver coverage.
+- Added stable pivot-linked read metadata on real-read path: `Table.metadata.objectIdentifiers` now surfaces tableInfo/tableModel object IDs, and `Table.metadata.pivotLinks` exposes linked pivot-candidate drawable IDs/type IDs/table-link IDs.
+- Added pivot-linked write safety guard: native write mutations now fail fast with deterministic `pivotLinkedTableMutationUnsupported` guidance when a target table is linked to a non-table pivot-like drawable.
+
+### Breaking Changes
+
+- None.
+
+### Rollback Hint
+
+- Revert to the previous stable tag and redeploy package artifacts.
+
 ## [0.3.3] - 2026-04-25
 
 ### Summary

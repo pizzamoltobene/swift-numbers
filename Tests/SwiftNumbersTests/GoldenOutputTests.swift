@@ -33,7 +33,7 @@ final class GoldenOutputTests: XCTestCase {
   }
 
   private func assertDumpGolden(fixtureName: String, goldenName: String) throws {
-    let fixtureURL = FixtureLocator.fixtureURL(named: fixtureName)
+    let fixtureURL = StrictFixtureFactory.fixtureURL(named: fixtureName)
     let document = try NumbersDocument.open(at: fixtureURL)
     let output = normalizeDump(document.renderDump()).trimmingCharacters(
       in: .whitespacesAndNewlines)
@@ -43,7 +43,7 @@ final class GoldenOutputTests: XCTestCase {
   }
 
   private func assertListSheetsGolden(fixtureName: String, goldenName: String) throws {
-    let fixtureURL = FixtureLocator.fixtureURL(named: fixtureName)
+    let fixtureURL = StrictFixtureFactory.fixtureURL(named: fixtureName)
     let document = try NumbersDocument.open(at: fixtureURL)
 
     let output = document.sheets.enumerated()

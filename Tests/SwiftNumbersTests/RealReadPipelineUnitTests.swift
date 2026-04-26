@@ -291,6 +291,97 @@ final class RealReadPipelineUnitTests: XCTestCase {
     XCTAssertFalse(
       result.structuredDiagnostics.contains { $0.code == "resolver.table.resolveFailed" }
     )
+    XCTAssertFalse(
+      result.structuredDiagnostics.contains { $0.code == "resolver.pivot.candidateDetected" }
+    )
+  }
+
+  func testResolverEmitsPivotCandidateDiagnosticForLinkedNonTableDrawable() throws {
+    var document = TN_DocumentArchive()
+    document.sheets = [reference(200)]
+
+    var sheet = TN_SheetArchive()
+    sheet.name = "Main"
+    sheet.drawableInfos = [reference(300), reference(500)]
+
+    var tableInfo = TST_TableInfoArchive()
+    var drawable = TSD_DrawableArchive()
+    drawable.parent = reference(200)
+    tableInfo.super = drawable
+    tableInfo.tableModel = reference(400)
+
+    var tableModel = TST_TableModelArchive()
+    tableModel.tableID = "table-400"
+    tableModel.tableName = "Data"
+    tableModel.numberOfRows = 0
+    tableModel.numberOfColumns = 0
+
+    let documentPayload = try document.serializedData()
+    let sheetPayload = try sheet.serializedData()
+    let tableInfoPayload = try tableInfo.serializedData()
+    let tableModelPayload = try tableModel.serializedData()
+
+    let records = [
+      IWAObjectRecord(
+        objectID: 100,
+        typeID: 1,
+        payloadSize: documentPayload.count,
+        payloadData: documentPayload,
+        sourceBlobPath: "Doc.iwa",
+        objectReferences: [200]
+      ),
+      IWAObjectRecord(
+        objectID: 200,
+        typeID: 2,
+        payloadSize: sheetPayload.count,
+        payloadData: sheetPayload,
+        sourceBlobPath: "Sheet.iwa",
+        objectReferences: [300, 500]
+      ),
+      IWAObjectRecord(
+        objectID: 300,
+        typeID: 7777,
+        payloadSize: 0,
+        sourceBlobPath: "PivotCandidate.iwa",
+        objectReferences: [500, 400]
+      ),
+      IWAObjectRecord(
+        objectID: 500,
+        typeID: 6000,
+        payloadSize: tableInfoPayload.count,
+        payloadData: tableInfoPayload,
+        sourceBlobPath: "TableInfo.iwa",
+        objectReferences: [200, 400]
+      ),
+      IWAObjectRecord(
+        objectID: 400,
+        typeID: 6001,
+        payloadSize: tableModelPayload.count,
+        payloadData: tableModelPayload,
+        sourceBlobPath: "TableModel.iwa"
+      ),
+    ]
+
+    let inventory = IWAInventory(records: records, unparsedBlobPaths: [])
+    let result = IWARealDocumentReader.read(from: inventory, documentVersion: nil)
+
+    XCTAssertEqual(result.sheets.count, 1)
+    XCTAssertEqual(result.sheets.first?.tables.count, 1)
+    let resolvedTable = try XCTUnwrap(result.sheets.first?.tables.first)
+    XCTAssertEqual(resolvedTable.tableInfoObjectID, 500)
+    XCTAssertEqual(resolvedTable.tableModelObjectID, 400)
+    let pivotLink = try XCTUnwrap(resolvedTable.pivotLinks.first)
+    XCTAssertEqual(pivotLink.drawableObjectID, 300)
+    XCTAssertEqual(pivotLink.drawableTypeIDs, [7777])
+    XCTAssertEqual(pivotLink.linkedTableInfoObjectIDs, [500])
+    XCTAssertEqual(pivotLink.linkedTableModelObjectIDs, [400])
+    let diagnostic = result.structuredDiagnostics.first { $0.code == "resolver.pivot.candidateDetected" }
+    XCTAssertNotNil(diagnostic)
+    XCTAssertEqual(diagnostic?.severity, .info)
+    XCTAssertEqual(diagnostic?.context["drawableObjectID"], "300")
+    XCTAssertEqual(diagnostic?.context["drawableTypeIDs"], "7777")
+    XCTAssertEqual(diagnostic?.context["linkedTableInfoObjectIDs"], "500")
+    XCTAssertEqual(diagnostic?.context["linkedTableModelObjectIDs"], "400")
   }
 
   func testResolverMergesParentTraversalTablesWhenDrawableListIsPartial() throws {
@@ -658,6 +749,103 @@ final class RealReadPipelineUnitTests: XCTestCase {
       ),
       "=UNSUPPORTED_AST(LAMBDA,LET_BIND)"
     )
+  }
+
+  func testResolverExtractsTablePresentationMetadataWhenCaptionStorageExists() throws {
+    var document = TN_DocumentArchive()
+    document.sheets = [reference(200)]
+
+    var sheet = TN_SheetArchive()
+    sheet.name = "Main"
+    sheet.drawableInfos = [reference(500)]
+
+    var tableInfo = TST_TableInfoArchive()
+    var drawable = TSD_DrawableArchive()
+    drawable.parent = reference(200)
+    drawable.caption = reference(800)
+    drawable.captionHidden = true
+    tableInfo.super = drawable
+    tableInfo.tableModel = reference(400)
+
+    var tableModel = TST_TableModelArchive()
+    tableModel.tableID = "table-400"
+    tableModel.tableName = "Metrics"
+    tableModel.tableNameEnabled = false
+    tableModel.numberOfRows = 0
+    tableModel.numberOfColumns = 0
+
+    var captionInfo = TSWP_CaptionInfoArchiveProxy()
+    var captionShape = TSWP_ShapeInfoArchive()
+    captionShape.ownedStorage = reference(900)
+    captionInfo.super = captionShape
+
+    var captionStorage = TSWP_StorageArchive()
+    captionStorage.text = ["Quarterly KPI summary"]
+
+    let documentPayload = try document.serializedData()
+    let sheetPayload = try sheet.serializedData()
+    let tableInfoPayload = try tableInfo.serializedData()
+    let tableModelPayload = try tableModel.serializedData()
+    let captionInfoPayload = try captionInfo.serializedData()
+    let captionStoragePayload = try captionStorage.serializedData()
+
+    let records = [
+      IWAObjectRecord(
+        objectID: 100,
+        typeID: 1,
+        payloadSize: documentPayload.count,
+        payloadData: documentPayload,
+        sourceBlobPath: "Doc.iwa",
+        objectReferences: [200]
+      ),
+      IWAObjectRecord(
+        objectID: 200,
+        typeID: 2,
+        payloadSize: sheetPayload.count,
+        payloadData: sheetPayload,
+        sourceBlobPath: "Sheet.iwa",
+        objectReferences: [500]
+      ),
+      IWAObjectRecord(
+        objectID: 500,
+        typeID: 6000,
+        payloadSize: tableInfoPayload.count,
+        payloadData: tableInfoPayload,
+        sourceBlobPath: "TableInfo.iwa",
+        objectReferences: [200, 400, 800]
+      ),
+      IWAObjectRecord(
+        objectID: 400,
+        typeID: 6001,
+        payloadSize: tableModelPayload.count,
+        payloadData: tableModelPayload,
+        sourceBlobPath: "TableModel.iwa"
+      ),
+      IWAObjectRecord(
+        objectID: 800,
+        typeID: 633,
+        payloadSize: captionInfoPayload.count,
+        payloadData: captionInfoPayload,
+        sourceBlobPath: "CaptionInfo.iwa",
+        objectReferences: [900]
+      ),
+      IWAObjectRecord(
+        objectID: 900,
+        typeID: 2001,
+        payloadSize: captionStoragePayload.count,
+        payloadData: captionStoragePayload,
+        sourceBlobPath: "CaptionStorage.iwa"
+      ),
+    ]
+
+    let inventory = IWAInventory(records: records, unparsedBlobPaths: [])
+    let result = IWARealDocumentReader.read(from: inventory, documentVersion: nil)
+
+    let resolvedTable = try XCTUnwrap(result.sheets.first?.tables.first)
+    XCTAssertEqual(resolvedTable.tableNameVisible, false)
+    XCTAssertEqual(resolvedTable.captionVisible, false)
+    XCTAssertEqual(resolvedTable.captionTextSupported, true)
+    XCTAssertEqual(resolvedTable.captionText, "Quarterly KPI summary")
   }
 
   private func makeCellBuffer(

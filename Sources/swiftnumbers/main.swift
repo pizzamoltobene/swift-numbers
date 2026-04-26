@@ -7,6 +7,17 @@ enum OutputFormat: String, ExpressibleByArgument {
   case json
 }
 
+enum ExportCSVMode: String, ExpressibleByArgument {
+  case value
+  case formatted
+  case formula
+}
+
+enum ImportCSVHeaderMode: String, ExpressibleByArgument {
+  case withHeader = "with-header"
+  case noHeader = "no-header"
+}
+
 @main
 struct SwiftNumbersCLI: ParsableCommand {
   static let configuration = CommandConfiguration(
@@ -21,6 +32,8 @@ struct SwiftNumbersCLI: ParsableCommand {
       ReadCellCommand.self,
       ReadTableCommand.self,
       ReadRangeCommand.self,
+      ExportCSVCommand.self,
+      ImportCSVCommand.self,
     ]
   )
 }
@@ -619,6 +632,148 @@ struct ReadRangeCommand: ParsableCommand {
     case .json:
       print(try renderJSON(payload))
     }
+  }
+}
+
+struct ExportCSVCommand: ParsableCommand {
+  static let configuration = CommandConfiguration(
+    commandName: "export-csv",
+    abstract: "Exports table data to CSV."
+  )
+
+  @Argument(help: "Path to a .numbers package")
+  var file: String
+
+  @Option(name: .long, help: "Exact sheet name")
+  var sheet: String?
+
+  @Option(name: .long, help: "Zero-based sheet index (alternative to --sheet)")
+  var sheetIndex: Int?
+
+  @Option(name: .long, help: "Exact table name")
+  var table: String?
+
+  @Option(name: .long, help: "Zero-based table index within the selected sheet (alternative to --table)")
+  var tableIndex: Int?
+
+  @Option(name: .long, help: "CSV output mode: value, formatted, or formula")
+  var mode: ExportCSVMode = .value
+
+  @Option(name: .long, help: "Write CSV to this file path instead of stdout")
+  var output: String?
+
+  mutating func run() throws {
+    let url = URL(fileURLWithPath: file)
+    let document = try NumbersDocument.open(at: url)
+
+    let sheetModel = try resolveSheet(in: document, sheetName: sheet, sheetIndex: sheetIndex)
+    let tableModel = try resolveTable(in: sheetModel, tableName: table, tableIndex: tableIndex)
+    let csv = renderCSV(table: tableModel, mode: mode)
+
+    if let output {
+      let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !trimmed.isEmpty else {
+        throw ValidationError("--output cannot be empty.")
+      }
+
+      let outputURL = URL(fileURLWithPath: trimmed)
+      try Data(csv.utf8).write(to: outputURL, options: .atomic)
+      print("Exported CSV to \(outputURL.path)")
+      return
+    }
+
+    FileHandle.standardOutput.write(Data(csv.utf8))
+  }
+}
+
+struct ImportCSVCommand: ParsableCommand {
+  static let configuration = CommandConfiguration(
+    commandName: "import-csv",
+    abstract: "Imports CSV data into a selected table."
+  )
+
+  @Argument(help: "Path to a .numbers package")
+  var file: String
+
+  @Argument(help: "Path to a CSV file")
+  var csvFile: String
+
+  @Option(name: .long, help: "Exact sheet name")
+  var sheet: String?
+
+  @Option(name: .long, help: "Zero-based sheet index (alternative to --sheet)")
+  var sheetIndex: Int?
+
+  @Option(name: .long, help: "Exact table name")
+  var table: String?
+
+  @Option(name: .long, help: "Zero-based table index within the selected sheet (alternative to --table)")
+  var tableIndex: Int?
+
+  @Option(name: .long, help: "Header handling: with-header or no-header")
+  var header: ImportCSVHeaderMode = .withHeader
+
+  @Flag(name: .long, help: "Parse date-like values into typed date cells")
+  var parseDates: Bool = false
+
+  @Option(name: .long, help: "Write updated .numbers document to this path instead of saving in place")
+  var output: String?
+
+  mutating func run() throws {
+    let sourceURL = URL(fileURLWithPath: file)
+    let csvURL = URL(fileURLWithPath: csvFile)
+    let csvContent = try String(contentsOf: csvURL, encoding: .utf8)
+    let parsedRows = try parseCSVRows(csvContent)
+    let importRows = normalizeImportRows(parsedRows, headerMode: header)
+
+    guard !importRows.isEmpty else {
+      throw ValidationError("CSV file '\(csvURL.path)' is empty.")
+    }
+
+    let maxColumnCount = importRows.map(\.count).max() ?? 0
+    guard maxColumnCount > 0 else {
+      throw ValidationError("CSV file '\(csvURL.path)' does not contain columns.")
+    }
+
+    let readDocument = try NumbersDocument.open(at: sourceURL)
+    let selectedSheet = try resolveSheet(in: readDocument, sheetName: sheet, sheetIndex: sheetIndex)
+    let selectedTable = try resolveTable(
+      in: selectedSheet,
+      tableName: table,
+      tableIndex: tableIndex
+    )
+
+    let editableDocument = try EditableNumbersDocument.open(at: sourceURL)
+    let editableSheet = try editableDocument.sheet(named: selectedSheet.name)
+    let editableTable = try editableSheet.table(named: selectedTable.name)
+
+    for rowIndex in 0..<importRows.count {
+      let row = importRows[rowIndex]
+      for columnIndex in 0..<maxColumnCount {
+        let raw = columnIndex < row.count ? row[columnIndex] : ""
+        let isHeaderRow = header == .withHeader && rowIndex == 0
+        let value = importedCellValue(
+          raw: raw,
+          parseDates: parseDates,
+          forceString: isHeaderRow
+        )
+        editableTable.setValue(value, at: CellAddress(row: rowIndex, column: columnIndex))
+      }
+    }
+
+    if let output {
+      let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !trimmed.isEmpty else {
+        throw ValidationError("--output cannot be empty.")
+      }
+      let outputURL = URL(fileURLWithPath: trimmed)
+      try editableDocument.save(to: outputURL)
+      print("Imported CSV into \(outputURL.path)")
+      return
+    }
+
+    try editableDocument.saveInPlace()
+    print("Imported CSV into \(sourceURL.path)")
   }
 }
 
@@ -1661,6 +1816,8 @@ private func cellValueKind(_ value: CellValue) -> String {
     return "empty"
   case .string:
     return "string"
+  case .formula:
+    return "formula"
   case .number:
     return "number"
   case .bool:
@@ -1835,6 +1992,18 @@ private func typedValuePayload(from value: CellValue) -> TypedValuePayload {
     return TypedValuePayload(
       kind: "string",
       string: string,
+      number: nil,
+      bool: nil,
+      dateISO8601: nil,
+      durationSeconds: nil,
+      error: nil,
+      richText: nil,
+      formulaResultSummary: nil
+    )
+  case .formula(let formula):
+    return TypedValuePayload(
+      kind: "formula",
+      string: formula,
       number: nil,
       bool: nil,
       dateISO8601: nil,
@@ -2238,6 +2407,276 @@ private func renderReadRangeJSONLines(_ payload: ReadRangeJSONPayload) throws ->
   }
 
   return lines.joined(separator: "\n")
+}
+
+private func renderCSV(
+  table: SwiftNumbersCore.Table,
+  mode: ExportCSVMode
+) -> String {
+  guard table.rowCount > 0, table.columnCount > 0 else {
+    return ""
+  }
+
+  var lines: [String] = []
+  lines.reserveCapacity(table.rowCount)
+
+  for row in 0..<table.rowCount {
+    var fields: [String] = []
+    fields.reserveCapacity(table.columnCount)
+
+    for column in 0..<table.columnCount {
+      let address = CellAddress(row: row, column: column)
+      let value = csvCellString(table: table, address: address, mode: mode)
+      fields.append(escapeCSVField(value))
+    }
+
+    lines.append(fields.joined(separator: ","))
+  }
+
+  return lines.joined(separator: "\n") + "\n"
+}
+
+private func csvCellString(
+  table: SwiftNumbersCore.Table,
+  address: CellAddress,
+  mode: ExportCSVMode
+) -> String {
+  switch mode {
+  case .value:
+    guard let readCell = table.readCell(at: address) else {
+      return ""
+    }
+    return csvCellString(from: readCell.readValue)
+  case .formatted:
+    return table.formattedValue(at: address, options: .default) ?? ""
+  case .formula:
+    if let raw = table.formula(at: address)?.rawFormula, !raw.isEmpty {
+      return raw
+    }
+    return table.formattedValue(at: address, options: .default) ?? ""
+  }
+}
+
+private func csvCellString(from value: ReadCellValue) -> String {
+  switch value {
+  case .empty:
+    return ""
+  case .string(let text):
+    return text
+  case .number(let number):
+    return csvNumberString(number)
+  case .bool(let bool):
+    return bool ? "TRUE" : "FALSE"
+  case .date(let date):
+    return iso8601String(date)
+  case .duration(let seconds):
+    return csvNumberString(seconds)
+  case .error(let message):
+    return message
+  case .richText(let richText):
+    return richText.text
+  case .formulaResult(let formulaResult):
+    return csvCellString(from: formulaResult.computedValue)
+  }
+}
+
+private func csvCellString(from value: CellValue) -> String {
+  switch value {
+  case .empty:
+    return ""
+  case .string(let text):
+    return text
+  case .formula(let formula):
+    return formula
+  case .number(let number):
+    return csvNumberString(number)
+  case .bool(let bool):
+    return bool ? "TRUE" : "FALSE"
+  case .date(let date):
+    return iso8601String(date)
+  }
+}
+
+private func csvNumberString(_ value: Double) -> String {
+  let formatter = NumberFormatter()
+  formatter.locale = Locale(identifier: "en_US_POSIX")
+  formatter.numberStyle = .decimal
+  formatter.usesGroupingSeparator = false
+  formatter.minimumFractionDigits = 0
+  formatter.maximumFractionDigits = 15
+  return formatter.string(from: NSNumber(value: value)) ?? String(value)
+}
+
+private func escapeCSVField(_ value: String) -> String {
+  let requiresQuotes =
+    value.contains(",")
+    || value.contains("\"")
+    || value.contains("\n")
+    || value.contains("\r")
+
+  guard requiresQuotes else {
+    return value
+  }
+
+  return "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+}
+
+private func parseCSVRows(_ content: String) throws -> [[String]] {
+  var rows: [[String]] = []
+  var currentRow: [String] = []
+  var currentField = ""
+  var inQuotes = false
+
+  var index = content.startIndex
+  while index < content.endIndex {
+    let character = content[index]
+
+    if inQuotes {
+      if character == "\"" {
+        let nextIndex = content.index(after: index)
+        if nextIndex < content.endIndex, content[nextIndex] == "\"" {
+          currentField.append("\"")
+          index = nextIndex
+        } else {
+          inQuotes = false
+        }
+      } else {
+        currentField.append(character)
+      }
+      index = content.index(after: index)
+      continue
+    }
+
+    switch character {
+    case "\"":
+      inQuotes = true
+    case ",":
+      currentRow.append(currentField)
+      currentField = ""
+    case "\n":
+      currentRow.append(currentField)
+      rows.append(currentRow)
+      currentRow = []
+      currentField = ""
+    case "\r":
+      currentRow.append(currentField)
+      rows.append(currentRow)
+      currentRow = []
+      currentField = ""
+
+      let nextIndex = content.index(after: index)
+      if nextIndex < content.endIndex, content[nextIndex] == "\n" {
+        index = nextIndex
+      }
+    default:
+      currentField.append(character)
+    }
+
+    index = content.index(after: index)
+  }
+
+  if inQuotes {
+    throw ValidationError("CSV parse failed: unclosed quoted field.")
+  }
+
+  if !currentField.isEmpty || !currentRow.isEmpty {
+    currentRow.append(currentField)
+    rows.append(currentRow)
+  }
+
+  if let last = rows.last, last.count == 1, (last.first?.isEmpty ?? false) {
+    rows.removeLast()
+  }
+
+  return rows
+}
+
+private func normalizeImportRows(
+  _ rows: [[String]],
+  headerMode: ImportCSVHeaderMode
+) -> [[String]] {
+  guard !rows.isEmpty else {
+    return []
+  }
+
+  switch headerMode {
+  case .withHeader:
+    return rows
+  case .noHeader:
+    let maxColumns = rows.map(\.count).max() ?? 0
+    guard maxColumns > 0 else {
+      return rows
+    }
+    let generatedHeader = (0..<maxColumns).map { "Column \($0 + 1)" }
+    return [generatedHeader] + rows
+  }
+}
+
+private func importedCellValue(
+  raw: String,
+  parseDates: Bool,
+  forceString: Bool
+) -> CellValue {
+  if forceString {
+    return raw.isEmpty ? .empty : .string(raw)
+  }
+
+  let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+  if trimmed.isEmpty {
+    return .empty
+  }
+
+  if parseDates, let date = parseCSVDate(trimmed) {
+    return .date(date)
+  }
+
+  let lower = trimmed.lowercased()
+  if lower == "true" {
+    return .bool(true)
+  }
+  if lower == "false" {
+    return .bool(false)
+  }
+
+  if let number = parseCSVNumber(trimmed) {
+    return .number(number)
+  }
+
+  return .string(raw)
+}
+
+private func parseCSVDate(_ raw: String) -> Date? {
+  let iso8601 = ISO8601DateFormatter()
+  iso8601.timeZone = TimeZone(secondsFromGMT: 0)
+
+  if let value = iso8601.date(from: raw) {
+    return value
+  }
+
+  let iso8601Fractional = ISO8601DateFormatter()
+  iso8601Fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+  iso8601Fractional.timeZone = TimeZone(secondsFromGMT: 0)
+  if let value = iso8601Fractional.date(from: raw) {
+    return value
+  }
+
+  let formatter = DateFormatter()
+  formatter.locale = Locale(identifier: "en_US_POSIX")
+  formatter.timeZone = TimeZone(secondsFromGMT: 0)
+  formatter.dateFormat = "yyyy-MM-dd"
+  return formatter.date(from: raw)
+}
+
+private func parseCSVNumber(_ raw: String) -> Double? {
+  if let number = Double(raw) {
+    return number
+  }
+
+  let formatter = NumberFormatter()
+  formatter.locale = Locale(identifier: "en_US_POSIX")
+  formatter.numberStyle = .decimal
+  formatter.usesGroupingSeparator = false
+  return formatter.number(from: raw)?.doubleValue
 }
 
 private func resolveSheet(

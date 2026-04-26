@@ -6,17 +6,23 @@ import SwiftProtobuf
 
 enum IWASetCellWriter {
   private static let editableDateMarkerPrefix = "__SWIFTNUMBERS_DATE__:"
+  private static let editableFormulaMarkerPrefix = "__SWIFTNUMBERS_FORMULA__:"
   private static let editableStringEscapePrefix = "__SWIFTNUMBERS_STRING__:"
 
   private enum TypeID {
     static let documentArchive: UInt32 = 1
     static let sheetArchive: UInt32 = 2
+    static let captionInfoArchive: UInt32 = 633
+    static let wpStorageArchive: UInt32 = 2001
+    static let wpStorageArchiveAlt: UInt32 = 2005
+    static let standinCaptionArchive: UInt32 = 3097
     static let tableInfoArchive: UInt32 = 6000
     static let tableModelArchive: UInt32 = 6001
     static let tileArchive: UInt32 = 6002
     static let tableDataList: UInt32 = 6005
     static let headerStorageBucket: UInt32 = 6006
     static let tableDataListSegment: UInt32 = 6011
+    static let mergeRegionMapArchive: UInt32 = 6144
   }
 
   enum LowLevelOperation: Hashable {
@@ -24,6 +30,11 @@ enum IWASetCellWriter {
     case appendRow(sheetName: String, tableName: String, values: [CellValue])
     case insertRow(sheetName: String, tableName: String, rowIndex: Int, values: [CellValue])
     case appendColumn(sheetName: String, tableName: String, values: [CellValue])
+    case mergeCells(sheetName: String, tableName: String, range: MergeRange)
+    case unmergeCells(sheetName: String, tableName: String, range: MergeRange)
+    case setTableNameVisibility(sheetName: String, tableName: String, isVisible: Bool)
+    case setCaptionVisibility(sheetName: String, tableName: String, isVisible: Bool)
+    case setCaptionText(sheetName: String, tableName: String, text: String)
     case addTable(sheetName: String, tableName: String, rows: Int, columns: Int)
     case addSheet(name: String, defaultTableName: String, rows: Int, columns: Int)
   }
@@ -41,6 +52,10 @@ enum IWASetCellWriter {
 
   private struct TableContext {
     let key: TableKey
+    let sheetObjectID: UInt64
+    let tableInfoObjectID: UInt64
+    var tableInfo: TST_TableInfoArchive
+    var tableInfoDirty: Bool
     var rowCount: Int
     var columnCount: Int
     var rowStorageMap: [Int?]
@@ -60,6 +75,13 @@ enum IWASetCellWriter {
     let tableModelObjectID: UInt64
     var tableModel: TST_TableModelArchive
     var tableModelDirty: Bool
+    var mergeRegionMapObjectID: UInt64?
+    var mergeRegionMap: TST_MergeRegionMapArchive
+    var mergeRegionMapDirty: Bool
+    let captionStorageObjectID: UInt64?
+    let captionStorageTypeID: UInt32?
+    var captionStorage: TSWP_StorageArchive?
+    var captionStorageDirty: Bool
   }
 
   private struct SheetContext {
@@ -87,9 +109,9 @@ enum IWASetCellWriter {
     let typeID: UInt32
   }
 
-  static func lowLevelOperations(from operations: [EditOperation]) -> [LowLevelOperation]? {
+  static func lowLevelOperations(from operations: [EditOperation]) throws -> [LowLevelOperation] {
     guard !operations.isEmpty else {
-      return nil
+      return []
     }
 
     var converted: [LowLevelOperation] = []
@@ -116,10 +138,39 @@ enum IWASetCellWriter {
             rowIndex: rowIndex,
             values: values
           ))
+      case .setCellStyle:
+        throw EditableNumbersError.nativeWriteFailed(
+          "Style mutations are unsupported in strict native-write mode."
+        )
       case .appendColumn(let sheetName, let tableName, let values):
         converted.append(
           .appendColumn(sheetName: sheetName, tableName: tableName, values: values)
         )
+      case .mergeCells(let sheetName, let tableName, let range):
+        converted.append(.mergeCells(sheetName: sheetName, tableName: tableName, range: range))
+      case .unmergeCells(let sheetName, let tableName, let range):
+        converted.append(.unmergeCells(sheetName: sheetName, tableName: tableName, range: range))
+      case .setTableNameVisibility(let sheetName, let tableName, let isVisible):
+        converted.append(
+          .setTableNameVisibility(
+            sheetName: sheetName,
+            tableName: tableName,
+            isVisible: isVisible
+          ))
+      case .setCaptionVisibility(let sheetName, let tableName, let isVisible):
+        converted.append(
+          .setCaptionVisibility(
+            sheetName: sheetName,
+            tableName: tableName,
+            isVisible: isVisible
+          ))
+      case .setCaptionText(let sheetName, let tableName, let text):
+        converted.append(
+          .setCaptionText(
+            sheetName: sheetName,
+            tableName: tableName,
+            text: text
+          ))
       case .addTable(let sheetName, let tableName, let rows, let columns):
         converted.append(
           .addTable(
@@ -136,6 +187,43 @@ enum IWASetCellWriter {
     }
 
     return converted
+  }
+
+  static func shouldBlockGroupedTableMutation(
+    bucketCount: Int,
+    rowCount: Int,
+    columnCount: Int,
+    operation: LowLevelOperation
+  ) -> Bool {
+    guard bucketCount > 1 else {
+      return false
+    }
+
+    switch operation {
+    case .appendRow, .insertRow, .appendColumn, .mergeCells, .unmergeCells:
+      return true
+    case .setCell(_, _, let row, let column, _):
+      return row >= rowCount || column >= columnCount
+    case .setTableNameVisibility, .setCaptionVisibility, .setCaptionText, .addTable, .addSheet:
+      return false
+    }
+  }
+
+  static func shouldBlockPivotLinkedTableMutation(
+    tableInfoObjectID: UInt64,
+    pivotLinkedTableInfoObjectIDs: Set<UInt64>,
+    operation: LowLevelOperation
+  ) -> Bool {
+    guard pivotLinkedTableInfoObjectIDs.contains(tableInfoObjectID) else {
+      return false
+    }
+
+    switch operation {
+    case .setCell, .appendRow, .insertRow, .appendColumn, .mergeCells, .unmergeCells:
+      return true
+    case .setTableNameVisibility, .setCaptionVisibility, .setCaptionText, .addTable, .addSheet:
+      return false
+    }
   }
 
   static func save(
@@ -184,6 +272,10 @@ enum IWASetCellWriter {
       document: documentContext.document,
       recordsByObjectID: recordsByObjectID
     )
+    let pivotLinkedTableInfoObjectIDsBySheet = detectPivotLinkedTableInfoObjectIDsBySheet(
+      document: documentContext.document,
+      recordsByObjectID: recordsByObjectID
+    )
     var addedRecordsByBlobPath: [String: [IWAObjectRecord]] = [:]
 
     var maxObjectID = inventory.records.map(\.objectID).max() ?? 0
@@ -202,12 +294,51 @@ enum IWASetCellWriter {
 
     for operation in operations {
       switch operation {
-      case .setCell, .appendRow, .insertRow, .appendColumn:
+      case
+        .setCell,
+        .appendRow,
+        .insertRow,
+        .appendColumn,
+        .mergeCells,
+        .unmergeCells,
+        .setTableNameVisibility,
+        .setCaptionVisibility,
+        .setCaptionText:
         let key = tableKey(for: operation)
         guard var context = contexts[key] else {
           let names = tableNames(for: operation)
           throw EditableNumbersError.nativeWriteFailed(
             "IWA writer: table not found \(names.sheet)/\(names.table)")
+        }
+
+        let pivotLinkedTableInfoObjectIDs = pivotLinkedTableInfoObjectIDsBySheet[
+          context.sheetObjectID, default: []
+        ]
+        if shouldBlockPivotLinkedTableMutation(
+          tableInfoObjectID: context.tableInfoObjectID,
+          pivotLinkedTableInfoObjectIDs: pivotLinkedTableInfoObjectIDs,
+          operation: operation
+        ) {
+          let names = tableNames(for: operation)
+          throw EditableNumbersError.pivotLinkedTableMutationUnsupported(
+            sheet: names.sheet,
+            table: names.table,
+            operation: groupedMutationOperationName(for: operation)
+          )
+        }
+
+        if shouldBlockGroupedTableMutation(
+          bucketCount: context.rowHeaderBucketObjectIDs.count,
+          rowCount: context.rowCount,
+          columnCount: context.columnCount,
+          operation: operation
+        ) {
+          let names = tableNames(for: operation)
+          throw EditableNumbersError.groupedTableMutationUnsupported(
+            sheet: names.sheet,
+            table: names.table,
+            operation: groupedMutationOperationName(for: operation)
+          )
         }
 
         try apply(operation: operation, to: &context)
@@ -323,7 +454,6 @@ enum IWASetCellWriter {
         continue
       }
       try flushDirtyRows(context: &context)
-      contexts[key] = context
 
       for tileObjectID in context.dirtyTileObjectIDs {
         guard let tile = context.tilesByObjectID[tileObjectID] else {
@@ -347,6 +477,12 @@ enum IWASetCellWriter {
           try context.tableModel.serializedData()
       }
 
+      if context.tableInfoDirty {
+        payloadOverrides[
+          RecordKey(objectID: context.tableInfoObjectID, typeID: TypeID.tableInfoArchive)] =
+          try context.tableInfo.serializedData()
+      }
+
       if let stringTableObjectID = context.stringTableObjectID,
         let stringTable = context.stringTable
       {
@@ -354,6 +490,49 @@ enum IWASetCellWriter {
           RecordKey(objectID: stringTableObjectID, typeID: TypeID.tableDataList)
         ] = try stringTable.serializedData()
       }
+
+      if context.mergeRegionMapDirty {
+        if let mergeRegionMapObjectID = context.mergeRegionMapObjectID {
+          payloadOverrides[
+            RecordKey(objectID: mergeRegionMapObjectID, typeID: TypeID.mergeRegionMapArchive)
+          ] = try context.mergeRegionMap.serializedData()
+        } else if !context.mergeRegionMap.cellRange.isEmpty {
+          let mergeRegionMapObjectID = allocateObjectID()
+          context.mergeRegionMapObjectID = mergeRegionMapObjectID
+          context.tableModel.baseDataStore.mergeRegionMap = reference(mergeRegionMapObjectID)
+          context.tableModelDirty = true
+          payloadOverrides[
+            RecordKey(objectID: context.tableModelObjectID, typeID: TypeID.tableModelArchive)
+          ] = try context.tableModel.serializedData()
+
+          let mergeRegionMapBlobPath = preferredBlobPath(
+            for: TypeID.mergeRegionMapArchive,
+            typePreferredBlobPaths: typePreferredBlobPaths,
+            fallback: documentContext.sourceBlobPath
+          )
+          let mergeRegionMapRecord = IWAObjectRecord(
+            objectID: mergeRegionMapObjectID,
+            typeID: TypeID.mergeRegionMapArchive,
+            payloadSize: (try context.mergeRegionMap.serializedData()).count,
+            payloadData: try context.mergeRegionMap.serializedData(),
+            sourceBlobPath: mergeRegionMapBlobPath
+          )
+          addedRecordsByBlobPath[mergeRegionMapBlobPath, default: []].append(mergeRegionMapRecord)
+        }
+      }
+
+      if
+        context.captionStorageDirty,
+        let captionStorageObjectID = context.captionStorageObjectID,
+        let captionStorageTypeID = context.captionStorageTypeID,
+        let captionStorage = context.captionStorage
+      {
+        payloadOverrides[
+          RecordKey(objectID: captionStorageObjectID, typeID: captionStorageTypeID)
+        ] = try captionStorage.serializedData()
+      }
+
+      contexts[key] = context
     }
 
     for sheetRef in documentContext.document.sheets {
@@ -513,9 +692,21 @@ enum IWASetCellWriter {
           reference: dataStore.stringTable,
           recordsByObjectID: recordsByObjectID
         )
+        let mergeRegionMapContext = decodeMergeRegionMapContext(
+          reference: dataStore.mergeRegionMap,
+          recordsByObjectID: recordsByObjectID
+        )
+        let captionStorageContext = resolveCaptionStorageContext(
+          drawable: tableInfo.super,
+          recordsByObjectID: recordsByObjectID
+        )
 
         contexts[key] = TableContext(
           key: key,
+          sheetObjectID: sheetObjectID,
+          tableInfoObjectID: tableInfoObjectID,
+          tableInfo: tableInfo,
+          tableInfoDirty: false,
           rowCount: rowCount,
           columnCount: columnCount,
           rowStorageMap: rowStorageMap,
@@ -534,12 +725,118 @@ enum IWASetCellWriter {
           nextStringID: stringTableContext.nextID,
           tableModelObjectID: tableModelObjectID,
           tableModel: tableModel,
-          tableModelDirty: false
+          tableModelDirty: false,
+          mergeRegionMapObjectID: mergeRegionMapContext.objectID,
+          mergeRegionMap: mergeRegionMapContext.mergeMap,
+          mergeRegionMapDirty: false,
+          captionStorageObjectID: captionStorageContext.objectID,
+          captionStorageTypeID: captionStorageContext.typeID,
+          captionStorage: captionStorageContext.storage,
+          captionStorageDirty: false
         )
       }
     }
 
     return contexts
+  }
+
+  private static func detectPivotLinkedTableInfoObjectIDsBySheet(
+    document: TN_DocumentArchive,
+    recordsByObjectID: [UInt64: [IWAObjectRecord]]
+  ) -> [UInt64: Set<UInt64>] {
+    var linkedBySheet: [UInt64: Set<UInt64>] = [:]
+
+    for sheetRef in document.sheets {
+      let sheetObjectID = sheetRef.identifier
+      guard sheetObjectID > 0 else {
+        continue
+      }
+
+      let decodedSheet: TN_SheetArchive? = decodeMessage(
+        objectID: sheetObjectID,
+        typeID: TypeID.sheetArchive,
+        recordsByObjectID: recordsByObjectID
+      )
+      let drawableRefs = decodedSheet?.drawableInfos ?? []
+      let linked = pivotLinkedTableInfoObjectIDs(
+        forSheetObjectID: sheetObjectID,
+        drawableRefs: drawableRefs,
+        recordsByObjectID: recordsByObjectID
+      )
+      if !linked.isEmpty {
+        linkedBySheet[sheetObjectID] = linked
+      }
+    }
+
+    return linkedBySheet
+  }
+
+  static func pivotLinkedTableInfoObjectIDs(
+    forSheetObjectID sheetObjectID: UInt64,
+    drawableRefs: [TSP_Reference],
+    recordsByObjectID: [UInt64: [IWAObjectRecord]]
+  ) -> Set<UInt64> {
+    let tableInfoCandidates = candidateTableInfoObjectIDs(
+        forSheetObjectID: sheetObjectID,
+        drawableRefs: drawableRefs,
+        recordsByObjectID: recordsByObjectID
+      )
+    let tableInfoObjectIDs = Set(
+      tableInfoCandidates.filter { objectID in
+        recordsByObjectID[objectID]?.contains(where: { $0.typeID == TypeID.tableInfoArchive }) == true
+      }
+    )
+    guard !tableInfoObjectIDs.isEmpty else {
+      return []
+    }
+
+    var tableInfoByTableModelObjectID: [UInt64: UInt64] = [:]
+    for tableInfoObjectID in tableInfoObjectIDs {
+      guard
+        let tableInfo: TST_TableInfoArchive = decodeMessage(
+          objectID: tableInfoObjectID,
+          typeID: TypeID.tableInfoArchive,
+          recordsByObjectID: recordsByObjectID
+        ),
+        tableInfo.hasTableModel
+      else {
+        continue
+      }
+      let tableModelObjectID = tableInfo.tableModel.identifier
+      if tableModelObjectID > 0 {
+        tableInfoByTableModelObjectID[tableModelObjectID] = tableInfoObjectID
+      }
+    }
+
+    let drawableObjectIDs = Set(drawableRefs.map(\.identifier).filter { $0 > 0 })
+    let nonTableDrawableObjectIDs = drawableObjectIDs.subtracting(tableInfoObjectIDs)
+    guard !nonTableDrawableObjectIDs.isEmpty else {
+      return []
+    }
+
+    var linkedTableInfoObjectIDs: Set<UInt64> = []
+    for drawableObjectID in nonTableDrawableObjectIDs.sorted() {
+      guard let drawableRecords = recordsByObjectID[drawableObjectID], !drawableRecords.isEmpty else {
+        continue
+      }
+      let referencedObjectIDs = Set(
+        drawableRecords.flatMap(\.objectReferences).filter { $0 > 0 }
+      )
+      guard !referencedObjectIDs.isEmpty else {
+        continue
+      }
+
+      for tableInfoObjectID in tableInfoObjectIDs where referencedObjectIDs.contains(tableInfoObjectID) {
+        linkedTableInfoObjectIDs.insert(tableInfoObjectID)
+      }
+      for tableModelObjectID in referencedObjectIDs {
+        if let tableInfoObjectID = tableInfoByTableModelObjectID[tableModelObjectID] {
+          linkedTableInfoObjectIDs.insert(tableInfoObjectID)
+        }
+      }
+    }
+
+    return linkedTableInfoObjectIDs
   }
 
   static func candidateTableInfoObjectIDs(
@@ -703,6 +1000,8 @@ enum IWASetCellWriter {
     let headerBucketObjectID = allocateObjectID()
     let tileObjectID = allocateObjectID()
     let stringTableObjectID = allocateObjectID()
+    let captionStorageObjectID = allocateObjectID()
+    let captionInfoObjectID = allocateObjectID()
     let tableModelObjectID = allocateObjectID()
     let tableInfoObjectID = allocateObjectID()
 
@@ -796,13 +1095,24 @@ enum IWASetCellWriter {
     var tableModel = TST_TableModelArchive()
     tableModel.tableID = "table-\(tableModelObjectID)"
     tableModel.tableName = tableName
+    tableModel.tableNameEnabled = true
     tableModel.numberOfRows = UInt32(clamping: rowCount)
     tableModel.numberOfColumns = UInt32(clamping: columnCount)
     tableModel.baseDataStore = dataStore
 
+    var captionStorage = TSWP_StorageArchive()
+    captionStorage.text = [""]
+
+    var captionInfo = TSWP_CaptionInfoArchiveProxy()
+    var captionShape = TSWP_ShapeInfoArchive()
+    captionShape.ownedStorage = reference(captionStorageObjectID)
+    captionInfo.super = captionShape
+
     var tableInfo = TST_TableInfoArchive()
     var drawable = TSD_DrawableArchive()
     drawable.parent = reference(parentSheetObjectID)
+    drawable.caption = reference(captionInfoObjectID)
+    drawable.captionHidden = false
     tableInfo.super = drawable
     tableInfo.tableModel = reference(tableModelObjectID)
 
@@ -818,6 +1128,10 @@ enum IWASetCellWriter {
 
     let context = TableContext(
       key: TableKey(sheetName: sheetName, tableName: tableName),
+      sheetObjectID: parentSheetObjectID,
+      tableInfoObjectID: tableInfoObjectID,
+      tableInfo: tableInfo,
+      tableInfoDirty: false,
       rowCount: rowCount,
       columnCount: columnCount,
       rowStorageMap: rowStorageMap,
@@ -836,10 +1150,20 @@ enum IWASetCellWriter {
       nextStringID: 1,
       tableModelObjectID: tableModelObjectID,
       tableModel: tableModel,
-      tableModelDirty: false
+      tableModelDirty: false,
+      mergeRegionMapObjectID: nil,
+      mergeRegionMap: TST_MergeRegionMapArchive(),
+      mergeRegionMapDirty: false,
+      captionStorageObjectID: captionStorageObjectID,
+      captionStorageTypeID: TypeID.wpStorageArchive,
+      captionStorage: captionStorage,
+      captionStorageDirty: false
     )
 
-    let tableInfoRefs = uniqueReferences([parentSheetObjectID, tableModelObjectID])
+    let tableInfoRefs = uniqueReferences([
+      parentSheetObjectID, tableModelObjectID, captionInfoObjectID,
+    ])
+    let captionInfoRefs = uniqueReferences([captionStorageObjectID])
     let rowHeaderRefs = dataStore.rowHeaders.buckets.compactMap {
       $0.identifier > 0 ? $0.identifier : nil
     }
@@ -866,6 +1190,21 @@ enum IWASetCellWriter {
         payloadData: try tableInfo.serializedData(),
         sourceBlobPath: preferredBlobPathResolver(TypeID.tableInfoArchive),
         objectReferences: tableInfoRefs
+      ),
+      IWAObjectRecord(
+        objectID: captionInfoObjectID,
+        typeID: TypeID.captionInfoArchive,
+        payloadSize: (try captionInfo.serializedData()).count,
+        payloadData: try captionInfo.serializedData(),
+        sourceBlobPath: preferredBlobPathResolver(TypeID.captionInfoArchive),
+        objectReferences: captionInfoRefs
+      ),
+      IWAObjectRecord(
+        objectID: captionStorageObjectID,
+        typeID: TypeID.wpStorageArchive,
+        payloadSize: (try captionStorage.serializedData()).count,
+        payloadData: try captionStorage.serializedData(),
+        sourceBlobPath: preferredBlobPathResolver(TypeID.wpStorageArchive)
       ),
       IWAObjectRecord(
         objectID: tableModelObjectID,
@@ -962,6 +1301,137 @@ enum IWASetCellWriter {
 
     let nextID = max(maxID + 1, tableDataList.nextListID == 0 ? 1 : tableDataList.nextListID)
     return (objectID, tableDataList, lookup, reverseLookup, nextID)
+  }
+
+  private static func decodeMergeRegionMapContext(
+    reference: TSP_Reference,
+    recordsByObjectID: [UInt64: [IWAObjectRecord]]
+  ) -> (objectID: UInt64?, mergeMap: TST_MergeRegionMapArchive) {
+    let objectID = reference.identifier
+    guard objectID > 0 else {
+      return (nil, TST_MergeRegionMapArchive())
+    }
+
+    guard
+      let mergeMap: TST_MergeRegionMapArchive = decodeMessage(
+        objectID: objectID,
+        typeID: TypeID.mergeRegionMapArchive,
+        recordsByObjectID: recordsByObjectID
+      )
+    else {
+      return (objectID, TST_MergeRegionMapArchive())
+    }
+
+    return (objectID, mergeMap)
+  }
+
+  private static func resolveCaptionStorageContext(
+    drawable: TSD_DrawableArchive,
+    recordsByObjectID: [UInt64: [IWAObjectRecord]]
+  ) -> (objectID: UInt64?, typeID: UInt32?, storage: TSWP_StorageArchive?) {
+    guard drawable.hasCaption else {
+      return (nil, nil, nil)
+    }
+
+    let captionObjectID = drawable.caption.identifier
+    guard captionObjectID > 0 else {
+      return (nil, nil, nil)
+    }
+
+    if
+      let directStorage: TSWP_StorageArchive = decodeAnyType(
+        objectID: captionObjectID,
+        typeIDs: [TypeID.wpStorageArchive, TypeID.wpStorageArchiveAlt],
+        recordsByObjectID: recordsByObjectID
+      ),
+      let storageRecord = recordsByObjectID[captionObjectID]?.first(where: { record in
+        record.typeID == TypeID.wpStorageArchive || record.typeID == TypeID.wpStorageArchiveAlt
+      })
+    {
+      return (captionObjectID, storageRecord.typeID, directStorage)
+    }
+
+    if
+      let captionInfo: TSWP_CaptionInfoArchiveProxy = decodeMessage(
+        objectID: captionObjectID,
+        typeID: TypeID.captionInfoArchive,
+        recordsByObjectID: recordsByObjectID
+      ),
+      captionInfo.hasSuper,
+      captionInfo.super.hasOwnedStorage
+    {
+      let storageObjectID = captionInfo.super.ownedStorage.identifier
+      guard storageObjectID > 0 else {
+        return (nil, nil, nil)
+      }
+
+      if
+        let storage: TSWP_StorageArchive = decodeAnyType(
+          objectID: storageObjectID,
+          typeIDs: [TypeID.wpStorageArchive, TypeID.wpStorageArchiveAlt],
+          recordsByObjectID: recordsByObjectID
+        ),
+        let storageRecord = recordsByObjectID[storageObjectID]?.first(where: { record in
+          record.typeID == TypeID.wpStorageArchive || record.typeID == TypeID.wpStorageArchiveAlt
+        })
+      {
+        return (storageObjectID, storageRecord.typeID, storage)
+      }
+    }
+
+    if recordsByObjectID[captionObjectID]?.contains(where: { $0.typeID == TypeID.standinCaptionArchive })
+      == true
+    {
+      return (nil, nil, nil)
+    }
+
+    return (nil, nil, nil)
+  }
+
+  private static func decodeMergeRange(_ cellRange: TST_CellRange) -> MergeRange? {
+    guard cellRange.hasOrigin, cellRange.hasSize else {
+      return nil
+    }
+
+    let origin = cellRange.origin.packedData
+    let size = cellRange.size.packedData
+
+    let startColumn = Int((origin >> 16) & 0xFFFF)
+    let startRow = Int(origin & 0xFFFF)
+    let width = Int((size >> 16) & 0xFFFF)
+    let height = Int(size & 0xFFFF)
+
+    guard width > 0, height > 0 else {
+      return nil
+    }
+
+    return MergeRange(
+      startRow: startRow,
+      endRow: startRow + height - 1,
+      startColumn: startColumn,
+      endColumn: startColumn + width - 1
+    )
+  }
+
+  private static func encodeMergeRange(_ range: MergeRange) -> TST_CellRange {
+    var origin = TST_CellID()
+    origin.packedData = UInt32((range.startColumn << 16) | (range.startRow & 0xFFFF))
+
+    var size = TST_TableSize()
+    size.packedData = UInt32(((range.endColumn - range.startColumn + 1) << 16)
+      | (range.endRow - range.startRow + 1))
+
+    var encoded = TST_CellRange()
+    encoded.origin = origin
+    encoded.size = size
+    return encoded
+  }
+
+  private static func rangesOverlap(_ lhs: MergeRange, _ rhs: MergeRange) -> Bool {
+    !(lhs.endRow < rhs.startRow
+      || rhs.endRow < lhs.startRow
+      || lhs.endColumn < rhs.startColumn
+      || rhs.endColumn < lhs.startColumn)
   }
 
   private static func decodeRowsFromTiles(
@@ -1073,7 +1543,7 @@ enum IWASetCellWriter {
     return storageIndex
   }
 
-  private static func decodeRowStorageMap(
+  static func decodeRowStorageMap(
     headerStorage: TST_HeaderStorage,
     rowCount: Int,
     rowBufferCount: Int,
@@ -1103,8 +1573,14 @@ enum IWASetCellWriter {
       }
 
       for header in bucket.headers {
+        if rowBufferCount > 0, sequentialStorageIndex >= rowBufferCount {
+          break
+        }
         let rowIndex = Int(header.index)
         guard rowIndex >= 0, rowIndex < rowStorageMap.count else {
+          continue
+        }
+        guard rowStorageMap[rowIndex] == nil else {
           continue
         }
         rowStorageMap[rowIndex] = sequentialStorageIndex
@@ -1167,6 +1643,25 @@ enum IWASetCellWriter {
     return try? MessageType(serializedBytes: record.payloadData)
   }
 
+  private static func decodeAnyType<MessageType: SwiftProtobuf.Message>(
+    objectID: UInt64,
+    typeIDs: [UInt32],
+    recordsByObjectID: [UInt64: [IWAObjectRecord]]
+  ) -> MessageType? {
+    for typeID in typeIDs {
+      if
+        let decoded: MessageType = decodeMessage(
+          objectID: objectID,
+          typeID: typeID,
+          recordsByObjectID: recordsByObjectID
+        )
+      {
+        return decoded
+      }
+    }
+    return nil
+  }
+
   private static func record(
     objectID: UInt64,
     typeID: UInt32,
@@ -1223,10 +1718,47 @@ enum IWASetCellWriter {
       return (sheetName, tableName)
     case .appendColumn(let sheetName, let tableName, _):
       return (sheetName, tableName)
+    case .mergeCells(let sheetName, let tableName, _):
+      return (sheetName, tableName)
+    case .unmergeCells(let sheetName, let tableName, _):
+      return (sheetName, tableName)
+    case .setTableNameVisibility(let sheetName, let tableName, _):
+      return (sheetName, tableName)
+    case .setCaptionVisibility(let sheetName, let tableName, _):
+      return (sheetName, tableName)
+    case .setCaptionText(let sheetName, let tableName, _):
+      return (sheetName, tableName)
     case .addTable(let sheetName, let tableName, _, _):
       return (sheetName, tableName)
     case .addSheet(let name, let defaultTableName, _, _):
       return (name, defaultTableName)
+    }
+  }
+
+  private static func groupedMutationOperationName(for operation: LowLevelOperation) -> String {
+    switch operation {
+    case .setCell:
+      return "setCell"
+    case .appendRow:
+      return "appendRow"
+    case .insertRow:
+      return "insertRow"
+    case .appendColumn:
+      return "appendColumn"
+    case .mergeCells:
+      return "mergeCells"
+    case .unmergeCells:
+      return "unmergeCells"
+    case .setTableNameVisibility:
+      return "setTableNameVisibility"
+    case .setCaptionVisibility:
+      return "setCaptionVisibility"
+    case .setCaptionText:
+      return "setCaptionText"
+    case .addTable:
+      return "addTable"
+    case .addSheet:
+      return "addSheet"
     }
   }
 
@@ -1261,6 +1793,25 @@ enum IWASetCellWriter {
       for (row, value) in values.enumerated() where value != .empty {
         try applySetCell(row: row, column: columnIndex, value: value, context: &context)
       }
+    case .mergeCells(_, _, let range):
+      try applyMerge(range: range, context: &context)
+    case .unmergeCells(_, _, let range):
+      applyUnmerge(range: range, context: &context)
+    case .setTableNameVisibility(_, _, let isVisible):
+      context.tableModel.tableNameEnabled = isVisible
+      context.tableModelDirty = true
+    case .setCaptionVisibility(_, _, let isVisible):
+      context.tableInfo.super.captionHidden = !isVisible
+      context.tableInfoDirty = true
+    case .setCaptionText(_, _, let text):
+      guard var captionStorage = context.captionStorage else {
+        throw EditableNumbersError.nativeWriteFailed(
+          "IWA writer: caption storage is unavailable for this table"
+        )
+      }
+      captionStorage.text = [text]
+      context.captionStorage = captionStorage
+      context.captionStorageDirty = true
     case .addTable, .addSheet:
       throw EditableNumbersError.nativeWriteFailed(
         "IWA writer: addTable/addSheet are handled at document level and should not be applied to existing table context"
@@ -1298,6 +1849,50 @@ enum IWASetCellWriter {
     rowBuffer[column] = try encodeCellBuffer(value: value, context: &context)
     context.rowBuffers[storageIndex] = rowBuffer
     context.dirtyStorageIndices.insert(storageIndex)
+  }
+
+  private static func applyMerge(range: MergeRange, context: inout TableContext) throws {
+    guard range.startRow >= 0, range.startColumn >= 0 else {
+      throw EditableNumbersError.nativeWriteFailed(
+        "IWA writer: merge range start must be non-negative"
+      )
+    }
+    guard range.endRow >= range.startRow, range.endColumn >= range.startColumn else {
+      throw EditableNumbersError.nativeWriteFailed("IWA writer: merge range is invalid")
+    }
+
+    try ensureRowCount(range.endRow + 1, context: &context)
+    try ensureColumnCount(range.endColumn + 1, context: &context)
+
+    for existing in context.mergeRegionMap.cellRange {
+      guard let existingRange = decodeMergeRange(existing) else {
+        continue
+      }
+      if rangesOverlap(existingRange, range), existingRange != range {
+        throw EditableNumbersError.nativeWriteFailed(
+          "IWA writer: overlapping merge range is unsupported"
+        )
+      }
+      if existingRange == range {
+        return
+      }
+    }
+
+    context.mergeRegionMap.cellRange.append(encodeMergeRange(range))
+    context.mergeRegionMapDirty = true
+  }
+
+  private static func applyUnmerge(range: MergeRange, context: inout TableContext) {
+    let previousCount = context.mergeRegionMap.cellRange.count
+    context.mergeRegionMap.cellRange.removeAll { cellRange in
+      guard let decoded = decodeMergeRange(cellRange) else {
+        return false
+      }
+      return rangesOverlap(decoded, range)
+    }
+    if context.mergeRegionMap.cellRange.count != previousCount {
+      context.mergeRegionMapDirty = true
+    }
   }
 
   private static func ensureRowCount(_ minimum: Int, context: inout TableContext) throws {
@@ -1513,6 +2108,10 @@ enum IWASetCellWriter {
       return encodeNumericCell(value: bool ? 1.0 : 0.0, typeID: 6)
     case .string(let string):
       let stringID = try resolveStringID(for: encodeStoredString(string), context: &context)
+      return encodeStringCell(stringID: stringID)
+    case .formula(let formula):
+      let marker = editableFormulaMarkerPrefix + normalizeStoredFormula(formula)
+      let stringID = try resolveStringID(for: marker, context: &context)
       return encodeStringCell(stringID: stringID)
     case .date(let date):
       let marker = editableDateMarkerPrefix + formatDate(date)
@@ -1818,8 +2417,18 @@ enum IWASetCellWriter {
     return formatter.string(from: date)
   }
 
+  private static func normalizeStoredFormula(_ formula: String) -> String {
+    let trimmed = formula.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+      return "="
+    }
+    return trimmed.hasPrefix("=") ? trimmed : "=\(trimmed)"
+  }
+
   private static func encodeStoredString(_ string: String) -> String {
-    if string.hasPrefix(editableDateMarkerPrefix) || string.hasPrefix(editableStringEscapePrefix) {
+    if string.hasPrefix(editableDateMarkerPrefix) || string.hasPrefix(editableFormulaMarkerPrefix)
+      || string.hasPrefix(editableStringEscapePrefix)
+    {
       return editableStringEscapePrefix + string
     }
     return string

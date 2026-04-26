@@ -161,6 +161,7 @@ message TableModelArchive {
   optional .TSP.Reference header_row_style = 19;
   optional .TSP.Reference header_column_style = 20;
   optional .TSP.Reference footer_row_style = 21;
+  optional bool table_name_enabled = 22;
   optional .TSP.Reference body_text_style = 24;
   optional .TSP.Reference header_row_text_style = 25;
   optional .TSP.Reference header_column_text_style = 26;

@@ -32,6 +32,7 @@ import SwiftNumbersCore
 | `tableNotFound` | `sheet: String, table: String` |
 | `duplicateTableName` | `sheet: String, table: String` |
 | `invalidCellReference` | `String` |
+| `invalidRangeReference` | `String` |
 | `invalidRowIndex` | `Int` |
 | `invalidColumnIndex` | `Int` |
 | `nativeWriteFailed` | `String` |
@@ -62,6 +63,7 @@ public struct CellAddress: Hashable, Sendable {
 public enum CellValue: Sendable, Hashable {
   case empty
   case string(String)
+  case formula(String)
   case number(Double)
   case bool(Bool)
   case date(Date)
@@ -83,11 +85,46 @@ public struct MergeRange: Hashable, Sendable {
 ### `TableMetadata`
 
 ```swift
+public struct TableObjectIdentifiers: Hashable, Sendable {
+  public let tableInfoObjectID: UInt64?
+  public let tableModelObjectID: UInt64?
+  public init(tableInfoObjectID: UInt64? = nil, tableModelObjectID: UInt64? = nil)
+}
+
+public struct PivotLinkMetadata: Hashable, Sendable {
+  public let drawableObjectID: UInt64
+  public let drawableTypeIDs: [UInt32]
+  public let linkedTableInfoObjectIDs: [UInt64]
+  public let linkedTableModelObjectIDs: [UInt64]
+  public init(
+    drawableObjectID: UInt64,
+    drawableTypeIDs: [UInt32],
+    linkedTableInfoObjectIDs: [UInt64],
+    linkedTableModelObjectIDs: [UInt64]
+  )
+}
+
 public struct TableMetadata: Hashable, Sendable {
   public let rowCount: Int
   public let columnCount: Int
   public let mergeRanges: [MergeRange]
-  public init(rowCount: Int, columnCount: Int, mergeRanges: [MergeRange])
+  public let tableNameVisible: Bool?
+  public let captionVisible: Bool?
+  public let captionText: String?
+  public let captionTextSupported: Bool
+  public let objectIdentifiers: TableObjectIdentifiers?
+  public let pivotLinks: [PivotLinkMetadata]
+  public init(
+    rowCount: Int,
+    columnCount: Int,
+    mergeRanges: [MergeRange],
+    tableNameVisible: Bool? = nil,
+    captionVisible: Bool? = nil,
+    captionText: String? = nil,
+    captionTextSupported: Bool = false,
+    objectIdentifiers: TableObjectIdentifiers? = nil,
+    pivotLinks: [PivotLinkMetadata] = []
+  )
 }
 ```
 
@@ -481,15 +518,32 @@ public final class EditableTable {
   public var populatedCellCount: Int { get }
 
   public func cell(at address: CellAddress) -> CellValue?
+  public func style(at address: CellAddress) -> ReadCellStyle?
+  public func format(at address: CellAddress) -> EditableCellFormat?
   public func cell(_ reference: String) throws -> EditableCell
   public func cell(at reference: CellReference) -> EditableCell
+  public var isTableNameVisible: Bool? { get }
+  public var isCaptionVisible: Bool? { get }
+  public var tableCaptionText: String? { get }
 
   public func setValue(_ value: CellValue, at address: CellAddress)
   public func setValue(_ value: CellValue, at reference: String) throws
+  public func setStyle(_ style: ReadCellStyle?, at address: CellAddress)
+  public func setStyle(_ style: ReadCellStyle?, at reference: String) throws
+  public func setFormat(_ format: EditableCellFormat?, at address: CellAddress)
+  public func setFormat(_ format: EditableCellFormat?, at reference: String) throws
+  public func format(_ reference: String) -> EditableCellFormat?
+  public func setTableNameVisible(_ isVisible: Bool) throws
+  public func setCaptionVisible(_ isVisible: Bool) throws
+  public func setCaptionText(_ text: String) throws
 
   public func appendRow(_ values: [CellValue])
   public func insertRow(_ values: [CellValue], at rowIndex: Int) throws
   public func appendColumn(_ values: [CellValue])
+  public func mergeCells(_ rangeReference: String) throws
+  public func mergeCells(from start: CellAddress, to end: CellAddress) throws
+  public func unmergeCells(_ rangeReference: String) throws
+  public func unmergeCells(from start: CellAddress, to end: CellAddress)
 }
 ```
 
@@ -499,6 +553,19 @@ public final class EditableTable {
 public final class EditableCell {
   public let address: CellAddress
   public var value: CellValue? { get set }
+  public var style: ReadCellStyle? { get set }
+  public var format: EditableCellFormat? { get set }
+}
+```
+
+### `EditableCellFormat`
+
+```swift
+public enum EditableCellFormat: Hashable, Sendable {
+  case number(formatID: Int32 = 0)
+  case date(formatID: Int32 = 0)
+  case currency(formatID: Int32 = 0)
+  case custom(formatID: Int32)
 }
 ```
 
@@ -508,6 +575,13 @@ public final class EditableCell {
 - `CellReference` uses A1 notation.
 - `setValue(..., at: CellAddress)` does not throw and ignores negative row/column indices.
 - `setValue(..., at: String)` throws for invalid A1.
+- `setStyle(..., at: CellAddress)` does not throw and ignores negative row/column indices.
+- `setStyle(..., at: String)` throws for invalid A1.
+- `setFormat(..., at: CellAddress)` does not throw and ignores negative row/column indices.
+- `setFormat(..., at: String)` throws for invalid A1.
+- `setTableNameVisible(_:)` and `setCaptionVisible(_:)` throw when source metadata is unavailable for the current table.
+- `setCaptionText(_:)` throws when caption storage is unavailable for the current table.
+- `mergeCells(...)` / `unmergeCells(...)` throw for invalid range references and preserve deterministic sorted merge metadata.
 - `addSheet(named:)` auto-suffixes duplicate names (`Name`, `Name (2)`, ...).
 - `EditableSheet.addTable(named:...)` throws `duplicateTableName` for duplicates in the same sheet.
 - `save(to:)` writes to the given destination and updates the document working path to that destination.

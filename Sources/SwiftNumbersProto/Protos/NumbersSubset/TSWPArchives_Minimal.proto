@@ -50,3 +50,11 @@ message HyperlinkFieldArchive {
 message UnsupportedHyperlinkFieldArchive {
   optional string url_ref = 2;
 }
+
+message ShapeInfoArchive {
+  optional .TSP.Reference owned_storage = 4;
+}
+
+message CaptionInfoArchiveProxy {
+  optional .TSWP.ShapeInfoArchive super = 1;
+}

@@ -1,16 +1,17 @@
 import Foundation
 import SwiftNumbersContainer
 import SwiftNumbersIWA
-import SwiftNumbersProto
-import SwiftProtobuf
 
 public enum EditableNumbersError: LocalizedError {
   case sheetNotFound(String)
   case tableNotFound(sheet: String, table: String)
   case duplicateTableName(sheet: String, table: String)
   case invalidCellReference(String)
+  case invalidRangeReference(String)
   case invalidRowIndex(Int)
   case invalidColumnIndex(Int)
+  case groupedTableMutationUnsupported(sheet: String, table: String, operation: String)
+  case pivotLinkedTableMutationUnsupported(sheet: String, table: String, operation: String)
   case nativeWriteFailed(String)
 
   public var errorDescription: String? {
@@ -23,10 +24,18 @@ public enum EditableNumbersError: LocalizedError {
       return "Table already exists: \(sheet)/\(table)"
     case .invalidCellReference(let raw):
       return "Invalid cell reference: \(raw)"
+    case .invalidRangeReference(let raw):
+      return "Invalid range reference: \(raw)"
     case .invalidRowIndex(let row):
       return "Invalid row index: \(row)"
     case .invalidColumnIndex(let column):
       return "Invalid column index: \(column)"
+    case .groupedTableMutationUnsupported(let sheet, let table, let operation):
+      return
+        "Unsafe grouped-table mutation blocked for \(sheet)/\(table) during \(operation). Grouped tables are currently read-only for structural edits. Remove grouping in Apple Numbers and retry."
+    case .pivotLinkedTableMutationUnsupported(let sheet, let table, let operation):
+      return
+        "Unsafe pivot-linked mutation blocked for \(sheet)/\(table) during \(operation). This table is linked to a non-table analytical drawable (pivot-like structure) and is currently read-only for native writes. Remove pivot linkage in Apple Numbers and retry."
     case .nativeWriteFailed(let details):
       return "Swift-native write failed: \(details)"
     }
@@ -37,6 +46,13 @@ public enum DocumentDirtyState: String, Sendable {
   case clean
   case dataDirty
   case structureDirty
+}
+
+public enum EditableCellFormat: Hashable, Sendable {
+  case number(formatID: Int32 = 0)
+  case date(formatID: Int32 = 0)
+  case currency(formatID: Int32 = 0)
+  case custom(formatID: Int32)
 }
 
 public struct CellReference: Hashable, Sendable, CustomStringConvertible {
@@ -119,7 +135,6 @@ public final class EditableNumbersDocument {
 
   private var operations: [EditOperation] = []
   private var workingSourceURL: URL
-  private let sourceDocumentID: String?
 
   public var hasChanges: Bool {
     !operations.isEmpty
@@ -129,20 +144,15 @@ public final class EditableNumbersDocument {
     sheets.first
   }
 
-  private init(sourceURL: URL, sourceDocumentID: String?) {
+  private init(sourceURL: URL) {
     let normalized = sourceURL.standardizedFileURL
     self.sourceURL = normalized
     self.workingSourceURL = normalized
-    self.sourceDocumentID = sourceDocumentID
   }
 
   public static func open(at url: URL) throws -> EditableNumbersDocument {
     let readOnly = try NumbersDocument.open(at: url)
-    let sourceMetadataDocumentID = try loadSourceMetadataDocumentID(from: url)
-    let editable = EditableNumbersDocument(
-      sourceURL: url,
-      sourceDocumentID: sourceMetadataDocumentID
-    )
+    let editable = EditableNumbersDocument(sourceURL: url)
     editable.bootstrap(from: readOnly.sheets)
     return editable
   }
@@ -217,9 +227,7 @@ public final class EditableNumbersDocument {
     try NativeWriterBackend.save(
       sourceURL: workingSourceURL,
       destinationURL: destinationURL,
-      sourceDocumentID: sourceDocumentID,
-      operations: operations,
-      sheets: sheets
+      operations: operations
     )
   }
 
@@ -276,13 +284,27 @@ public final class EditableNumbersDocument {
     let sink = makeMutationSink()
     self.sheets = sourceSheets.map { sourceSheet in
       let editableTables = sourceSheet.tables.map { table in
-        EditableTable(
+        let styleCells: [CellAddress: ReadCellStyle] = Dictionary(
+          uniqueKeysWithValues: table.populatedCells(sorted: false).compactMap { readCell in
+            guard let style = readCell.style else {
+              return nil
+            }
+            return (readCell.address, style)
+          })
+        return EditableTable(
           id: table.id,
           name: table.name,
           rowCount: table.metadata.rowCount,
           columnCount: table.metadata.columnCount,
           mergeRanges: table.metadata.mergeRanges,
+          objectIdentifiers: table.metadata.objectIdentifiers,
+          pivotLinks: table.metadata.pivotLinks,
+          tableNameVisible: table.metadata.tableNameVisible,
+          captionVisible: table.metadata.captionVisible,
+          captionText: table.metadata.captionText,
+          captionTextSupported: table.metadata.captionTextSupported,
           cells: table.allCells,
+          cellStyles: styleCells,
           ownerSheetName: sourceSheet.name,
           mutationSink: sink
         )
@@ -347,11 +369,6 @@ public final class EditableNumbersDocument {
         "Ambiguous table identity for write operation: \(duplicateKey.sheet)/\(duplicateKey.table)"
       )
     }
-  }
-
-  private static func loadSourceMetadataDocumentID(from url: URL) throws -> String? {
-    let container = try NumbersContainer.open(at: url)
-    return try MetadataLoader.loadDocumentMetadata(from: container)?.documentID
   }
 
   private func normalizedSheetName(_ raw: String) -> String {
@@ -475,7 +492,14 @@ public final class EditableTable {
   private(set) var rowCount: Int
   private(set) var columnCount: Int
   private(set) var mergeRanges: [MergeRange]
+  private var objectIdentifiers: TableObjectIdentifiers?
+  private var pivotLinks: [PivotLinkMetadata]
+  private var tableNameVisible: Bool?
+  private var captionVisible: Bool?
+  private var captionText: String?
+  private var captionTextSupported: Bool
   private var cells: [CellAddress: CellValue]
+  private var cellStyles: [CellAddress: ReadCellStyle]
   private var dirtyCells: Set<CellAddress> = []
   private let ownerSheetName: String
   private let mutationSink: MutationSink
@@ -484,7 +508,13 @@ public final class EditableTable {
     TableMetadata(
       rowCount: rowCount,
       columnCount: columnCount,
-      mergeRanges: mergeRanges
+      mergeRanges: mergeRanges,
+      tableNameVisible: tableNameVisible,
+      captionVisible: captionVisible,
+      captionText: captionText,
+      captionTextSupported: captionTextSupported,
+      objectIdentifiers: objectIdentifiers,
+      pivotLinks: pivotLinks
     )
   }
 
@@ -496,13 +526,24 @@ public final class EditableTable {
     cells
   }
 
+  fileprivate var allCellStyles: [CellAddress: ReadCellStyle] {
+    cellStyles
+  }
+
   fileprivate init(
     id: String,
     name: String,
     rowCount: Int,
     columnCount: Int,
     mergeRanges: [MergeRange],
+    objectIdentifiers: TableObjectIdentifiers? = nil,
+    pivotLinks: [PivotLinkMetadata] = [],
+    tableNameVisible: Bool? = nil,
+    captionVisible: Bool? = nil,
+    captionText: String? = nil,
+    captionTextSupported: Bool = false,
     cells: [CellAddress: CellValue],
+    cellStyles: [CellAddress: ReadCellStyle] = [:],
     ownerSheetName: String,
     mutationSink: @escaping MutationSink
   ) {
@@ -511,13 +552,31 @@ public final class EditableTable {
     self.rowCount = rowCount
     self.columnCount = columnCount
     self.mergeRanges = mergeRanges
+    self.objectIdentifiers = objectIdentifiers
+    self.pivotLinks = pivotLinks
+    self.tableNameVisible = tableNameVisible
+    self.captionVisible = captionVisible
+    self.captionText = captionText
+    self.captionTextSupported = captionTextSupported
     self.cells = cells
+    self.cellStyles = cellStyles
     self.ownerSheetName = ownerSheetName
     self.mutationSink = mutationSink
   }
 
   public func cell(at address: CellAddress) -> CellValue? {
     cells[address]
+  }
+
+  public func style(at address: CellAddress) -> ReadCellStyle? {
+    cellStyles[address]
+  }
+
+  public func format(at address: CellAddress) -> EditableCellFormat? {
+    guard let numberFormat = cellStyles[address]?.numberFormat else {
+      return nil
+    }
+    return EditableCellFormat(numberFormat: numberFormat)
   }
 
   public func cell(_ reference: String) throws -> EditableCell {
@@ -527,6 +586,81 @@ public final class EditableTable {
 
   public func cell(at reference: CellReference) -> EditableCell {
     EditableCell(table: self, address: reference.address)
+  }
+
+  public var isTableNameVisible: Bool? {
+    tableNameVisible
+  }
+
+  public var isCaptionVisible: Bool? {
+    captionVisible
+  }
+
+  public var tableCaptionText: String? {
+    captionText
+  }
+
+  public func setTableNameVisible(_ isVisible: Bool) throws {
+    guard tableNameVisible != nil else {
+      throw EditableNumbersError.nativeWriteFailed(
+        "Table name visibility metadata is unavailable for this table."
+      )
+    }
+    guard tableNameVisible != isVisible else {
+      return
+    }
+    tableNameVisible = isVisible
+    markDirty(structureChanged: false)
+    mutationSink(
+      .setTableNameVisibility(
+        sheetName: ownerSheetName,
+        tableName: name,
+        isVisible: isVisible
+      ),
+      false
+    )
+  }
+
+  public func setCaptionVisible(_ isVisible: Bool) throws {
+    guard captionVisible != nil else {
+      throw EditableNumbersError.nativeWriteFailed(
+        "Caption visibility metadata is unavailable for this table."
+      )
+    }
+    guard captionVisible != isVisible else {
+      return
+    }
+    captionVisible = isVisible
+    markDirty(structureChanged: false)
+    mutationSink(
+      .setCaptionVisibility(
+        sheetName: ownerSheetName,
+        tableName: name,
+        isVisible: isVisible
+      ),
+      false
+    )
+  }
+
+  public func setCaptionText(_ text: String) throws {
+    guard captionTextSupported else {
+      throw EditableNumbersError.nativeWriteFailed(
+        "Caption text storage is unavailable for this table."
+      )
+    }
+    guard captionText != text else {
+      return
+    }
+    captionText = text
+    markDirty(structureChanged: false)
+    mutationSink(
+      .setCaptionText(
+        sheetName: ownerSheetName,
+        tableName: name,
+        text: text
+      ),
+      false
+    )
   }
 
   public func setValue(_ value: CellValue, at address: CellAddress) {
@@ -556,6 +690,73 @@ public final class EditableTable {
   public func setValue(_ value: CellValue, at reference: String) throws {
     let parsed = try CellReference(reference)
     setValue(value, at: parsed.address)
+  }
+
+  public func setStyle(_ style: ReadCellStyle?, at address: CellAddress) {
+    guard address.row >= 0, address.column >= 0 else {
+      return
+    }
+
+    let structureChanged = ensureCapacity(for: address)
+    if let style {
+      cellStyles[address] = style
+    } else {
+      cellStyles.removeValue(forKey: address)
+    }
+    markDirty(address: address, structureChanged: structureChanged)
+    mutationSink(
+      .setCellStyle(
+        sheetName: ownerSheetName,
+        tableName: name,
+        row: address.row,
+        column: address.column,
+        style: style
+      ),
+      structureChanged
+    )
+  }
+
+  public func setStyle(_ style: ReadCellStyle?, at reference: String) throws {
+    let parsed = try CellReference(reference)
+    setStyle(style, at: parsed.address)
+  }
+
+  public func setFormat(_ format: EditableCellFormat?, at address: CellAddress) {
+    guard address.row >= 0, address.column >= 0 else {
+      return
+    }
+
+    let currentStyle = cellStyles[address]
+    let nextNumberFormat = format.map(\.readNumberFormat)
+    let nextStyle: ReadCellStyle?
+    if let currentStyle {
+      let updatedStyle = Self.styleByUpdatingNumberFormat(
+        currentStyle,
+        numberFormat: nextNumberFormat
+      )
+      nextStyle = Self.styleHasVisibleFields(updatedStyle) ? updatedStyle : nil
+    } else if let nextNumberFormat {
+      nextStyle = ReadCellStyle(numberFormat: nextNumberFormat)
+    } else {
+      nextStyle = nil
+    }
+
+    guard currentStyle != nextStyle else {
+      return
+    }
+    setStyle(nextStyle, at: address)
+  }
+
+  public func setFormat(_ format: EditableCellFormat?, at reference: String) throws {
+    let parsed = try CellReference(reference)
+    setFormat(format, at: parsed.address)
+  }
+
+  public func format(_ reference: String) -> EditableCellFormat? {
+    guard let parsed = try? CellReference(reference) else {
+      return nil
+    }
+    return format(at: parsed.address)
   }
 
   public func appendRow(_ values: [CellValue]) {
@@ -625,8 +826,34 @@ public final class EditableTable {
     )
   }
 
+  public func mergeCells(_ rangeReference: String) throws {
+    let range = try Self.parseMergeRange(rangeReference)
+    try mergeCells(range)
+  }
+
+  public func mergeCells(from start: CellAddress, to end: CellAddress) throws {
+    try mergeCells(Self.normalizedMergeRange(from: start, to: end))
+  }
+
+  public func unmergeCells(_ rangeReference: String) throws {
+    let range = try Self.parseMergeRange(rangeReference)
+    unmergeCells(range)
+  }
+
+  public func unmergeCells(from start: CellAddress, to end: CellAddress) {
+    unmergeCells(Self.normalizedMergeRange(from: start, to: end))
+  }
+
   fileprivate func value(for address: CellAddress) -> CellValue? {
     cells[address]
+  }
+
+  fileprivate func style(for address: CellAddress) -> ReadCellStyle? {
+    cellStyles[address]
+  }
+
+  fileprivate func format(for address: CellAddress) -> EditableCellFormat? {
+    format(at: address)
   }
 
   private func ensureCapacity(for address: CellAddress) -> Bool {
@@ -640,6 +867,117 @@ public final class EditableTable {
       structureChanged = true
     }
     return structureChanged
+  }
+
+  private func mergeCells(_ range: MergeRange) throws {
+    if range.startRow < 0 || range.startColumn < 0 {
+      throw EditableNumbersError.invalidRangeReference(
+        "\(CellReference(address: CellAddress(row: range.startRow, column: range.startColumn)).a1):\(CellReference(address: CellAddress(row: range.endRow, column: range.endColumn)).a1)"
+      )
+    }
+
+    let structureChanged = ensureCapacity(
+      for: CellAddress(row: range.endRow, column: range.endColumn))
+
+    for existing in mergeRanges where Self.rangesOverlap(existing, range) && existing != range {
+      throw EditableNumbersError.nativeWriteFailed(
+        "Overlapping merge range is not supported: \(Self.mergeRangeA1(existing))")
+    }
+
+    if mergeRanges.contains(range) {
+      return
+    }
+
+    mergeRanges.append(range)
+    mergeRanges.sort(by: Self.mergeRangeSort)
+    markDirty(structureChanged: structureChanged)
+    mutationSink(
+      .mergeCells(sheetName: ownerSheetName, tableName: name, range: range),
+      structureChanged
+    )
+  }
+
+  private func unmergeCells(_ range: MergeRange) {
+    let originalCount = mergeRanges.count
+    mergeRanges.removeAll { Self.rangesOverlap($0, range) }
+    guard mergeRanges.count != originalCount else {
+      return
+    }
+    mergeRanges.sort(by: Self.mergeRangeSort)
+    markDirty(structureChanged: false)
+    mutationSink(
+      .unmergeCells(sheetName: ownerSheetName, tableName: name, range: range),
+      false
+    )
+  }
+
+  private static func parseMergeRange(_ raw: String) throws -> MergeRange {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+      throw EditableNumbersError.invalidRangeReference(raw)
+    }
+
+    let parts = trimmed.split(separator: ":", maxSplits: 1).map(String.init)
+    guard parts.count == 1 || parts.count == 2 else {
+      throw EditableNumbersError.invalidRangeReference(raw)
+    }
+
+    let start: CellReference
+    do {
+      start = try CellReference(parts[0])
+    } catch {
+      throw EditableNumbersError.invalidRangeReference(raw)
+    }
+
+    let end: CellReference
+    if parts.count == 2 {
+      do {
+        end = try CellReference(parts[1])
+      } catch {
+        throw EditableNumbersError.invalidRangeReference(raw)
+      }
+    } else {
+      end = start
+    }
+
+    return normalizedMergeRange(from: start.address, to: end.address)
+  }
+
+  private static func normalizedMergeRange(from start: CellAddress, to end: CellAddress) -> MergeRange
+  {
+    MergeRange(
+      startRow: min(start.row, end.row),
+      endRow: max(start.row, end.row),
+      startColumn: min(start.column, end.column),
+      endColumn: max(start.column, end.column)
+    )
+  }
+
+  private static func rangesOverlap(_ lhs: MergeRange, _ rhs: MergeRange) -> Bool {
+    !(lhs.endRow < rhs.startRow
+      || rhs.endRow < lhs.startRow
+      || lhs.endColumn < rhs.startColumn
+      || rhs.endColumn < lhs.startColumn)
+  }
+
+  private static func mergeRangeSort(_ lhs: MergeRange, _ rhs: MergeRange) -> Bool {
+    if lhs.startRow != rhs.startRow {
+      return lhs.startRow < rhs.startRow
+    }
+    if lhs.startColumn != rhs.startColumn {
+      return lhs.startColumn < rhs.startColumn
+    }
+    if lhs.endRow != rhs.endRow {
+      return lhs.endRow < rhs.endRow
+    }
+    return lhs.endColumn < rhs.endColumn
+  }
+
+  private static func mergeRangeA1(_ range: MergeRange) -> String {
+    let start = CellReference(address: CellAddress(row: range.startRow, column: range.startColumn))
+      .a1
+    let end = CellReference(address: CellAddress(row: range.endRow, column: range.endColumn)).a1
+    return "\(start):\(end)"
   }
 
   private func markDirty(address: CellAddress? = nil, structureChanged: Bool) {
@@ -657,6 +995,43 @@ public final class EditableTable {
     isStructureDirty = false
     dirtyCells.removeAll(keepingCapacity: true)
   }
+
+  private static func styleByUpdatingNumberFormat(
+    _ style: ReadCellStyle,
+    numberFormat: ReadNumberFormat?
+  ) -> ReadCellStyle {
+    ReadCellStyle(
+      horizontalAlignment: style.horizontalAlignment,
+      verticalAlignment: style.verticalAlignment,
+      backgroundColorHex: style.backgroundColorHex,
+      fontName: style.fontName,
+      fontSize: style.fontSize,
+      isBold: style.isBold,
+      isItalic: style.isItalic,
+      textColorHex: style.textColorHex,
+      hasTopBorder: style.hasTopBorder,
+      hasRightBorder: style.hasRightBorder,
+      hasBottomBorder: style.hasBottomBorder,
+      hasLeftBorder: style.hasLeftBorder,
+      numberFormat: numberFormat
+    )
+  }
+
+  private static func styleHasVisibleFields(_ style: ReadCellStyle) -> Bool {
+    style.horizontalAlignment != nil
+      || style.verticalAlignment != nil
+      || style.backgroundColorHex != nil
+      || style.fontName != nil
+      || style.fontSize != nil
+      || style.isBold != nil
+      || style.isItalic != nil
+      || style.textColorHex != nil
+      || style.hasTopBorder
+      || style.hasRightBorder
+      || style.hasBottomBorder
+      || style.hasLeftBorder
+      || style.numberFormat != nil
+  }
 }
 
 public final class EditableCell {
@@ -672,219 +1047,80 @@ public final class EditableCell {
     get { table.value(for: address) }
     set { table.setValue(newValue ?? .empty, at: address) }
   }
+
+  public var style: ReadCellStyle? {
+    get { table.style(for: address) }
+    set { table.setStyle(newValue, at: address) }
+  }
+
+  public var format: EditableCellFormat? {
+    get { table.format(for: address) }
+    set { table.setFormat(newValue, at: address) }
+  }
+}
+
+private extension EditableCellFormat {
+  var readNumberFormat: ReadNumberFormat {
+    switch self {
+    case .number(let formatID):
+      return ReadNumberFormat(kind: .number, formatID: formatID)
+    case .date(let formatID):
+      return ReadNumberFormat(kind: .date, formatID: formatID)
+    case .currency(let formatID):
+      return ReadNumberFormat(kind: .currency, formatID: formatID)
+    case .custom(let formatID):
+      return ReadNumberFormat(kind: .custom, formatID: formatID)
+    }
+  }
+
+  init(numberFormat: ReadNumberFormat) {
+    switch numberFormat.kind {
+    case .number:
+      self = .number(formatID: numberFormat.formatID)
+    case .date:
+      self = .date(formatID: numberFormat.formatID)
+    case .currency:
+      self = .currency(formatID: numberFormat.formatID)
+    case .custom, .duration, .text, .bool:
+      self = .custom(formatID: numberFormat.formatID)
+    }
+  }
 }
 
 private typealias MutationSink = (EditOperation, Bool) -> Void
 
 enum EditOperation {
   case setCell(sheetName: String, tableName: String, row: Int, column: Int, value: CellValue)
+  case setCellStyle(
+    sheetName: String,
+    tableName: String,
+    row: Int,
+    column: Int,
+    style: ReadCellStyle?
+  )
   case appendRow(sheetName: String, tableName: String, values: [CellValue])
   case insertRow(sheetName: String, tableName: String, rowIndex: Int, values: [CellValue])
   case appendColumn(sheetName: String, tableName: String, values: [CellValue])
+  case mergeCells(sheetName: String, tableName: String, range: MergeRange)
+  case unmergeCells(sheetName: String, tableName: String, range: MergeRange)
+  case setTableNameVisibility(sheetName: String, tableName: String, isVisible: Bool)
+  case setCaptionVisibility(sheetName: String, tableName: String, isVisible: Bool)
+  case setCaptionText(sheetName: String, tableName: String, text: String)
   case addTable(sheetName: String, tableName: String, rows: Int, columns: Int)
   case addSheet(name: String)
 }
 
 private enum NativeWriterBackend {
-  private static let editableDocumentIDPrefix = "swiftnumbers-editable-v1:"
-  private static let editableDateMarkerPrefix = "__SWIFTNUMBERS_DATE__:"
-
   static func save(
     sourceURL: URL,
     destinationURL: URL,
-    sourceDocumentID: String?,
-    operations: [EditOperation],
-    sheets: [EditableSheet]
+    operations: [EditOperation]
   ) throws {
-    if let lowLevelOperations = IWASetCellWriter.lowLevelOperations(from: operations) {
-      do {
-        try IWASetCellWriter.save(
-          sourceURL: sourceURL,
-          destinationURL: destinationURL,
-          operations: lowLevelOperations
-        )
-        try refreshEditableOverlayIfNeeded(
-          destinationURL: destinationURL,
-          sourceDocumentID: sourceDocumentID,
-          sheets: sheets
-        )
-        return
-      } catch {
-        // The low-level path is still being hardened; keep metadata overlay as
-        // a safety net for unsupported files/structures.
-      }
-    }
-
-    try saveUsingMetadataOverlay(
+    let lowLevelOperations = try IWASetCellWriter.lowLevelOperations(from: operations)
+    try IWASetCellWriter.save(
       sourceURL: sourceURL,
       destinationURL: destinationURL,
-      sourceDocumentID: sourceDocumentID,
-      sheets: sheets
+      operations: lowLevelOperations
     )
-  }
-
-  private static func saveUsingMetadataOverlay(
-    sourceURL: URL,
-    destinationURL: URL,
-    sourceDocumentID: String?,
-    sheets: [EditableSheet]
-  ) throws {
-    let metadata = buildMetadata(sourceDocumentID: sourceDocumentID, sheets: sheets)
-    let jsonData: Data
-    do {
-      jsonData = try metadata.jsonUTF8Data()
-    } catch {
-      throw EditableNumbersError.nativeWriteFailed(
-        "Failed to serialize metadata JSON: \(error.localizedDescription)"
-      )
-    }
-
-    do {
-      try NumbersContainer.copyContainer(
-        from: sourceURL,
-        to: destinationURL,
-        replacingMetadataFiles: ["DocumentMetadata.json": jsonData]
-      )
-    } catch {
-      throw EditableNumbersError.nativeWriteFailed(error.localizedDescription)
-    }
-  }
-
-  private static func refreshEditableOverlayIfNeeded(
-    destinationURL: URL,
-    sourceDocumentID: String?,
-    sheets: [EditableSheet]
-  ) throws {
-    guard let sourceDocumentID, sourceDocumentID.hasPrefix(editableDocumentIDPrefix) else {
-      return
-    }
-
-    let metadata = buildMetadata(sourceDocumentID: sourceDocumentID, sheets: sheets)
-    let jsonData = try metadata.jsonUTF8Data()
-
-    let fileManager = FileManager.default
-    let tempURL = destinationURL.deletingLastPathComponent().appendingPathComponent(
-      ".swiftnumbers-overlay-\(UUID().uuidString)-\(destinationURL.lastPathComponent)",
-      isDirectory: false
-    )
-    defer {
-      if fileManager.fileExists(atPath: tempURL.path) {
-        try? fileManager.removeItem(at: tempURL)
-      }
-    }
-
-    try NumbersContainer.copyContainer(
-      from: destinationURL,
-      to: tempURL,
-      replacingMetadataFiles: ["DocumentMetadata.json": jsonData]
-    )
-
-    do {
-      _ = try fileManager.replaceItemAt(
-        destinationURL,
-        withItemAt: tempURL,
-        backupItemName: nil,
-        options: [.usingNewMetadataOnly]
-      )
-    } catch {
-      if fileManager.fileExists(atPath: destinationURL.path) {
-        try fileManager.removeItem(at: destinationURL)
-      }
-      try fileManager.moveItem(at: tempURL, to: destinationURL)
-    }
-  }
-
-  private static func buildMetadata(
-    sourceDocumentID: String?,
-    sheets: [EditableSheet]
-  ) -> Swiftnumbers_DocumentMetadata {
-    var metadata = Swiftnumbers_DocumentMetadata()
-    if let sourceDocumentID,
-      !sourceDocumentID.isEmpty,
-      sourceDocumentID.hasPrefix(editableDocumentIDPrefix)
-    {
-      metadata.documentID = sourceDocumentID
-    } else if let sourceDocumentID, !sourceDocumentID.isEmpty {
-      metadata.documentID = editableDocumentIDPrefix + sourceDocumentID
-    } else {
-      metadata.documentID = editableDocumentIDPrefix + UUID().uuidString.lowercased()
-    }
-
-    metadata.sheets = sheets.map { sheet in
-      var mappedSheet = Swiftnumbers_SheetMetadata()
-      mappedSheet.sheetID = sheet.id
-      mappedSheet.name = sheet.name
-
-      mappedSheet.tables = sheet.tables.map { table in
-        var mappedTable = Swiftnumbers_TableMetadata()
-        mappedTable.tableID = table.id
-        mappedTable.name = table.name
-        mappedTable.rowCount = toUInt32(table.rowCount)
-        mappedTable.columnCount = toUInt32(table.columnCount)
-        mappedTable.merges = table.mergeRanges.map { merge in
-          var mappedMerge = Swiftnumbers_MergeRange()
-          mappedMerge.startRow = toUInt32(merge.startRow)
-          mappedMerge.endRow = toUInt32(merge.endRow)
-          mappedMerge.startColumn = toUInt32(merge.startColumn)
-          mappedMerge.endColumn = toUInt32(merge.endColumn)
-          return mappedMerge
-        }
-
-        mappedTable.cells = table.allCells
-          .sorted(by: { lhs, rhs in
-            if lhs.key.row == rhs.key.row {
-              return lhs.key.column < rhs.key.column
-            }
-            return lhs.key.row < rhs.key.row
-          })
-          .compactMap { address, value in
-            var mappedCell = Swiftnumbers_Cell()
-            mappedCell.row = toUInt32(address.row)
-            mappedCell.column = toUInt32(address.column)
-
-            switch value {
-            case .empty:
-              return nil
-            case .string(let string):
-              mappedCell.value = .stringValue(encodeStoredString(string))
-            case .number(let number):
-              mappedCell.value = .numberValue(number)
-            case .bool(let bool):
-              mappedCell.value = .boolValue(bool)
-            case .date(let date):
-              mappedCell.value = .stringValue(editableDateMarkerPrefix + formatDate(date))
-            }
-            return mappedCell
-          }
-
-        return mappedTable
-      }
-
-      return mappedSheet
-    }
-
-    return metadata
-  }
-
-  private static func toUInt32(_ value: Int) -> UInt32 {
-    guard value > 0 else {
-      return 0
-    }
-    return UInt32(clamping: value)
-  }
-
-  private static func formatDate(_ date: Date) -> String {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    return formatter.string(from: date)
-  }
-
-  private static func encodeStoredString(_ string: String) -> String {
-    if string.hasPrefix(editableDateMarkerPrefix) || string.hasPrefix(editableStringEscapePrefix) {
-      return editableStringEscapePrefix + string
-    }
-    return string
   }
 }
-
-private let editableStringEscapePrefix = "__SWIFTNUMBERS_STRING__:"

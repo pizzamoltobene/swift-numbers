@@ -38,4 +38,23 @@ message Cell {
     double number_value = 4;
     bool bool_value = 5;
   }
+
+  CellStyle style = 6;
+}
+
+message CellStyle {
+  optional string horizontal_alignment = 1;
+  optional string vertical_alignment = 2;
+  optional string background_color_hex = 3;
+  optional string font_name = 4;
+  optional double font_size = 5;
+  optional bool is_bold = 6;
+  optional bool is_italic = 7;
+  optional string text_color_hex = 8;
+  optional bool top_border = 9;
+  optional bool right_border = 10;
+  optional bool bottom_border = 11;
+  optional bool left_border = 12;
+  optional string number_format_kind = 13;
+  optional int32 number_format_id = 14;
 }

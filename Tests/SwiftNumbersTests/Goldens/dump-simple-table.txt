@@ -1,19 +1,80 @@
 Source: <fixture>
-Document version: <unknown>
-Read path: metadataFallback
-Fallback reason: [error] resolver.document.missing: TN.DocumentArchive root not found in IWA inventory.
+Document version: 14.1.1
+Read path: real
 Sheets: 1
 Tables: 1
 Resolved cells: 6
-Index blobs: 1
-IWA objects: 3
-Object reference edges: 0
+Index blobs: 37
+IWA objects: 652
+Object reference edges: 1236
 Root objects: 3
 Type histogram:
-  1001: 1
-  1002: 1
-  1003: 1
+  0: 3
+  1: 1
+  2: 1
+  205: 3
+  210: 1
+  213: 1
+  219: 13
+  222: 1
+  401: 1
+  601: 1
+  633: 1
+  634: 1
+  2001: 7
+  2021: 7
+  2022: 244
+  2023: 5
+  2025: 24
+  2043: 1
+  3016: 13
+  3045: 13
+  3047: 1
+  3061: 5
+  3091: 1
+  3097: 1
+  4000: 1
+  4003: 1
+  4004: 2
+  4008: 12
+  4009: 3
+  5020: 6
+  5022: 6
+  5024: 6
+  5026: 18
+  5028: 36
+  5030: 6
+  6000: 1
+  6001: 1
+  6002: 2
+  6003: 7
+  6004: 102
+  6005: 24
+  6006: 4
+  6008: 6
+  6204: 2
+  6220: 3
+  6247: 12
+  6267: 3
+  6305: 1
+  6316: 1
+  6317: 1
+  6318: 1
+  6365: 1
+  6366: 1
+  6372: 1
+  6373: 1
+  6383: 1
+  10024: 7
+  11006: 1
+  11011: 1
+  11014: 3
+  11015: 1
+  12009: 1
+  12026: 1
+  12028: 13
+  12050: 1
 Unparsed blobs: 0
 Diagnostics: 2
-  [error] resolver.document.missing: TN.DocumentArchive root not found in IWA inventory.
-  [warning] read-path.fallback: Falling back to metadata decode path. ([error] resolver.document.missing: TN.DocumentArchive root not found in IWA inventory.)
+  [info] resolver.document.selected: Selected TN.DocumentArchive candidate from root set. | objectID=1
+  [info] decode.rowStorage.patched: Patched row storage mapping with sequential fallback for missing header entries. | patchedRows=1, rowBufferCount=4, rowCount=4

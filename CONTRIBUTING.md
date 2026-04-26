@@ -15,7 +15,7 @@ swift test
 - Keep private-corpus expectations local in `.private-corpus/expectations.json` (or `SWIFT_NUMBERS_PRIVATE_EXPECTATIONS`).
 - Refresh expectations via `./scripts/update_private_corpus_expectations.py --write` after intentional decode behavior changes.
 - Add tests for every behavior change.
-- Preserve deterministic CLI output for `dump` and `list-sheets`.
+- Preserve deterministic CLI output for `dump`, `list-sheets`, `export-csv`, and `import-csv`.
 
 ## Autonomous Delivery Model
 

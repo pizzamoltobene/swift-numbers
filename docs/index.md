@@ -21,6 +21,11 @@ Documentation hub for `SwiftNumbers v0.3.2`.
 | Internal architecture | [Architecture](architecture.md) |
 | Infinite improvement rules for Autopilot | [Autopilot Policy](autopilot-policy.md) |
 | Roadmap-driven autonomous loop | [Autopilot Roadmap](autopilot-roadmap.md) |
+| Capability-gap baseline and priorities | [Capability Gap Baseline](capability-gap-baseline.md) |
+| Code-verified `numbers-parser` capability inventory | [numbers-parser Code Capability Map](numbers-parser-code-capability-map.md) |
+| Pause/resume + unblock runbook for Autopilot | [Autopilot Operations](autopilot-operations.md) |
+| Official release gate and publish checklist | [Release Checklist](release-checklist.md) |
+| Autonomous release cadence, gates, and pause rules | [Autonomous Release Policy](autonomous-release-policy.md) |
 | Public autonomous delivery model | [Autonomous Development](autonomous-development.md) |
 
 ## Scope (v0.3.2)
@@ -29,7 +34,7 @@ Supported:
 - Real `.numbers` read path (with diagnostics and fallback safety path)
 - Read sheets/tables/cells/formulas/rich read model
 - Editable tabular mutations + save (`save(to:)`, `saveInPlace()`)
-- CLI: `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, `read-range`, `dump`, `--format text|json`, `--formulas`, `--cells`, `--formatting`
+- CLI: `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, `read-range`, `export-csv`, `import-csv`, `dump`, `--format text|json`, `--formulas`, `--cells`, `--formatting`
 
 Out of scope:
 - Formula write engine

@@ -14,4 +14,8 @@ message StrokeArchive {
 
 message DrawableArchive {
   optional .TSP.Reference parent = 2;
+  optional .TSP.Reference title = 10;
+  optional .TSP.Reference caption = 11;
+  optional bool title_hidden = 12;
+  optional bool caption_hidden = 13;
 }

@@ -110,6 +110,11 @@ public struct IWAResolvedCellStyle: Hashable, Sendable {
   public let horizontalAlignment: IWAResolvedHorizontalAlignment?
   public let verticalAlignment: IWAResolvedVerticalAlignment?
   public let backgroundColorHex: String?
+  public let fontName: String?
+  public let fontSize: Double?
+  public let isBold: Bool?
+  public let isItalic: Bool?
+  public let textColorHex: String?
   public let hasTopBorder: Bool
   public let hasRightBorder: Bool
   public let hasBottomBorder: Bool
@@ -120,6 +125,11 @@ public struct IWAResolvedCellStyle: Hashable, Sendable {
     horizontalAlignment: IWAResolvedHorizontalAlignment? = nil,
     verticalAlignment: IWAResolvedVerticalAlignment? = nil,
     backgroundColorHex: String? = nil,
+    fontName: String? = nil,
+    fontSize: Double? = nil,
+    isBold: Bool? = nil,
+    isItalic: Bool? = nil,
+    textColorHex: String? = nil,
     hasTopBorder: Bool = false,
     hasRightBorder: Bool = false,
     hasBottomBorder: Bool = false,
@@ -129,6 +139,11 @@ public struct IWAResolvedCellStyle: Hashable, Sendable {
     self.horizontalAlignment = horizontalAlignment
     self.verticalAlignment = verticalAlignment
     self.backgroundColorHex = backgroundColorHex
+    self.fontName = fontName
+    self.fontSize = fontSize
+    self.isBold = isBold
+    self.isItalic = isItalic
+    self.textColorHex = textColorHex
     self.hasTopBorder = hasTopBorder
     self.hasRightBorder = hasRightBorder
     self.hasBottomBorder = hasBottomBorder
@@ -200,27 +215,67 @@ public struct IWAResolvedMergeRange: Hashable, Sendable {
   }
 }
 
+public struct IWAResolvedPivotLink: Hashable, Sendable {
+  public let drawableObjectID: UInt64
+  public let drawableTypeIDs: [UInt32]
+  public let linkedTableInfoObjectIDs: [UInt64]
+  public let linkedTableModelObjectIDs: [UInt64]
+
+  public init(
+    drawableObjectID: UInt64,
+    drawableTypeIDs: [UInt32],
+    linkedTableInfoObjectIDs: [UInt64],
+    linkedTableModelObjectIDs: [UInt64]
+  ) {
+    self.drawableObjectID = drawableObjectID
+    self.drawableTypeIDs = drawableTypeIDs
+    self.linkedTableInfoObjectIDs = linkedTableInfoObjectIDs
+    self.linkedTableModelObjectIDs = linkedTableModelObjectIDs
+  }
+}
+
 public struct IWAResolvedTable: Hashable, Sendable {
   public let id: String
   public let name: String
+  public let tableInfoObjectID: UInt64
+  public let tableModelObjectID: UInt64
   public let rowCount: Int
   public let columnCount: Int
   public let merges: [IWAResolvedMergeRange]
+  public let tableNameVisible: Bool?
+  public let captionVisible: Bool?
+  public let captionText: String?
+  public let captionTextSupported: Bool
+  public let pivotLinks: [IWAResolvedPivotLink]
   public let cells: [IWAResolvedCell]
 
   public init(
     id: String,
     name: String,
+    tableInfoObjectID: UInt64 = 0,
+    tableModelObjectID: UInt64 = 0,
     rowCount: Int,
     columnCount: Int,
     merges: [IWAResolvedMergeRange],
+    tableNameVisible: Bool? = nil,
+    captionVisible: Bool? = nil,
+    captionText: String? = nil,
+    captionTextSupported: Bool = false,
+    pivotLinks: [IWAResolvedPivotLink] = [],
     cells: [IWAResolvedCell]
   ) {
     self.id = id
     self.name = name
+    self.tableInfoObjectID = tableInfoObjectID
+    self.tableModelObjectID = tableModelObjectID
     self.rowCount = rowCount
     self.columnCount = columnCount
     self.merges = merges
+    self.tableNameVisible = tableNameVisible
+    self.captionVisible = captionVisible
+    self.captionText = captionText
+    self.captionTextSupported = captionTextSupported
+    self.pivotLinks = pivotLinks
     self.cells = cells
   }
 }
@@ -386,12 +441,14 @@ public enum IWARealDocumentReader {
   private enum TypeID {
     static let documentArchive: UInt32 = 1
     static let sheetArchive: UInt32 = 2
+    static let captionInfoArchive: UInt32 = 633
     static let wpStorageArchive: UInt32 = 2001
     static let wpStorageArchiveAlt: UInt32 = 2005
     static let wpCharacterStyleArchive: UInt32 = 2021
     static let wpParagraphStyleArchive: UInt32 = 2022
     static let wpHyperlinkFieldArchive: UInt32 = 2032
     static let wpUnsupportedHyperlinkFieldArchive: UInt32 = 2039
+    static let standinCaptionArchive: UInt32 = 3097
     static let tableInfoArchive: UInt32 = 6000
     static let tableModelArchive: UInt32 = 6001
     static let cellStyleArchive: UInt32 = 6004
@@ -414,6 +471,7 @@ public enum IWARealDocumentReader {
     case duplicateSheetReference = "resolver.sheet.duplicateReference"
     case sheetDecodeMissing = "resolver.sheet.decodeMissing"
     case tableResolveFailed = "resolver.table.resolveFailed"
+    case pivotCandidateDetected = "resolver.pivot.candidateDetected"
     case rowStorageMapPatched = "decode.rowStorage.patched"
     case unsupportedCellTypeDropped = "decode.cell.unsupportedTypeDropped"
     case formulaDecodeFailed = "decode.formula.failed"
@@ -443,12 +501,16 @@ public enum IWARealDocumentReader {
     private let recordsByObjectID: [UInt64: [IWAObjectRecord]]
     private var resolvedTableCache: [UInt64: IWAResolvedTable]
     private var unresolvedTableObjectIDs: Set<UInt64>
+    private var pivotDiagnosticDrawableObjectIDs: Set<UInt64>
+    private var pivotLinksByTableInfoObjectID: [UInt64: [IWAResolvedPivotLink]]
 
     init(inventory: IWAInventory, diagnostics: [IWAReadDiagnostic]) {
       self.inventory = inventory
       self.diagnostics = diagnostics
       self.resolvedTableCache = [:]
       self.unresolvedTableObjectIDs = []
+      self.pivotDiagnosticDrawableObjectIDs = []
+      self.pivotLinksByTableInfoObjectID = [:]
 
       var grouped: [UInt64: [IWAObjectRecord]] = [:]
       for record in inventory.records {
@@ -603,13 +665,26 @@ public enum IWARealDocumentReader {
       var tables: [IWAResolvedTable] = []
       var seenTableIDs = Set<String>()
 
+      // Pre-scan non-table drawables so table resolution can include pivot linkage metadata
+      // regardless of drawable ordering in sheet references.
+      for ref in refs {
+        let drawableObjectID = ref.identifier
+        guard drawableObjectID > 0 else {
+          continue
+        }
+        guard !hasRecord(objectID: drawableObjectID, typeID: TypeID.tableInfoArchive) else {
+          continue
+        }
+        emitPivotCandidateDiagnosticIfNeeded(drawableObjectID: drawableObjectID)
+      }
+
       for ref in refs {
         let tableInfoObjectID = ref.identifier
         guard tableInfoObjectID > 0 else {
           continue
         }
-        // Sheets can reference non-table drawables (charts, shapes, etc.).
-        // Only attempt table resolution for objects that actually expose TableInfo records.
+        // Sheets can reference non-table drawables (charts, shapes, etc.); only resolve
+        // records that expose TableInfo archives.
         guard hasRecord(objectID: tableInfoObjectID, typeID: TypeID.tableInfoArchive) else {
           continue
         }
@@ -631,6 +706,68 @@ public enum IWARealDocumentReader {
       }
 
       return tables
+    }
+
+    private mutating func emitPivotCandidateDiagnosticIfNeeded(drawableObjectID: UInt64) {
+      guard !pivotDiagnosticDrawableObjectIDs.contains(drawableObjectID) else {
+        return
+      }
+
+      guard let drawableRecords = recordsByObjectID[drawableObjectID], !drawableRecords.isEmpty else {
+        return
+      }
+
+      let referencedObjectIDs = Set(
+        drawableRecords.flatMap(\.objectReferences).filter { $0 > 0 }
+      )
+      guard !referencedObjectIDs.isEmpty else {
+        return
+      }
+
+      let linkedTableInfoObjectIDs = referencedObjectIDs
+        .filter { hasRecord(objectID: $0, typeID: TypeID.tableInfoArchive) }
+        .sorted()
+      let linkedTableModelObjectIDs = referencedObjectIDs
+        .filter { hasRecord(objectID: $0, typeID: TypeID.tableModelArchive) }
+        .sorted()
+
+      guard !linkedTableInfoObjectIDs.isEmpty || !linkedTableModelObjectIDs.isEmpty else {
+        return
+      }
+
+      let drawableTypeIDs = Set(drawableRecords.map(\.typeID)).sorted()
+      let context: [String: String] = [
+        "drawableObjectID": String(drawableObjectID),
+        "drawableTypeIDs": drawableTypeIDs.map(String.init).joined(separator: ","),
+        "linkedTableInfoObjectIDs": linkedTableInfoObjectIDs.map(String.init).joined(separator: ","),
+        "linkedTableModelObjectIDs": linkedTableModelObjectIDs.map(String.init).joined(separator: ","),
+      ]
+
+      addDiagnostic(
+        .pivotCandidateDetected,
+        severity: .info,
+        message:
+          "Detected a non-table drawable linked to table objects; this may represent a pivot/analytic view and is treated as read-only in current write paths.",
+        objectPath: "sheet-drawable/\(drawableObjectID)",
+        suggestion:
+          "Inspect structured diagnostics before structural edits and keep linked tables read-only until pivot-preserving writes are enabled.",
+        context: context
+      )
+      let linkage = IWAResolvedPivotLink(
+        drawableObjectID: drawableObjectID,
+        drawableTypeIDs: drawableTypeIDs,
+        linkedTableInfoObjectIDs: linkedTableInfoObjectIDs,
+        linkedTableModelObjectIDs: linkedTableModelObjectIDs
+      )
+      for tableInfoObjectID in linkedTableInfoObjectIDs {
+        var linkages = pivotLinksByTableInfoObjectID[tableInfoObjectID] ?? []
+        if !linkages.contains(where: { $0.drawableObjectID == linkage.drawableObjectID }) {
+          linkages.append(linkage)
+          linkages.sort { $0.drawableObjectID < $1.drawableObjectID }
+          pivotLinksByTableInfoObjectID[tableInfoObjectID] = linkages
+        }
+      }
+      pivotDiagnosticDrawableObjectIDs.insert(drawableObjectID)
     }
 
     private func hasRecord(objectID: UInt64, typeID: UInt32) -> Bool {
@@ -744,6 +881,9 @@ public enum IWARealDocumentReader {
       let tableName = tableModel.tableName.isEmpty ? "Table \(tableID)" : tableModel.tableName
       let rowCount = Int(tableModel.numberOfRows)
       let columnCount = Int(tableModel.numberOfColumns)
+      let tableNameVisible = tableModel.hasTableNameEnabled ? tableModel.tableNameEnabled : nil
+      let captionVisible = tableInfo.super.hasCaptionHidden ? !tableInfo.super.captionHidden : nil
+      let caption = resolveCaptionMetadata(drawable: tableInfo.super)
 
       let dataStore = tableModel.baseDataStore
       let stringLookup = decodeStringTable(dataStore.stringTable)
@@ -831,13 +971,83 @@ public enum IWARealDocumentReader {
       let resolved = IWAResolvedTable(
         id: tableID,
         name: tableName,
+        tableInfoObjectID: tableInfoObjectID,
+        tableModelObjectID: tableModelObjectID,
         rowCount: rowCount,
         columnCount: columnCount,
         merges: merges,
+        tableNameVisible: tableNameVisible,
+        captionVisible: captionVisible,
+        captionText: caption.text,
+        captionTextSupported: caption.isSupported,
+        pivotLinks: pivotLinksByTableInfoObjectID[tableInfoObjectID] ?? [],
         cells: cells
       )
       resolvedTableCache[tableInfoObjectID] = resolved
       return resolved
+    }
+
+    private struct ResolvedCaptionMetadata {
+      let text: String?
+      let isSupported: Bool
+    }
+
+    private func resolveCaptionMetadata(drawable: TSD_DrawableArchive) -> ResolvedCaptionMetadata {
+      guard drawable.hasCaption else {
+        return ResolvedCaptionMetadata(text: nil, isSupported: false)
+      }
+
+      let captionObjectID = drawable.caption.identifier
+      guard captionObjectID > 0 else {
+        return ResolvedCaptionMetadata(text: nil, isSupported: false)
+      }
+
+      guard let storageObjectID = resolveCaptionStorageObjectID(captionObjectID: captionObjectID) else {
+        return ResolvedCaptionMetadata(text: nil, isSupported: false)
+      }
+
+      guard
+        let storage: TSWP_StorageArchive = decodeAnyType(
+          objectID: storageObjectID,
+          typeIDs: [TypeID.wpStorageArchive, TypeID.wpStorageArchiveAlt],
+          as: TSWP_StorageArchive.self
+        )
+      else {
+        return ResolvedCaptionMetadata(text: nil, isSupported: false)
+      }
+
+      return ResolvedCaptionMetadata(text: storage.text.first ?? "", isSupported: true)
+    }
+
+    private func resolveCaptionStorageObjectID(captionObjectID: UInt64) -> UInt64? {
+      if
+        decodeAnyType(
+          objectID: captionObjectID,
+          typeIDs: [TypeID.wpStorageArchive, TypeID.wpStorageArchiveAlt],
+          as: TSWP_StorageArchive.self
+        ) != nil
+      {
+        return captionObjectID
+      }
+
+      if
+        let captionInfo: TSWP_CaptionInfoArchiveProxy = decode(
+          objectID: captionObjectID,
+          typeID: TypeID.captionInfoArchive,
+          as: TSWP_CaptionInfoArchiveProxy.self
+        ),
+        captionInfo.hasSuper,
+        captionInfo.super.hasOwnedStorage
+      {
+        let storageObjectID = captionInfo.super.ownedStorage.identifier
+        return storageObjectID > 0 ? storageObjectID : nil
+      }
+
+      if hasRecord(objectID: captionObjectID, typeID: TypeID.standinCaptionArchive) {
+        return nil
+      }
+
+      return nil
     }
 
     private func decodeStringTable(_ reference: TSP_Reference) -> [UInt32: String] {
@@ -1741,6 +1951,11 @@ public enum IWARealDocumentReader {
               horizontalAlignment: textStyle?.horizontalAlignment,
               verticalAlignment: cellStyle?.verticalAlignment,
               backgroundColorHex: cellStyle?.backgroundColorHex,
+              fontName: textStyle?.fontName,
+              fontSize: textStyle?.fontSize,
+              isBold: textStyle?.isBold,
+              isItalic: textStyle?.isItalic,
+              textColorHex: textStyle?.textColorHex,
               hasTopBorder: cellStyle?.hasTopBorder ?? false,
               hasRightBorder: cellStyle?.hasRightBorder ?? false,
               hasBottomBorder: cellStyle?.hasBottomBorder ?? false,

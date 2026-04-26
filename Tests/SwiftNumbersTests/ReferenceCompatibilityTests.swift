@@ -89,9 +89,9 @@ final class ReferenceCompatibilityTests: XCTestCase {
   }
 
   func testReadAPIsAreConsistentBetweenPackageAndSingleFileArchive() throws {
-    let packageFixture = FixtureLocator.fixtureURL(named: "simple-table.numbers")
-    let archiveFixture = try makeSingleFileArchive(fromPackageFixture: packageFixture)
-    defer { try? FileManager.default.removeItem(at: archiveFixture) }
+    let archiveFixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let packageFixture = try makePackageFixture(fromSingleFileArchive: archiveFixture)
+    defer { try? FileManager.default.removeItem(at: packageFixture) }
 
     let packageDocument = try NumbersDocument.open(at: packageFixture)
     let archiveDocument = try NumbersDocument.open(at: archiveFixture)
@@ -144,19 +144,16 @@ final class ReferenceCompatibilityTests: XCTestCase {
     return fixture
   }
 
-  private func makeSingleFileArchive(fromPackageFixture packageURL: URL) throws -> URL {
-    let archiveURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-      .appendingPathComponent("swift-numbers-\(UUID().uuidString).numbers", isDirectory: false)
-
+  private func makePackageFixture(fromSingleFileArchive archiveURL: URL) throws -> URL {
+    let packageURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+      .appendingPathComponent("swift-numbers-\(UUID().uuidString).numbers", isDirectory: true)
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
     process.arguments = [
-      "-c",
+      "-x",
       "-k",
-      "--sequesterRsrc",
-      "--keepParent",
-      packageURL.path,
       archiveURL.path,
+      packageURL.path,
     ]
 
     try process.run()
@@ -166,11 +163,11 @@ final class ReferenceCompatibilityTests: XCTestCase {
         domain: "ReferenceCompatibilityTests",
         code: Int(process.terminationStatus),
         userInfo: [
-          NSLocalizedDescriptionKey: "ditto archive conversion failed with status \(process.terminationStatus)"
+          NSLocalizedDescriptionKey: "ditto package conversion failed with status \(process.terminationStatus)"
         ]
       )
     }
 
-    return archiveURL
+    return packageURL
   }
 }

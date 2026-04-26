@@ -23,6 +23,12 @@ When roadmap tasks run out, the automation must generate new roadmap tasks from 
 6. Performance and memory efficiency on large documents
 7. Documentation quality and release clarity
 
+## Cadence and Delivery Model
+
+- Execution cadence: hourly loop.
+- Delivery focus: bugfix-first (reliability/correctness hardening before feature expansion).
+- Release model: batched release after accumulation threshold, not per-fix release.
+
 ## Continuous Input Signals
 
 Autopilot must collect and score signals from:
@@ -65,7 +71,10 @@ Autopilot must collect and score signals from:
   - `swift build`
   - `swift test`
 - User-visible behavior changes require docs updates and `CHANGELOG.md` updates.
-- Release only after quality gates pass.
+- Release only after quality gates pass and batch threshold is met.
+- Batch threshold rule:
+  - release when `CHANGELOG.md` `## [Unreleased] -> ### Summary` has at least `15` non-placeholder bullets
+  - compute count with `./scripts/release_batch_count.sh --changelog ./CHANGELOG.md`
 
 ## Concurrency and Lease Rules
 

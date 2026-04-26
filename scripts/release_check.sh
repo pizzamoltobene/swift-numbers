@@ -8,6 +8,8 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd)"
 CHANGELOG_PATH="$REPO_ROOT/CHANGELOG.md"
 
+"$SCRIPT_DIR/runtime-critical-check.sh"
+
 if [[ -n "${SWIFT_NUMBERS_RELEASE_TARGET:-}" ]]; then
   release_target="$SWIFT_NUMBERS_RELEASE_TARGET"
   release_target_source="env:SWIFT_NUMBERS_RELEASE_TARGET"

@@ -62,14 +62,16 @@ Core internal modules:
 | Open single-file archive `.numbers` | Supported | Reads embedded `Index`/`Index.zip` |
 | Read sheets/tables/cells | Supported | Real-read first, metadata fallback as needed |
 | Read merge ranges | Supported | Exposed via `Table.metadata.mergeRanges` |
-| CLI `dump`, `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, and `read-range` | Supported | Text and JSON modes (`read-column/read-table/read-range` also support `--jsonl`) |
-| Edit cell values | Supported | `string`, `number`, `bool`, `empty`, `date` |
-| Append/insert rows | Supported | Low-level IWA path |
-| Append columns | Supported | Low-level IWA path |
+| CLI `dump`, `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, `read-range`, `export-csv`, and `import-csv` | Supported | Text/JSON modes for introspection commands (`read-column/read-table/read-range` also support `--jsonl`); CSV export/import via `export-csv` / `import-csv` |
+| Edit cell values | Supported | `string`, `formula`, `number`, `bool`, `empty`, `date` |
+| Append/insert rows | Supported | Low-level IWA path; grouped-table unsafe structural edits fail fast with deterministic guidance |
+| Append columns | Supported | Low-level IWA path; grouped-table unsafe structural edits fail fast with deterministic guidance |
+| Merge/unmerge ranges | Supported | Editable API supports `mergeCells` and `unmergeCells` with deterministic merge metadata persistence |
 | Add sheet/table | Supported | Low-level IWA path |
 | Save to new path | Supported | `save(to:)` |
 | Save in place | Supported | in-place on current working path (`save(to: samePath)` or `saveInPlace()`) |
-| Formula write/engine + pivots/charts/etc. | Out of scope | Read-only formula extraction is supported; write/engine behavior is out of scope |
+| Formula write (basic arithmetic + function refs) | Supported | Formula literals are persisted and round-tripped deterministically (`=A1+B1`, `=SUM(A1:A5)`) |
+| Advanced formula engine + pivots/charts/etc. | Out of scope | Full recalculation engine parity and pivot/chart mutation support remain out of scope |
 
 ## 4) Public Data Model
 
@@ -79,12 +81,13 @@ Core internal modules:
 - `CellReference("A1")` (A1 notation)
 - `CellValue`:
   - `.string(String)`
+  - `.formula(String)`
   - `.number(Double)`
   - `.bool(Bool)`
   - `.empty`
   - `.date(Date)`
 - `MergeRange`
-- `TableMetadata` (`rowCount`, `columnCount`, `mergeRanges`)
+- `TableMetadata` (`rowCount`, `columnCount`, `mergeRanges`, optional stable object IDs, optional pivot link metadata)
 - `Table`
 - `Sheet`
 - `NumbersDocument`
@@ -120,6 +123,7 @@ Core internal modules:
 |---|---|---|---|---|
 | `.empty` | none | clear a cell / logical blank | Yes | Yes |
 | `.string(String)` | UTF-8 text | labels, IDs, free text | Yes | Yes |
+| `.formula(String)` | formula literal | arithmetic/function expressions (`=A1+B1`, `=SUM(A1:A5)`) | Yes | Yes (stored via deterministic SwiftNumbers formula marker) |
 | `.number(Double)` | IEEE-754 double | amounts, metrics, numeric features | Yes | Yes |
 | `.bool(Bool)` | boolean | flags, pass/fail, on/off | Yes | Yes |
 | `.date(Date)` | Foundation `Date` | date/time values | Yes | Yes (stable SwiftNumbers date marker) |
@@ -128,10 +132,12 @@ Example:
 
 ```swift
 table.setValue(.string("Invoice #123"), at: "A1")
-table.setValue(.number(1499.95), at: "B1")
-table.setValue(.bool(true), at: "C1")
-table.setValue(.date(Date()), at: "D1")
-table.setValue(.empty, at: "E1")
+table.setValue(.formula("=SUM(B2:B10)"), at: "B1")
+table.setValue(.number(1499.95), at: "C1")
+table.setValue(.bool(true), at: "D1")
+table.setValue(.date(Date()), at: "E1")
+table.setValue(.empty, at: "F1")
+try table.setStyle(ReadCellStyle(fontName: "HelveticaNeue", isBold: true), at: "A1")
 ```
 
 ## 5) Operation Playbook (Visual + Attributes)
@@ -157,10 +163,10 @@ This section gives operation-by-operation examples with:
 |---|---|
 | Read open/introspection | `open`, `sheets`, `firstSheet`, `sheet(named:)`, `sheet(at:)`, `tables`, `firstTable`, `table(named:)`, `table(at:)`, `metadata`, `cell(at:)`, `cell(row:column:)`, `cell("A1")`, `readCell(...)`, `readValue(...)`, `formula(...)`, `formulas()`, `formulaResult(...)`, `rows()/rows(valuesOnly:)/rows(lazy:)`, `readRows()/readRows(lazy:)`, `readValues()/readValues(lazy:)`, `column(named:)`, `values(in:)`, `decodeRows(as:)`, typed `value(_:at:)`, `formattedValue(...)`, `mergeRange(...)`, `isMergedCell(...)`, `dump`, `renderDump` |
 | Editable open/navigation | `EditableNumbersDocument.open`, `sheet(named:)`, `table(named:)`, `cell(_:)`, `cell(at: CellReference)` |
-| Editable mutation | `setValue`, `appendRow`, `insertRow`, `appendColumn`, `addTable`, `addSheet` |
+| Editable mutation | `setValue`, `setStyle`, `setFormat`, `appendRow`, `insertRow`, `appendColumn`, `mergeCells`, `unmergeCells`, `addTable`, `addSheet` |
 | Save | `save(to:)`, `saveInPlace()` |
 | Runtime capability/state | `canSaveEditableDocuments`, `hasChanges`, `dirtyState`, `firstSheet`, `firstTable` |
-| CLI | `swiftnumbers list-sheets`, `swiftnumbers list-tables`, `swiftnumbers list-formulas`, `swiftnumbers read-column`, `swiftnumbers read-table`, `swiftnumbers read-cell`, `swiftnumbers read-range`, `swiftnumbers dump` |
+| CLI | `swiftnumbers list-sheets`, `swiftnumbers list-tables`, `swiftnumbers list-formulas`, `swiftnumbers read-column`, `swiftnumbers read-table`, `swiftnumbers read-cell`, `swiftnumbers read-range`, `swiftnumbers export-csv`, `swiftnumbers import-csv`, `swiftnumbers dump` |
 
 ### Task-to-Operation Cheat Sheet
 
@@ -174,6 +180,8 @@ This section gives operation-by-operation examples with:
 | Inspect table window (CLI) | CLI `read-table` | Windowed rows x columns read with truncation flags; supports `--jsonl` stream |
 | Inspect one cell deeply | CLI `read-cell` | Value + formatted + style + merge + formula snapshot |
 | Inspect a range deeply | CLI `read-range` | Emits typed range snapshots with A1 coordinates in text/JSON; supports `--jsonl` stream |
+| Export table as CSV (CLI) | CLI `export-csv` | Uses sheet/table selectors; supports `--mode value|formatted|formula` and `--output` |
+| Import CSV into table (CLI) | CLI `import-csv` | Uses sheet/table selectors; supports `--header with-header|no-header`, `--parse-dates`, and optional `--output` |
 | Read one value | `cell(at:)`, `cell(row:column:)`, `cell("A1")` | Read-only `Table` API |
 | Read rich cell object | `readCell(...)` | Includes `kind`, `readValue`, `formulaResult`, `formatted`, merge role, IDs, plus `richText` runs and read-only `style` snapshot when available |
 | Read formulas | `formula(...)`, `formulas()`, `formulaResult(...)` | Exposes `formulaID`, raw formula, parsed tokens, AST summary, computed value/result formatting |
@@ -187,9 +195,12 @@ This section gives operation-by-operation examples with:
 | Detect merged cells | `mergeRange(...)`, `isMergedCell(...)` | Uses `Table.metadata.mergeRanges` |
 | Edit one value by A1 | `setValue(_:at: String)` | Throws on invalid A1 |
 | Edit one value by indices | `setValue(_:at: CellAddress)` | Zero-based row/column |
+| Apply style bundle | `setStyle(_:at:)` | Style writes currently persist via metadata-overlay path |
+| Apply number/date/currency/custom format | `setFormat(_:at:)` | Persists via style number-format hints (`ReadCellStyle.numberFormat`) |
 | Add more records | `appendRow(_:)` | Grows row count |
 | Insert records at position | `insertRow(_:at:)` | Shifts rows below |
 | Add a derived column | `appendColumn(_:)` | Grows column count |
+| Merge or unmerge a range | `mergeCells(...)`, `unmergeCells(...)` | Updates `Table.metadata.mergeRanges` deterministically |
 | Add a new report table | `addTable(...)` | Target sheet must exist; duplicate table names in the same sheet are rejected |
 | Add a new sheet | `addSheet(named:)` | Creates default `Table 1`; duplicate sheet names are auto-suffixed |
 | Save as new file | `save(to:)` with new path | Source remains untouched |
@@ -318,6 +329,8 @@ Get structural metadata for a table.
 | `rowCount` | `Int` | Logical row count |
 | `columnCount` | `Int` | Logical column count |
 | `mergeRanges` | `[MergeRange]` | Merge areas if present |
+| `objectIdentifiers` | `TableObjectIdentifiers?` | Stable object IDs (`tableInfoObjectID`, `tableModelObjectID`) when available on real-read path |
+| `pivotLinks` | `[PivotLinkMetadata]` | Resolver-discovered pivot-like drawable links with stable IDs |
 
 **Visual**
 
@@ -333,6 +346,7 @@ mergeRanges:
 ```swift
 let m = table.metadata
 print(m.rowCount, m.columnCount, m.mergeRanges.count)
+print(m.objectIdentifiers?.tableInfoObjectID as Any, m.pivotLinks.count)
 ```
 
 ---
@@ -599,6 +613,64 @@ After:
 | 1 | Item | Qty | Done |
 | 2 | Pen | 5 | false |
 | 3 | Pencil | 10 | true |
+
+---
+
+### 5.10a `setStyle(_:at:)`
+
+**Purpose**
+
+Apply or clear a style bundle at coordinate or A1 reference.
+
+**Signatures**
+
+```swift
+func setStyle(_ style: ReadCellStyle?, at address: CellAddress)
+func setStyle(_ style: ReadCellStyle?, at reference: String) throws
+```
+
+**Attributes**
+
+| Attribute | Type | Required | Notes |
+|---|---|---|---|
+| `style` | `ReadCellStyle?` | Yes | `nil` clears stored style for the target cell |
+| `address` | `CellAddress` | Yes | Zero-based coordinate |
+| `reference` | `String` | Yes | A1 coordinate (alt overload) |
+
+**Side Effects**
+
+- marks document dirty
+- can grow table bounds if target is outside current size
+- style mutations currently use metadata-overlay persistence when saving
+
+---
+
+### 5.10b `setFormat(_:at:)`
+
+**Purpose**
+
+Apply or clear number/date/currency/custom format hints at coordinate or A1 reference.
+
+**Signatures**
+
+```swift
+func setFormat(_ format: EditableCellFormat?, at address: CellAddress)
+func setFormat(_ format: EditableCellFormat?, at reference: String) throws
+```
+
+**Attributes**
+
+| Attribute | Type | Required | Notes |
+|---|---|---|---|
+| `format` | `EditableCellFormat?` | Yes | `nil` clears only number-format hint while preserving other style fields |
+| `address` | `CellAddress` | Yes | Zero-based coordinate |
+| `reference` | `String` | Yes | A1 coordinate (alt overload) |
+
+**Side Effects**
+
+- marks document dirty
+- can grow table bounds if target is outside current size
+- format mutations currently persist through metadata-overlay style path
 
 ---
 
@@ -1254,6 +1326,81 @@ swiftnumbers read-range <file.numbers> <A1:D10> (--sheet "<Sheet Name>" | --shee
 
 ---
 
+### 5.18.7 `swiftnumbers export-csv`
+
+**Purpose**
+
+Export one selected table as CSV for downstream tools.
+
+**Command**
+
+```bash
+swiftnumbers export-csv <file.numbers> (--sheet "<Sheet Name>" | --sheet-index <n>) (--table "<Table Name>" | --table-index <n>) [--mode value|formatted|formula] [--output <path.csv>]
+```
+
+**Attributes**
+
+| Attribute | Type | Required | Notes |
+|---|---|---|---|
+| `<file.numbers>` | path | Yes | Input `.numbers` |
+| `--sheet` | string | Conditional | Exact sheet name (mutually exclusive with `--sheet-index`) |
+| `--sheet-index` | int | Conditional | Zero-based sheet index (mutually exclusive with `--sheet`) |
+| `--table` | string | Conditional | Exact table name (mutually exclusive with `--table-index`) |
+| `--table-index` | int | Conditional | Zero-based table index in selected sheet (mutually exclusive with `--table`) |
+| `--mode` | enum | No | `value` (default), `formatted`, or `formula` |
+| `--output` | path | No | Write CSV to file path instead of stdout |
+
+**CSV mode behavior**
+
+- `value`: deterministic typed values.
+- `formatted`: display-formatted values.
+- `formula`: raw formula text when available, with formatted fallback.
+
+**Visual output (csv)**
+
+```csv
+Name,Value,
+Answer,42,
+Enabled,TRUE,
+,,
+```
+
+---
+
+### 5.18.8 `swiftnumbers import-csv`
+
+**Purpose**
+
+Import CSV content into one selected table and persist updated `.numbers` output.
+
+**Command**
+
+```bash
+swiftnumbers import-csv <file.numbers> <file.csv> (--sheet "<Sheet Name>" | --sheet-index <n>) (--table "<Table Name>" | --table-index <n>) [--header with-header|no-header] [--parse-dates] [--output <path.numbers>]
+```
+
+**Attributes**
+
+| Attribute | Type | Required | Notes |
+|---|---|---|---|
+| `<file.numbers>` | path | Yes | Input `.numbers` |
+| `<file.csv>` | path | Yes | CSV source file (UTF-8) |
+| `--sheet` | string | Conditional | Exact sheet name (mutually exclusive with `--sheet-index`) |
+| `--sheet-index` | int | Conditional | Zero-based sheet index (mutually exclusive with `--sheet`) |
+| `--table` | string | Conditional | Exact table name (mutually exclusive with `--table-index`) |
+| `--table-index` | int | Conditional | Zero-based table index in selected sheet (mutually exclusive with `--table`) |
+| `--header` | enum | No | `with-header` (default) or `no-header` |
+| `--parse-dates` | flag | No | Parse supported date forms (`yyyy-MM-dd`, ISO8601) into typed date cells |
+| `--output` | path | No | Save to output path; default is in-place save |
+
+**Import behavior**
+
+- Header mode `with-header`: first CSV row is preserved as row 0.
+- Header mode `no-header`: generated row `Column 1..N` is inserted before CSV data.
+- Typed import converts booleans/numbers, and dates when `--parse-dates` is enabled.
+
+---
+
 ### 5.19 `swiftnumbers dump`
 
 **Purpose**
@@ -1582,6 +1729,7 @@ Representative diagnostic codes:
 - `resolver.sheet.duplicateReference`
 - `resolver.sheet.decodeMissing`
 - `resolver.table.resolveFailed`
+- `resolver.pivot.candidateDetected`
 - `decode.rowStorage.patched`
 
 ## 7) Write Engine Behavior
@@ -1598,6 +1746,7 @@ Low-level path supports:
 - `appendColumn`
 - `addSheet`
 - `addTable`
+- `setStyle` and `setFormat` are currently handled by metadata-overlay fallback (not low-level patch path).
 
 Safety net behavior:
 
@@ -1620,6 +1769,8 @@ Common failure sources:
 - `invalidCellReference`
 - `invalidRowIndex`
 - `invalidColumnIndex`
+- `groupedTableMutationUnsupported`
+- `pivotLinkedTableMutationUnsupported`
 - `nativeWriteFailed`
 
 ## 9) Quality and Delivery Baseline
@@ -1652,8 +1803,8 @@ Release helper:
 
 ## 10) Out of Scope for v0.3.1
 
-- formula write and formula engine behavior
-- pivot/grouped tables
+- advanced formula engine behavior (beyond deterministic formula literal persistence)
+- pivot-linked table mutation support (fail-fast safety guard currently enforced)
 - charts
 - comments
 - filters/sorts/conditions
