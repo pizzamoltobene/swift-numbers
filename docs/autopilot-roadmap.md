@@ -177,7 +177,7 @@ Long-lived improvement policy is defined in [Autopilot Policy](autopilot-policy.
 
 ### M5 - Continuous Releases
 
-- [IN_PROGRESS] `SN-R50` Publish autonomous release policy for the repository.
+- [DONE] `SN-R50` Publish autonomous release policy for the repository. (2026-04-26)
   - Definition of done: repository docs explain cadence, quality gates, and when releases are paused.
   - Validation: policy doc linked from docs hub and README.
 
