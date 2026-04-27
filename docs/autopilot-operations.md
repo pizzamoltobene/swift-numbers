@@ -11,6 +11,10 @@ Use this document to operate Autopilot safely when tasks are in progress, blocke
 - The loop is roadmap-driven: always pick the first applicable `[TODO]` task.
 - The delivery focus is bugfix-first (reliability/correctness before expansion).
 - One task is advanced per run.
+- If no `[TODO]` remains, regenerate backlog first:
+  - `./scripts/autopilot_backlog_synthesis.sh`
+- When M7 code-parity tasks are active, refresh parity baseline first:
+  - `./scripts/refresh_numbers_parser_code_map.sh`
 - Required validation gates per run:
   - `swift build`
   - `swift test`

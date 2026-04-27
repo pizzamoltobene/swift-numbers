@@ -30,6 +30,8 @@ enum IWASetCellWriter {
     case appendRow(sheetName: String, tableName: String, values: [CellValue])
     case insertRow(sheetName: String, tableName: String, rowIndex: Int, values: [CellValue])
     case appendColumn(sheetName: String, tableName: String, values: [CellValue])
+    case deleteRow(sheetName: String, tableName: String, rowIndex: Int)
+    case deleteColumn(sheetName: String, tableName: String, columnIndex: Int)
     case mergeCells(sheetName: String, tableName: String, range: MergeRange)
     case unmergeCells(sheetName: String, tableName: String, range: MergeRange)
     case setTableNameVisibility(sheetName: String, tableName: String, isVisible: Bool)
@@ -146,6 +148,14 @@ enum IWASetCellWriter {
         converted.append(
           .appendColumn(sheetName: sheetName, tableName: tableName, values: values)
         )
+      case .deleteRow(let sheetName, let tableName, let rowIndex):
+        converted.append(
+          .deleteRow(sheetName: sheetName, tableName: tableName, rowIndex: rowIndex)
+        )
+      case .deleteColumn(let sheetName, let tableName, let columnIndex):
+        converted.append(
+          .deleteColumn(sheetName: sheetName, tableName: tableName, columnIndex: columnIndex)
+        )
       case .mergeCells(let sheetName, let tableName, let range):
         converted.append(.mergeCells(sheetName: sheetName, tableName: tableName, range: range))
       case .unmergeCells(let sheetName, let tableName, let range):
@@ -200,7 +210,8 @@ enum IWASetCellWriter {
     }
 
     switch operation {
-    case .appendRow, .insertRow, .appendColumn, .mergeCells, .unmergeCells:
+    case .appendRow, .insertRow, .appendColumn, .deleteRow, .deleteColumn, .mergeCells,
+      .unmergeCells:
       return true
     case .setCell(_, _, let row, let column, _):
       return row >= rowCount || column >= columnCount
@@ -219,7 +230,8 @@ enum IWASetCellWriter {
     }
 
     switch operation {
-    case .setCell, .appendRow, .insertRow, .appendColumn, .mergeCells, .unmergeCells:
+    case .setCell, .appendRow, .insertRow, .appendColumn, .deleteRow, .deleteColumn, .mergeCells,
+      .unmergeCells:
       return true
     case .setTableNameVisibility, .setCaptionVisibility, .setCaptionText, .addTable, .addSheet:
       return false
@@ -299,6 +311,8 @@ enum IWASetCellWriter {
         .appendRow,
         .insertRow,
         .appendColumn,
+        .deleteRow,
+        .deleteColumn,
         .mergeCells,
         .unmergeCells,
         .setTableNameVisibility,
@@ -1718,6 +1732,10 @@ enum IWASetCellWriter {
       return (sheetName, tableName)
     case .appendColumn(let sheetName, let tableName, _):
       return (sheetName, tableName)
+    case .deleteRow(let sheetName, let tableName, _):
+      return (sheetName, tableName)
+    case .deleteColumn(let sheetName, let tableName, _):
+      return (sheetName, tableName)
     case .mergeCells(let sheetName, let tableName, _):
       return (sheetName, tableName)
     case .unmergeCells(let sheetName, let tableName, _):
@@ -1745,6 +1763,10 @@ enum IWASetCellWriter {
       return "insertRow"
     case .appendColumn:
       return "appendColumn"
+    case .deleteRow:
+      return "deleteRow"
+    case .deleteColumn:
+      return "deleteColumn"
     case .mergeCells:
       return "mergeCells"
     case .unmergeCells:
@@ -1793,6 +1815,10 @@ enum IWASetCellWriter {
       for (row, value) in values.enumerated() where value != .empty {
         try applySetCell(row: row, column: columnIndex, value: value, context: &context)
       }
+    case .deleteRow(_, _, let rowIndex):
+      try deleteLogicalRow(at: rowIndex, context: &context)
+    case .deleteColumn(_, _, let columnIndex):
+      try deleteLogicalColumn(at: columnIndex, context: &context)
     case .mergeCells(_, _, let range):
       try applyMerge(range: range, context: &context)
     case .unmergeCells(_, _, let range):
@@ -1888,7 +1914,7 @@ enum IWASetCellWriter {
       guard let decoded = decodeMergeRange(cellRange) else {
         return false
       }
-      return rangesOverlap(decoded, range)
+      return decoded == range
     }
     if context.mergeRegionMap.cellRange.count != previousCount {
       context.mergeRegionMapDirty = true
@@ -1933,6 +1959,144 @@ enum IWASetCellWriter {
     context.rowCount += 1
     try insertRowHeader(rowIndex: rowIndex, context: &context)
     _ = try allocateRowStorage(forRow: rowIndex, context: &context)
+    markTableModelDimensionsDirty(context: &context)
+  }
+
+  private static func deleteLogicalRow(at rowIndex: Int, context: inout TableContext) throws {
+    guard rowIndex >= 0, rowIndex < context.rowCount else {
+      throw EditableNumbersError.nativeWriteFailed(
+        "IWA writer: invalid delete row index \(rowIndex) for rowCount \(context.rowCount)"
+      )
+    }
+    guard rowIndex < context.rowStorageMap.count else {
+      throw EditableNumbersError.nativeWriteFailed(
+        "IWA writer: row storage map missing entry for row \(rowIndex)"
+      )
+    }
+
+    let removedStorageIndex = context.rowStorageMap[rowIndex]
+    context.rowStorageMap.remove(at: rowIndex)
+    context.rowCount -= 1
+
+    if let removedStorageIndex {
+      try removeRowStorage(at: removedStorageIndex, context: &context)
+      for index in context.rowStorageMap.indices {
+        guard let mappedStorageIndex = context.rowStorageMap[index] else {
+          continue
+        }
+        if mappedStorageIndex > removedStorageIndex {
+          context.rowStorageMap[index] = mappedStorageIndex - 1
+        }
+      }
+    }
+
+    removeRowHeader(rowIndex: rowIndex, context: &context)
+
+    let updatedMergeRanges = context.mergeRegionMap.cellRange.compactMap { encoded -> TST_CellRange? in
+      guard let decoded = decodeMergeRange(encoded),
+        let adjusted = mergeRangeByDeletingRow(decoded, rowIndex: rowIndex)
+      else {
+        return nil
+      }
+      return encodeMergeRange(adjusted)
+    }
+    if updatedMergeRanges != context.mergeRegionMap.cellRange {
+      context.mergeRegionMap.cellRange = updatedMergeRanges
+      context.mergeRegionMapDirty = true
+    }
+
+    markTableModelDimensionsDirty(context: &context)
+  }
+
+  private static func removeRowStorage(at storageIndex: Int, context: inout TableContext) throws {
+    guard storageIndex >= 0, storageIndex < context.rowBuffers.count,
+      storageIndex < context.rowLocations.count
+    else {
+      throw EditableNumbersError.nativeWriteFailed(
+        "IWA writer: invalid storage index \(storageIndex) for delete row"
+      )
+    }
+
+    let removedLocation = context.rowLocations[storageIndex]
+    guard var tile = context.tilesByObjectID[removedLocation.tileObjectID] else {
+      throw EditableNumbersError.nativeWriteFailed(
+        "IWA writer: tile object \(removedLocation.tileObjectID) not found for delete row"
+      )
+    }
+    guard removedLocation.rowInfoIndex >= 0, removedLocation.rowInfoIndex < tile.rowInfos.count else {
+      throw EditableNumbersError.nativeWriteFailed(
+        "IWA writer: invalid row-info index \(removedLocation.rowInfoIndex) for delete row"
+      )
+    }
+
+    tile.rowInfos.remove(at: removedLocation.rowInfoIndex)
+    tile.numrows = UInt32(clamping: tile.rowInfos.count)
+    tile.maxRow = context.rowCount > 0 ? UInt32(clamping: context.rowCount - 1) : 0
+    context.tilesByObjectID[removedLocation.tileObjectID] = tile
+    context.dirtyTileObjectIDs.insert(removedLocation.tileObjectID)
+
+    for index in context.rowLocations.indices where index != storageIndex {
+      let location = context.rowLocations[index]
+      guard location.tileObjectID == removedLocation.tileObjectID,
+        location.rowInfoIndex > removedLocation.rowInfoIndex
+      else {
+        continue
+      }
+      context.rowLocations[index] = RowStorageLocation(
+        tileObjectID: location.tileObjectID,
+        rowInfoIndex: location.rowInfoIndex - 1,
+        hasWideOffsets: location.hasWideOffsets
+      )
+    }
+
+    context.rowBuffers.remove(at: storageIndex)
+    context.rowLocations.remove(at: storageIndex)
+
+    var shiftedDirtyStorageIndices: Set<Int> = []
+    shiftedDirtyStorageIndices.reserveCapacity(context.dirtyStorageIndices.count)
+    for dirtyIndex in context.dirtyStorageIndices {
+      if dirtyIndex == storageIndex {
+        continue
+      }
+      shiftedDirtyStorageIndices.insert(dirtyIndex > storageIndex ? dirtyIndex - 1 : dirtyIndex)
+    }
+    context.dirtyStorageIndices = shiftedDirtyStorageIndices
+  }
+
+  private static func deleteLogicalColumn(at columnIndex: Int, context: inout TableContext) throws {
+    guard columnIndex >= 0, columnIndex < context.columnCount else {
+      throw EditableNumbersError.nativeWriteFailed(
+        "IWA writer: invalid delete column index \(columnIndex) for columnCount \(context.columnCount)"
+      )
+    }
+
+    for storageIndex in context.rowBuffers.indices {
+      if context.rowBuffers[storageIndex].count < context.columnCount {
+        context.rowBuffers[storageIndex].append(
+          contentsOf: repeatElement(
+            nil,
+            count: context.columnCount - context.rowBuffers[storageIndex].count
+          ))
+      }
+      context.rowBuffers[storageIndex].remove(at: columnIndex)
+      context.dirtyStorageIndices.insert(storageIndex)
+    }
+
+    context.columnCount -= 1
+
+    let updatedMergeRanges = context.mergeRegionMap.cellRange.compactMap { encoded -> TST_CellRange? in
+      guard let decoded = decodeMergeRange(encoded),
+        let adjusted = mergeRangeByDeletingColumn(decoded, columnIndex: columnIndex)
+      else {
+        return nil
+      }
+      return encodeMergeRange(adjusted)
+    }
+    if updatedMergeRanges != context.mergeRegionMap.cellRange {
+      context.mergeRegionMap.cellRange = updatedMergeRanges
+      context.mergeRegionMapDirty = true
+    }
+
     markTableModelDimensionsDirty(context: &context)
   }
 
@@ -1998,6 +2162,60 @@ enum IWASetCellWriter {
     primaryBucket.headers.append(header)
     context.rowHeaderBucketsByObjectID[primaryBucketObjectID] = primaryBucket
     context.dirtyRowHeaderBucketObjectIDs.insert(primaryBucketObjectID)
+  }
+
+  private static func removeRowHeader(rowIndex: Int, context: inout TableContext) {
+    for bucketObjectID in context.rowHeaderBucketObjectIDs {
+      guard var bucket = context.rowHeaderBucketsByObjectID[bucketObjectID] else {
+        continue
+      }
+
+      let previousCount = bucket.headers.count
+      bucket.headers.removeAll { Int($0.index) == rowIndex }
+
+      var shifted = false
+      for index in bucket.headers.indices where Int(bucket.headers[index].index) > rowIndex {
+        bucket.headers[index].index = UInt32(clamping: Int(bucket.headers[index].index) - 1)
+        shifted = true
+      }
+
+      if bucket.headers.count != previousCount || shifted {
+        context.rowHeaderBucketsByObjectID[bucketObjectID] = bucket
+        context.dirtyRowHeaderBucketObjectIDs.insert(bucketObjectID)
+      }
+    }
+  }
+
+  private static func mergeRangeByDeletingRow(_ range: MergeRange, rowIndex: Int) -> MergeRange? {
+    if rowIndex < range.startRow {
+      return MergeRange(
+        startRow: range.startRow - 1,
+        endRow: range.endRow - 1,
+        startColumn: range.startColumn,
+        endColumn: range.endColumn
+      )
+    }
+    if rowIndex > range.endRow {
+      return range
+    }
+    return nil
+  }
+
+  private static func mergeRangeByDeletingColumn(_ range: MergeRange, columnIndex: Int)
+    -> MergeRange?
+  {
+    if columnIndex < range.startColumn {
+      return MergeRange(
+        startRow: range.startRow,
+        endRow: range.endRow,
+        startColumn: range.startColumn - 1,
+        endColumn: range.endColumn - 1
+      )
+    }
+    if columnIndex > range.endColumn {
+      return range
+    }
+    return nil
   }
 
   private static func makeRowHeader(

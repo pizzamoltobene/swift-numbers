@@ -46,3 +46,8 @@ Release is paused (skipped) when any of the following is true:
 ## Resume Conditions
 
 Release resumes automatically on the next run once pause conditions are cleared and the trigger is met.
+
+## Cycle Notes
+
+- Successful official release cycles are tracked in [Release Cycles](release-cycles.md).
+- Each published release appends a tag-level entry with UTC date, commit, and gate status.

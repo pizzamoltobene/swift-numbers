@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd)"
 CHANGELOG_PATH="$REPO_ROOT/CHANGELOG.md"
+RELEASE_CYCLES_PATH="$REPO_ROOT/docs/release-cycles.md"
 RELEASE_CHECK="$SCRIPT_DIR/release_check.sh"
 
 DRY_RUN=0
@@ -63,6 +64,36 @@ derive_tag_from_changelog() {
     awk '$1 != "Unreleased" { print $1; exit }'
 }
 
+append_release_cycle_log() {
+  local tag="$1"
+  local commit="$2"
+  local published_at="$3"
+
+  if [[ ! -f "$RELEASE_CYCLES_PATH" ]]; then
+    cat >"$RELEASE_CYCLES_PATH" <<'EOF'
+# Release Cycles
+
+This file tracks successful autonomous release cycles.
+
+## Consecutive Successful Cycles
+
+- Current streak: `0` consecutive successful official releases.
+
+## Cycle Log
+
+| Tag | Date (UTC) | Commit | Quality Gates | Notes |
+|---|---|---|---|---|
+EOF
+  fi
+
+  if grep -Fq "| \`$tag\` |" "$RELEASE_CYCLES_PATH"; then
+    return
+  fi
+
+  printf '| `%s` | %s | `%s` | pass | Official GitHub release published. |\n' \
+    "$tag" "$published_at" "$commit" >>"$RELEASE_CYCLES_PATH"
+}
+
 if [[ -z "$TAG" ]]; then
   derived="$(derive_tag_from_changelog)"
   if [[ -z "$derived" ]]; then
@@ -119,6 +150,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "  git -C \"$REPO_ROOT\" push origin HEAD"
   echo "  git -C \"$REPO_ROOT\" push origin \"$TAG\""
   echo "  gh release create \"$TAG\" --title \"$TITLE\" --notes-file \"$NOTES_FILE\" --verify-tag"
+  echo "  append release cycle note in docs/release-cycles.md"
   exit 0
 fi
 
@@ -140,4 +172,5 @@ git -C "$REPO_ROOT" push origin HEAD
 git -C "$REPO_ROOT" push origin "$TAG"
 
 gh release create "$TAG" --title "$TITLE" --notes-file "$NOTES_FILE" --verify-tag
+append_release_cycle_log "$TAG" "$(git -C "$REPO_ROOT" rev-parse --short HEAD)" "$(date -u +%Y-%m-%d)"
 echo "Published GitHub release $TAG"

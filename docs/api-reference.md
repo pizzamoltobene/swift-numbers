@@ -540,6 +540,8 @@ public final class EditableTable {
   public func appendRow(_ values: [CellValue])
   public func insertRow(_ values: [CellValue], at rowIndex: Int) throws
   public func appendColumn(_ values: [CellValue])
+  public func deleteRow(at rowIndex: Int) throws
+  public func deleteColumn(at columnIndex: Int) throws
   public func mergeCells(_ rangeReference: String) throws
   public func mergeCells(from start: CellAddress, to end: CellAddress) throws
   public func unmergeCells(_ rangeReference: String) throws
@@ -581,7 +583,10 @@ public enum EditableCellFormat: Hashable, Sendable {
 - `setFormat(..., at: String)` throws for invalid A1.
 - `setTableNameVisible(_:)` and `setCaptionVisible(_:)` throw when source metadata is unavailable for the current table.
 - `setCaptionText(_:)` throws when caption storage is unavailable for the current table.
+- `deleteRow(at:)` throws `invalidRowIndex` when index is out of bounds and shifts remaining rows deterministically.
+- `deleteColumn(at:)` throws `invalidColumnIndex` when index is out of bounds and shifts remaining columns deterministically.
 - `mergeCells(...)` / `unmergeCells(...)` throw for invalid range references and preserve deterministic sorted merge metadata.
+- `unmergeCells(...)` removes only exact merged-range matches; partially overlapping ranges are left unchanged.
 - `addSheet(named:)` auto-suffixes duplicate names (`Name`, `Name (2)`, ...).
 - `EditableSheet.addTable(named:...)` throws `duplicateTableName` for duplicates in the same sheet.
 - `save(to:)` writes to the given destination and updates the document working path to that destination.

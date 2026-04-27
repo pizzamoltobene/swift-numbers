@@ -826,6 +826,89 @@ public final class EditableTable {
     )
   }
 
+  public func deleteRow(at rowIndex: Int) throws {
+    guard rowIndex >= 0, rowIndex < rowCount else {
+      throw EditableNumbersError.invalidRowIndex(rowIndex)
+    }
+
+    var shiftedCells: [CellAddress: CellValue] = [:]
+    shiftedCells.reserveCapacity(cells.count)
+    for (address, value) in cells {
+      if address.row == rowIndex {
+        continue
+      }
+      if address.row > rowIndex {
+        shiftedCells[CellAddress(row: address.row - 1, column: address.column)] = value
+      } else {
+        shiftedCells[address] = value
+      }
+    }
+    cells = shiftedCells
+
+    var shiftedStyles: [CellAddress: ReadCellStyle] = [:]
+    shiftedStyles.reserveCapacity(cellStyles.count)
+    for (address, style) in cellStyles {
+      if address.row == rowIndex {
+        continue
+      }
+      if address.row > rowIndex {
+        shiftedStyles[CellAddress(row: address.row - 1, column: address.column)] = style
+      } else {
+        shiftedStyles[address] = style
+      }
+    }
+    cellStyles = shiftedStyles
+
+    rowCount -= 1
+    mergeRanges = Self.mergeRangesByDeletingRow(rowIndex, from: mergeRanges)
+
+    markDirty(structureChanged: true)
+    mutationSink(.deleteRow(sheetName: ownerSheetName, tableName: name, rowIndex: rowIndex), true)
+  }
+
+  public func deleteColumn(at columnIndex: Int) throws {
+    guard columnIndex >= 0, columnIndex < columnCount else {
+      throw EditableNumbersError.invalidColumnIndex(columnIndex)
+    }
+
+    var shiftedCells: [CellAddress: CellValue] = [:]
+    shiftedCells.reserveCapacity(cells.count)
+    for (address, value) in cells {
+      if address.column == columnIndex {
+        continue
+      }
+      if address.column > columnIndex {
+        shiftedCells[CellAddress(row: address.row, column: address.column - 1)] = value
+      } else {
+        shiftedCells[address] = value
+      }
+    }
+    cells = shiftedCells
+
+    var shiftedStyles: [CellAddress: ReadCellStyle] = [:]
+    shiftedStyles.reserveCapacity(cellStyles.count)
+    for (address, style) in cellStyles {
+      if address.column == columnIndex {
+        continue
+      }
+      if address.column > columnIndex {
+        shiftedStyles[CellAddress(row: address.row, column: address.column - 1)] = style
+      } else {
+        shiftedStyles[address] = style
+      }
+    }
+    cellStyles = shiftedStyles
+
+    columnCount -= 1
+    mergeRanges = Self.mergeRangesByDeletingColumn(columnIndex, from: mergeRanges)
+
+    markDirty(structureChanged: true)
+    mutationSink(
+      .deleteColumn(sheetName: ownerSheetName, tableName: name, columnIndex: columnIndex),
+      true
+    )
+  }
+
   public func mergeCells(_ rangeReference: String) throws {
     let range = try Self.parseMergeRange(rangeReference)
     try mergeCells(range)
@@ -899,7 +982,7 @@ public final class EditableTable {
 
   private func unmergeCells(_ range: MergeRange) {
     let originalCount = mergeRanges.count
-    mergeRanges.removeAll { Self.rangesOverlap($0, range) }
+    mergeRanges.removeAll { $0 == range }
     guard mergeRanges.count != originalCount else {
       return
     }
@@ -971,6 +1054,58 @@ public final class EditableTable {
       return lhs.endRow < rhs.endRow
     }
     return lhs.endColumn < rhs.endColumn
+  }
+
+  private static func mergeRangesByDeletingRow(_ rowIndex: Int, from ranges: [MergeRange])
+    -> [MergeRange]
+  {
+    var updated: [MergeRange] = []
+    updated.reserveCapacity(ranges.count)
+
+    for range in ranges {
+      if rowIndex < range.startRow {
+        updated.append(
+          MergeRange(
+            startRow: range.startRow - 1,
+            endRow: range.endRow - 1,
+            startColumn: range.startColumn,
+            endColumn: range.endColumn
+          ))
+        continue
+      }
+      if rowIndex > range.endRow {
+        updated.append(range)
+      }
+    }
+
+    updated.sort(by: mergeRangeSort)
+    return updated
+  }
+
+  private static func mergeRangesByDeletingColumn(_ columnIndex: Int, from ranges: [MergeRange])
+    -> [MergeRange]
+  {
+    var updated: [MergeRange] = []
+    updated.reserveCapacity(ranges.count)
+
+    for range in ranges {
+      if columnIndex < range.startColumn {
+        updated.append(
+          MergeRange(
+            startRow: range.startRow,
+            endRow: range.endRow,
+            startColumn: range.startColumn - 1,
+            endColumn: range.endColumn - 1
+          ))
+        continue
+      }
+      if columnIndex > range.endColumn {
+        updated.append(range)
+      }
+    }
+
+    updated.sort(by: mergeRangeSort)
+    return updated
   }
 
   private static func mergeRangeA1(_ range: MergeRange) -> String {
@@ -1101,6 +1236,8 @@ enum EditOperation {
   case appendRow(sheetName: String, tableName: String, values: [CellValue])
   case insertRow(sheetName: String, tableName: String, rowIndex: Int, values: [CellValue])
   case appendColumn(sheetName: String, tableName: String, values: [CellValue])
+  case deleteRow(sheetName: String, tableName: String, rowIndex: Int)
+  case deleteColumn(sheetName: String, tableName: String, columnIndex: Int)
   case mergeCells(sheetName: String, tableName: String, range: MergeRange)
   case unmergeCells(sheetName: String, tableName: String, range: MergeRange)
   case setTableNameVisibility(sheetName: String, tableName: String, isVisible: Bool)

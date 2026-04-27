@@ -66,7 +66,8 @@ Core internal modules:
 | Edit cell values | Supported | `string`, `formula`, `number`, `bool`, `empty`, `date` |
 | Append/insert rows | Supported | Low-level IWA path; grouped-table unsafe structural edits fail fast with deterministic guidance |
 | Append columns | Supported | Low-level IWA path; grouped-table unsafe structural edits fail fast with deterministic guidance |
-| Merge/unmerge ranges | Supported | Editable API supports `mergeCells` and `unmergeCells` with deterministic merge metadata persistence |
+| Delete rows/columns | Supported | `deleteRow` / `deleteColumn` with deterministic index shifting and bounds validation |
+| Merge/unmerge ranges | Supported | Editable API supports `mergeCells` and `unmergeCells` with deterministic merge metadata persistence and exact-range unmerge semantics |
 | Add sheet/table | Supported | Low-level IWA path |
 | Save to new path | Supported | `save(to:)` |
 | Save in place | Supported | in-place on current working path (`save(to: samePath)` or `saveInPlace()`) |
@@ -163,7 +164,7 @@ This section gives operation-by-operation examples with:
 |---|---|
 | Read open/introspection | `open`, `sheets`, `firstSheet`, `sheet(named:)`, `sheet(at:)`, `tables`, `firstTable`, `table(named:)`, `table(at:)`, `metadata`, `cell(at:)`, `cell(row:column:)`, `cell("A1")`, `readCell(...)`, `readValue(...)`, `formula(...)`, `formulas()`, `formulaResult(...)`, `rows()/rows(valuesOnly:)/rows(lazy:)`, `readRows()/readRows(lazy:)`, `readValues()/readValues(lazy:)`, `column(named:)`, `values(in:)`, `decodeRows(as:)`, typed `value(_:at:)`, `formattedValue(...)`, `mergeRange(...)`, `isMergedCell(...)`, `dump`, `renderDump` |
 | Editable open/navigation | `EditableNumbersDocument.open`, `sheet(named:)`, `table(named:)`, `cell(_:)`, `cell(at: CellReference)` |
-| Editable mutation | `setValue`, `setStyle`, `setFormat`, `appendRow`, `insertRow`, `appendColumn`, `mergeCells`, `unmergeCells`, `addTable`, `addSheet` |
+| Editable mutation | `setValue`, `setStyle`, `setFormat`, `appendRow`, `insertRow`, `appendColumn`, `deleteRow`, `deleteColumn`, `mergeCells`, `unmergeCells`, `addTable`, `addSheet` |
 | Save | `save(to:)`, `saveInPlace()` |
 | Runtime capability/state | `canSaveEditableDocuments`, `hasChanges`, `dirtyState`, `firstSheet`, `firstTable` |
 | CLI | `swiftnumbers list-sheets`, `swiftnumbers list-tables`, `swiftnumbers list-formulas`, `swiftnumbers read-column`, `swiftnumbers read-table`, `swiftnumbers read-cell`, `swiftnumbers read-range`, `swiftnumbers export-csv`, `swiftnumbers import-csv`, `swiftnumbers dump` |
@@ -200,7 +201,8 @@ This section gives operation-by-operation examples with:
 | Add more records | `appendRow(_:)` | Grows row count |
 | Insert records at position | `insertRow(_:at:)` | Shifts rows below |
 | Add a derived column | `appendColumn(_:)` | Grows column count |
-| Merge or unmerge a range | `mergeCells(...)`, `unmergeCells(...)` | Updates `Table.metadata.mergeRanges` deterministically |
+| Delete records/fields | `deleteRow(at:)`, `deleteColumn(at:)` | Removes selected index and shifts remaining data |
+| Merge or unmerge a range | `mergeCells(...)`, `unmergeCells(...)` | Updates `Table.metadata.mergeRanges` deterministically; unmerge requires exact range match |
 | Add a new report table | `addTable(...)` | Target sheet must exist; duplicate table names in the same sheet are rejected |
 | Add a new sheet | `addSheet(named:)` | Creates default `Table 1`; duplicate sheet names are auto-suffixed |
 | Save as new file | `save(to:)` with new path | Source remains untouched |

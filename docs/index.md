@@ -26,6 +26,7 @@ Documentation hub for `SwiftNumbers v0.3.2`.
 | Pause/resume + unblock runbook for Autopilot | [Autopilot Operations](autopilot-operations.md) |
 | Official release gate and publish checklist | [Release Checklist](release-checklist.md) |
 | Autonomous release cadence, gates, and pause rules | [Autonomous Release Policy](autonomous-release-policy.md) |
+| Consecutive autonomous release cycle log | [Release Cycles](release-cycles.md) |
 | Public autonomous delivery model | [Autonomous Development](autonomous-development.md) |
 
 ## Scope (v0.3.2)

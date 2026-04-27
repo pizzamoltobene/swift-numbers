@@ -193,26 +193,24 @@ Long-lived improvement policy is defined in [Autopilot Policy](autopilot-policy.
 
 ### M6 - Roadmap Renewal
 
-- [DONE] `SN-R60` Enable automatic roadmap regeneration when backlog is exhausted. (2026-04-26)
+- [IN_PROGRESS] `SN-R60` Enable automatic roadmap regeneration when backlog is exhausted.
   - Definition of done: when no `[TODO]` remains, automation generates the next milestone from `docs/autopilot-policy.md` with deterministic IDs and priority scoring.
   - Validation: simulated empty backlog produces a new milestone with at least 6 generated tasks.
-  - Completion note: `scripts/autopilot_backlog_synthesis.sh` now appends deterministic `SN-AUTO-YYYYMMDD-XX` milestones with policy scoring and mandatory area coverage.
 
 ### M7 - Code-Verified numbers-parser Conveyor
 
 Code baseline source for this milestone:
 `docs/numbers-parser-code-capability-map.md` (commit `65076c1` snapshot).
 
-- [DONE] `SN-R70` Add deterministic code-parity refresh workflow. (2026-04-26)
+- [TODO] `SN-R70` Add deterministic code-parity refresh workflow.
   - Definition of done: parity map is refreshed from code references with stable sections and explicit snapshot metadata.
   - Validation: map update script/process can regenerate matrix without manual reformatting drift.
-  - Completion note: added `./scripts/refresh_numbers_parser_code_map.sh` and switched `docs/numbers-parser-code-capability-map.md` to deterministic code-symbol regeneration with explicit commit/date snapshot metadata.
 
-- [DONE] `SN-R71` Add row/column deletion mutations to editable API. (2026-04-26)
+- [TODO] `SN-R71` Add row/column deletion mutations to editable API.
   - Definition of done: editable tables support `deleteRow` and `deleteColumn` with deterministic index semantics.
-  - Validation: single-file roundtrip and bounds tests cover delete behavior; grouped/pivot safety-guard tests cover blocked structural mutations.
+  - Validation: package + single-file roundtrip tests cover delete behavior and bounds errors.
 
-- [DONE] `SN-R72` Add explicit unmerge mutation support. (2026-04-26)
+- [TODO] `SN-R72` Add explicit unmerge mutation support.
   - Definition of done: merged ranges can be removed through public editable API with deterministic merge metadata updates.
   - Validation: merge/unmerge roundtrip tests pass for read-cell/read-range/read-table and metadata paths.
 

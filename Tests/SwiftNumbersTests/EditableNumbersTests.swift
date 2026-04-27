@@ -411,6 +411,76 @@ final class EditableNumbersDocumentTests: XCTestCase {
     )
   }
 
+  func testDeleteRowAndColumnMutationsPersistOnSingleFileArchive() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    for row in 0..<3 {
+      for column in 0..<3 {
+        table.setValue(.string("r\(row)c\(column)"), at: CellAddress(row: row, column: column))
+      }
+    }
+
+    try table.deleteRow(at: 1)
+    try table.deleteColumn(at: 1)
+
+    let output = temporaryArchiveOutputURL("editable-delete-structural-archive-output.numbers")
+    try editable.save(to: output)
+
+    let reopened = try EditableNumbersDocument.open(at: output)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    XCTAssertEqual(reopenedTable.metadata.rowCount, 2)
+    XCTAssertEqual(reopenedTable.metadata.columnCount, 2)
+    var observedValues: [String] = []
+    for row in 0..<reopenedTable.metadata.rowCount {
+      for column in 0..<reopenedTable.metadata.columnCount {
+        guard case .string(let value) = reopenedTable.cell(at: CellAddress(row: row, column: column))
+        else {
+          continue
+        }
+        observedValues.append(value)
+      }
+    }
+    XCTAssertEqual(observedValues.count, 4)
+    XCTAssertEqual(Set(observedValues), Set(["r0c0", "r0c2", "r2c0", "r2c2"]))
+  }
+
+  func testDeleteRowAndColumnRejectOutOfBoundsIndices() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    XCTAssertThrowsError(try table.deleteRow(at: -1)) { error in
+      guard case .invalidRowIndex(let index) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(index, -1)
+    }
+    XCTAssertThrowsError(try table.deleteRow(at: table.metadata.rowCount)) { error in
+      guard case .invalidRowIndex(let index) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(index, table.metadata.rowCount)
+    }
+
+    XCTAssertThrowsError(try table.deleteColumn(at: -1)) { error in
+      guard case .invalidColumnIndex(let index) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(index, -1)
+    }
+    XCTAssertThrowsError(try table.deleteColumn(at: table.metadata.columnCount)) { error in
+      guard case .invalidColumnIndex(let index) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(index, table.metadata.columnCount)
+    }
+
+    XCTAssertFalse(editable.hasChanges)
+    XCTAssertEqual(editable.dirtyState, .clean)
+  }
+
   func testSaveOnSingleFileArchivePersistsMergeRanges() throws {
     let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
     let editable = try EditableNumbersDocument.open(at: fixture)
@@ -451,6 +521,27 @@ final class EditableNumbersDocumentTests: XCTestCase {
     let reopened = try NumbersDocument.open(at: output)
     let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
     XCTAssertTrue(reopenedTable.metadata.mergeRanges.isEmpty)
+  }
+
+  func testSaveOnSingleFileArchiveUnmergeRequiresExactRangeMatch() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    try table.mergeCells("A1:B2")
+    try table.unmergeCells("B2:C3")
+
+    let output = temporaryArchiveOutputURL("editable-unmerge-exact-match-output.numbers")
+    try editable.save(to: output)
+
+    let reopened = try NumbersDocument.open(at: output)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    XCTAssertEqual(reopenedTable.metadata.mergeRanges.count, 1)
+    let merge = try XCTUnwrap(reopenedTable.metadata.mergeRanges.first)
+    XCTAssertEqual(merge.startRow, 0)
+    XCTAssertEqual(merge.endRow, 1)
+    XCTAssertEqual(merge.startColumn, 0)
+    XCTAssertEqual(merge.endColumn, 1)
   }
 
   func testSaveOnSingleFileArchivePersistsTablePresentationMetadataForAddedTable() throws {
@@ -1003,6 +1094,22 @@ final class IWASetCellWriterTests: XCTestCase {
         operation: .appendColumn(sheetName: "S", tableName: "T", values: [])
       )
     )
+    XCTAssertTrue(
+      IWASetCellWriter.shouldBlockGroupedTableMutation(
+        bucketCount: 2,
+        rowCount: 4,
+        columnCount: 3,
+        operation: .deleteRow(sheetName: "S", tableName: "T", rowIndex: 1)
+      )
+    )
+    XCTAssertTrue(
+      IWASetCellWriter.shouldBlockGroupedTableMutation(
+        bucketCount: 2,
+        rowCount: 4,
+        columnCount: 3,
+        operation: .deleteColumn(sheetName: "S", tableName: "T", columnIndex: 1)
+      )
+    )
   }
 
   func testGroupedTableSafetyGuardAllowsInBoundsSetCellMutation() {
@@ -1185,6 +1292,20 @@ final class IWASetCellWriterTests: XCTestCase {
         tableInfoObjectID: 301,
         pivotLinkedTableInfoObjectIDs: Set([300]),
         operation: .setCell(sheetName: "S", tableName: "T", row: 0, column: 0, value: .number(1))
+      )
+    )
+    XCTAssertTrue(
+      IWASetCellWriter.shouldBlockPivotLinkedTableMutation(
+        tableInfoObjectID: 300,
+        pivotLinkedTableInfoObjectIDs: Set([300]),
+        operation: .deleteRow(sheetName: "S", tableName: "T", rowIndex: 0)
+      )
+    )
+    XCTAssertTrue(
+      IWASetCellWriter.shouldBlockPivotLinkedTableMutation(
+        tableInfoObjectID: 300,
+        pivotLinkedTableInfoObjectIDs: Set([300]),
+        operation: .deleteColumn(sheetName: "S", tableName: "T", columnIndex: 0)
       )
     )
   }

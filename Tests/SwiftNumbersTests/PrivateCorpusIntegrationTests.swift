@@ -19,7 +19,7 @@ final class PrivateCorpusIntegrationTests: XCTestCase {
     guard FileManager.default.fileExists(atPath: expectationsURL.path) else {
       XCTFail(
         "Private corpus expectation manifest is missing at \(expectationsURL.path). "
-          + "Generate it with scripts/update_private_corpus_expectations.py --write.")
+          + "Generate/update it from your local private-corpus baseline workflow.")
       return
     }
 

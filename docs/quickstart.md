@@ -68,8 +68,9 @@ try document.saveInPlace()
 
 ```bash
 export SWIFT_NUMBERS_PRIVATE_CORPUS="/absolute/path/to/private-corpus"
-./scripts/update_private_corpus_expectations.py --write
 ```
+
+Keep `.private-corpus/expectations.json` in sync with your local corpus baseline before running private-corpus regression checks.
 
 ## 8) Run release checks
 

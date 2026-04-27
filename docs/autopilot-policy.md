@@ -37,6 +37,7 @@ Autopilot must collect and score signals from:
 - build warnings/errors
 - coverage hotspots in first-party code
 - parser diagnostics and unsupported node summaries
+- code-parity drift between `docs/numbers-parser-code-capability-map.md` and current source symbols
 - TODO/FIXME markers in first-party sources
 - CLI regression or output instability
 - docs drift versus current behavior
@@ -45,6 +46,8 @@ Autopilot must collect and score signals from:
 ## Backlog Synthesis Rules (When No `[TODO]` Exists)
 
 1. Run `Backlog Synthesis` before implementation.
+   - preferred command:
+     - `./scripts/autopilot_backlog_synthesis.sh`
 2. Produce at least 10 candidate tasks from current signals.
 3. Score each candidate with:
    - Impact: `1..5`
@@ -62,6 +65,12 @@ Autopilot must collect and score signals from:
 7. Assign deterministic task IDs:
    - `SN-AUTO-YYYYMMDD-01`, `SN-AUTO-YYYYMMDD-02`, ...
 8. Start implementation from the first newly added `[TODO]`.
+
+## Code-Parity Refresh Rule
+
+- Keep `docs/numbers-parser-code-capability-map.md` regenerated from symbols before parity-gap planning:
+  - `./scripts/refresh_numbers_parser_code_map.sh`
+- The map must include snapshot metadata (commit/date) and deterministic section ordering.
 
 ## Execution Safety Rules
 

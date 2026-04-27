@@ -26,6 +26,9 @@ Each cycle is intended to:
 
 The goal is transparent, high-frequency, high-quality iteration with readable release notes and docs.
 Release cadence, gates, and pause rules are defined in [Autonomous Release Policy](docs/autonomous-release-policy.md).
+Code-parity baseline refresh is deterministic and code-only:
+- `./scripts/refresh_numbers_parser_code_map.sh`
+- output: [numbers-parser Code Capability Map](docs/numbers-parser-code-capability-map.md)
 
 Primary long-horizon areas:
 
@@ -98,13 +101,15 @@ Start here: [Docs Hub](docs/index.md)
 - Failure handling: [Troubleshooting](docs/troubleshooting.md)
 - Internal design: [Architecture](docs/architecture.md)
 - Autonomous release gates and pause/resume rules: [Autonomous Release Policy](docs/autonomous-release-policy.md)
+- Consecutive autonomous release log: [Release Cycles](docs/release-cycles.md)
 
 ## Scope Snapshot
 
 - Supported in `v0.3.2`: core read/edit/save workflows for tabular data.
 - Writable cell-style bundles are available in editable API (`setStyle`) with deterministic save/reopen roundtrip via metadata overlay.
 - Writable cell-format API (`setFormat`) now supports number/date/currency/custom format hints with deterministic save/reopen roundtrip.
-- Writable merge/unmerge API is available in editable workflows (`mergeCells` / `unmergeCells`) with low-level native persistence.
+- Row/column deletion mutations are now available in editable workflows (`deleteRow(at:)` / `deleteColumn(at:)`) with deterministic index shifting and bounds validation.
+- Writable merge/unmerge API is available in editable workflows (`mergeCells` / `unmergeCells`) with low-level native persistence; `unmergeCells` now requires an exact merged-range match.
 - Table presentation metadata API is now available for editable workflows: table-name visibility, caption visibility, and caption text roundtrip where caption storage is present.
 - Grouped-table safety: structural mutations that are unsafe for grouped row headers fail fast with deterministic guidance.
 - Pivot-candidate observability: `dump` structured diagnostics now surface non-table drawables linked to table objects (`resolver.pivot.candidateDetected`) for safer troubleshooting.

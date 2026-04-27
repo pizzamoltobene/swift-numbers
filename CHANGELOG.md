@@ -16,6 +16,24 @@ All notable changes to this project are documented in this file.
 
 - Revert to the previous stable tag and redeploy package artifacts.
 
+## [0.3.7] - 2026-04-27
+
+### Summary
+
+- Added recurring release-cycle documentation: successful official releases are tracked in `docs/release-cycles.md`, and `release_publish.sh` now appends a cycle note for each newly published tag.
+- Added deterministic backlog regeneration script (`scripts/autopilot_backlog_synthesis.sh`) that appends a new roadmap milestone with scored `SN-AUTO-YYYYMMDD-XX` tasks when no `[TODO]` remains.
+- Added deterministic code-parity refresh workflow (`scripts/refresh_numbers_parser_code_map.sh`) that rebuilds `docs/numbers-parser-code-capability-map.md` from symbol evidence with explicit snapshot metadata.
+- Added structural deletion mutations for editable tables (`deleteRow(at:)`, `deleteColumn(at:)`) with deterministic bounds validation and single-file/package roundtrip regression coverage.
+- Tightened explicit unmerge semantics: `unmergeCells(...)` now removes only exact merged-range matches (no partial-overlap removals), with deterministic low-level persistence and regression coverage.
+
+### Breaking Changes
+
+- None.
+
+### Rollback Hint
+
+- Revert to the previous stable tag and redeploy package artifacts.
+
 ## [0.3.6] - 2026-04-26
 
 ### Summary

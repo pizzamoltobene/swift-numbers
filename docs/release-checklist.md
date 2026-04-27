@@ -86,4 +86,5 @@ This path promotes `Unreleased` changelog content, creates the release commit, t
 - Release commit (pattern: `chore(release): vX.Y.Z (...)`)
 - Git tag: `vX.Y.Z`
 - GitHub release for `vX.Y.Z` using changelog-derived notes
+- Updated [release cycle log](release-cycles.md) entry for the published tag
 - `.local/release-check.json` from latest gate run
