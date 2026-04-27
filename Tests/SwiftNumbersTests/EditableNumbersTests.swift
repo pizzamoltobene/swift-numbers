@@ -28,6 +28,11 @@ final class CellReferenceTests: XCTestCase {
 }
 
 final class EditableNumbersDocumentTests: XCTestCase {
+  private enum EditableArchiveForm {
+    case package
+    case singleFile
+  }
+
   private func temporaryOutputURL(_ name: String) -> URL {
     URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
       .appendingPathComponent("swiftnumbers-tests-\(UUID().uuidString)", isDirectory: true)
@@ -56,6 +61,34 @@ final class EditableNumbersDocumentTests: XCTestCase {
     return destination
   }
 
+  private func makePackageFixture(fromSingleFileArchive archiveURL: URL) throws -> URL {
+    let packageURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+      .appendingPathComponent("swift-numbers-\(UUID().uuidString).numbers", isDirectory: true)
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+    process.arguments = [
+      "-x",
+      "-k",
+      archiveURL.path,
+      packageURL.path,
+    ]
+
+    try process.run()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+      throw NSError(
+        domain: "EditableNumbersDocumentTests",
+        code: Int(process.terminationStatus),
+        userInfo: [
+          NSLocalizedDescriptionKey:
+            "ditto package conversion failed with status \(process.terminationStatus)"
+        ]
+      )
+    }
+
+    return packageURL
+  }
+
   private func collectedValues(in table: EditableTable) -> [CellValue] {
     var result: [CellValue] = []
     for row in 0..<table.metadata.rowCount {
@@ -67,6 +100,77 @@ final class EditableNumbersDocumentTests: XCTestCase {
       }
     }
     return result
+  }
+
+  private func assertCellValue(
+    _ actual: CellValue?,
+    equals expected: CellValue?,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    switch (actual, expected) {
+    case (nil, nil):
+      return
+    case (.some(.date(let actualDate)), .some(.date(let expectedDate))):
+      XCTAssertEqual(
+        actualDate.timeIntervalSince1970,
+        expectedDate.timeIntervalSince1970,
+        accuracy: 0.001,
+        file: file,
+        line: line
+      )
+    default:
+      XCTAssertEqual(actual, expected, file: file, line: line)
+    }
+  }
+
+  private func assertSetValueRoundTrip(
+    archiveForm: EditableArchiveForm,
+    value: CellValue,
+    expected expectedValue: CellValue?,
+    outputName: String,
+    prefillValue: CellValue? = nil
+  ) throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+    let address = CellAddress(row: 0, column: 0)
+    if let prefillValue {
+      table.setValue(prefillValue, at: address)
+    }
+    table.setValue(value, at: address)
+
+    let archiveOutput = temporaryArchiveOutputURL(outputName)
+    try editable.save(to: archiveOutput)
+
+    let roundTripURL: URL
+    var cleanupURL: URL?
+    switch archiveForm {
+    case .package:
+      // Package form is validated by converting the saved archive into a package fixture.
+      roundTripURL = try makePackageFixture(fromSingleFileArchive: archiveOutput)
+      cleanupURL = roundTripURL
+    case .singleFile:
+      roundTripURL = archiveOutput
+    }
+    defer {
+      if let cleanupURL {
+        try? FileManager.default.removeItem(at: cleanupURL)
+      }
+    }
+
+    var isDirectory: ObjCBool = false
+    _ = FileManager.default.fileExists(atPath: roundTripURL.path, isDirectory: &isDirectory)
+    switch archiveForm {
+    case .package:
+      XCTAssertTrue(isDirectory.boolValue)
+    case .singleFile:
+      XCTAssertFalse(isDirectory.boolValue)
+    }
+
+    let reopened = try EditableNumbersDocument.open(at: roundTripURL)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    assertCellValue(reopenedTable.cell(at: address), equals: expectedValue)
   }
 
   func testSetCellValuesAndSaveRoundTrip() throws {
@@ -106,6 +210,116 @@ final class EditableNumbersDocumentTests: XCTestCase {
       return XCTFail("Expected at least one date cell after round-trip")
     }
     XCTAssertEqual(date.timeIntervalSince1970, 1_714_764_800, accuracy: 0.001)
+  }
+
+  func testSetValueStringRoundTripOnSingleFileArchive() throws {
+    try assertSetValueRoundTrip(
+      archiveForm: .singleFile,
+      value: .string("Matrix String"),
+      expected: .string("Matrix String"),
+      outputName: "editable-value-string-archive-roundtrip.numbers"
+    )
+  }
+
+  func testSetValueNumberRoundTripOnSingleFileArchive() throws {
+    try assertSetValueRoundTrip(
+      archiveForm: .singleFile,
+      value: .number(1234.567),
+      expected: .number(1234.567),
+      outputName: "editable-value-number-archive-roundtrip.numbers"
+    )
+  }
+
+  func testSetValueBoolRoundTripOnSingleFileArchive() throws {
+    try assertSetValueRoundTrip(
+      archiveForm: .singleFile,
+      value: .bool(true),
+      expected: .bool(true),
+      outputName: "editable-value-bool-archive-roundtrip.numbers"
+    )
+  }
+
+  func testSetValueDateRoundTripOnSingleFileArchive() throws {
+    try assertSetValueRoundTrip(
+      archiveForm: .singleFile,
+      value: .date(Date(timeIntervalSince1970: 1_714_764_800)),
+      expected: .date(Date(timeIntervalSince1970: 1_714_764_800)),
+      outputName: "editable-value-date-archive-roundtrip.numbers"
+    )
+  }
+
+  func testSetValueFormulaRoundTripOnSingleFileArchive() throws {
+    try assertSetValueRoundTrip(
+      archiveForm: .singleFile,
+      value: .formula("=SUM(A1:A3)"),
+      expected: .formula("=SUM(A1:A3)"),
+      outputName: "editable-value-formula-archive-roundtrip.numbers"
+    )
+  }
+
+  func testSetValueEmptyRoundTripOnSingleFileArchive() throws {
+    try assertSetValueRoundTrip(
+      archiveForm: .singleFile,
+      value: .empty,
+      expected: nil,
+      outputName: "editable-value-empty-archive-roundtrip.numbers",
+      prefillValue: .string("clear-me")
+    )
+  }
+
+  func testSetValueStringRoundTripOnPackageArchive() throws {
+    try assertSetValueRoundTrip(
+      archiveForm: .package,
+      value: .string("Matrix String"),
+      expected: .string("Matrix String"),
+      outputName: "editable-value-string-package-roundtrip.numbers"
+    )
+  }
+
+  func testSetValueNumberRoundTripOnPackageArchive() throws {
+    try assertSetValueRoundTrip(
+      archiveForm: .package,
+      value: .number(1234.567),
+      expected: .number(1234.567),
+      outputName: "editable-value-number-package-roundtrip.numbers"
+    )
+  }
+
+  func testSetValueBoolRoundTripOnPackageArchive() throws {
+    try assertSetValueRoundTrip(
+      archiveForm: .package,
+      value: .bool(true),
+      expected: .bool(true),
+      outputName: "editable-value-bool-package-roundtrip.numbers"
+    )
+  }
+
+  func testSetValueDateRoundTripOnPackageArchive() throws {
+    try assertSetValueRoundTrip(
+      archiveForm: .package,
+      value: .date(Date(timeIntervalSince1970: 1_714_764_800)),
+      expected: .date(Date(timeIntervalSince1970: 1_714_764_800)),
+      outputName: "editable-value-date-package-roundtrip.numbers"
+    )
+  }
+
+  func testSetValueFormulaRoundTripOnPackageArchive() throws {
+    try assertSetValueRoundTrip(
+      archiveForm: .package,
+      value: .formula("=SUM(A1:A3)"),
+      expected: .formula("=SUM(A1:A3)"),
+      outputName: "editable-value-formula-package-roundtrip.numbers"
+    )
+  }
+
+  func testSetValueEmptyRoundTripOnPackageArchive() throws {
+    try assertSetValueRoundTrip(
+      archiveForm: .package,
+      value: .empty,
+      expected: nil,
+      outputName: "editable-value-empty-package-roundtrip.numbers",
+      prefillValue: .string("clear-me")
+    )
   }
 
   func testAppendInsertAndCreateSheetTableRoundTrip() throws {

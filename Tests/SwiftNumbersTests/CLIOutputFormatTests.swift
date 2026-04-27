@@ -287,6 +287,182 @@ final class CLIOutputFormatTests: XCTestCase {
     XCTAssertTrue(result.stderr.contains("Sheet index 99 is out of bounds"))
   }
 
+  func testReadRangeRejectsConflictingSheetSelectorsDeterministically() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let result = try runCLIExpectFailure(arguments: [
+      "read-range",
+      fixture.path,
+      "A1:A1",
+      "--sheet",
+      "Sheet 1",
+      "--sheet-index",
+      "0",
+      "--table",
+      "Table 1",
+    ])
+
+    XCTAssertTrue(result.stderr.contains("Provide either --sheet or --sheet-index"))
+  }
+
+  func testReadRangeRejectsConflictingTableSelectorsDeterministically() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let result = try runCLIExpectFailure(arguments: [
+      "read-range",
+      fixture.path,
+      "A1:A1",
+      "--sheet",
+      "Sheet 1",
+      "--table",
+      "Table 1",
+      "--table-index",
+      "0",
+    ])
+
+    XCTAssertTrue(result.stderr.contains("Provide either --table or --table-index"))
+  }
+
+  func testReadRangeRejectsMissingSheetSelectorDeterministically() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let result = try runCLIExpectFailure(arguments: [
+      "read-range",
+      fixture.path,
+      "A1:A1",
+      "--table",
+      "Table 1",
+    ])
+
+    XCTAssertTrue(result.stderr.contains("Missing sheet selector"))
+  }
+
+  func testReadRangeRejectsMissingTableSelectorDeterministically() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let result = try runCLIExpectFailure(arguments: [
+      "read-range",
+      fixture.path,
+      "A1:A1",
+      "--sheet",
+      "Sheet 1",
+    ])
+
+    XCTAssertTrue(result.stderr.contains("Missing table selector"))
+  }
+
+  func testReadTableRejectsConflictingSheetSelectorsDeterministically() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let result = try runCLIExpectFailure(arguments: [
+      "read-table",
+      fixture.path,
+      "--sheet",
+      "Sheet 1",
+      "--sheet-index",
+      "0",
+      "--table",
+      "Table 1",
+    ])
+
+    XCTAssertTrue(result.stderr.contains("Provide either --sheet or --sheet-index"))
+  }
+
+  func testReadTableRejectsConflictingTableSelectorsDeterministically() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let result = try runCLIExpectFailure(arguments: [
+      "read-table",
+      fixture.path,
+      "--sheet",
+      "Sheet 1",
+      "--table",
+      "Table 1",
+      "--table-index",
+      "0",
+    ])
+
+    XCTAssertTrue(result.stderr.contains("Provide either --table or --table-index"))
+  }
+
+  func testReadTableRejectsMissingSheetSelectorDeterministically() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let result = try runCLIExpectFailure(arguments: [
+      "read-table",
+      fixture.path,
+      "--table",
+      "Table 1",
+    ])
+
+    XCTAssertTrue(result.stderr.contains("Missing sheet selector"))
+  }
+
+  func testReadTableRejectsMissingTableSelectorDeterministically() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let result = try runCLIExpectFailure(arguments: [
+      "read-table",
+      fixture.path,
+      "--sheet",
+      "Sheet 1",
+    ])
+
+    XCTAssertTrue(result.stderr.contains("Missing table selector"))
+  }
+
+  func testReadColumnRejectsConflictingSheetSelectorsDeterministically() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let result = try runCLIExpectFailure(arguments: [
+      "read-column",
+      fixture.path,
+      "0",
+      "--sheet",
+      "Sheet 1",
+      "--sheet-index",
+      "0",
+      "--table",
+      "Table 1",
+    ])
+
+    XCTAssertTrue(result.stderr.contains("Provide either --sheet or --sheet-index"))
+  }
+
+  func testReadColumnRejectsConflictingTableSelectorsDeterministically() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let result = try runCLIExpectFailure(arguments: [
+      "read-column",
+      fixture.path,
+      "0",
+      "--sheet",
+      "Sheet 1",
+      "--table",
+      "Table 1",
+      "--table-index",
+      "0",
+    ])
+
+    XCTAssertTrue(result.stderr.contains("Provide either --table or --table-index"))
+  }
+
+  func testReadColumnRejectsMissingSheetSelectorDeterministically() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let result = try runCLIExpectFailure(arguments: [
+      "read-column",
+      fixture.path,
+      "0",
+      "--table",
+      "Table 1",
+    ])
+
+    XCTAssertTrue(result.stderr.contains("Missing sheet selector"))
+  }
+
+  func testReadColumnRejectsMissingTableSelectorDeterministically() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let result = try runCLIExpectFailure(arguments: [
+      "read-column",
+      fixture.path,
+      "0",
+      "--sheet",
+      "Sheet 1",
+    ])
+
+    XCTAssertTrue(result.stderr.contains("Missing table selector"))
+  }
+
   func testCLIExitCodeContractReturnsZeroOnSuccess() throws {
     let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
     let result = try runCLIRaw(arguments: ["list-sheets", fixture.path, "--format", "json"])

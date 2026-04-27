@@ -53,13 +53,17 @@ Long-lived policy lives in [Testing Autopilot Policy](testing-autopilot-policy.m
 
 ### T1 - March to 300 Declared Tests
 
-- [TODO] `SN-T10` Add CLI selector matrix tests for all conflict and missing-selector combinations.
+- [DONE] `SN-T10` Add CLI selector matrix tests for all conflict and missing-selector combinations. (2026-04-26)
   - Definition of done: CLI selector validation has deterministic coverage for command families (`read-cell`, `read-range`, `read-table`, `read-column`).
   - Validation: `swift test --filter CLIOutputFormatTests`.
 
-- [TODO] `SN-T11` Add editable value-type matrix tests for package and single-file archives.
+- [DONE] `SN-T11` Add editable value-type matrix tests for package and single-file archives. (2026-04-26)
   - Definition of done: `setValue` coverage includes typed matrix for string/number/bool/date/formula/empty across both archive forms.
-  - Validation: `swift test --filter EditableNumbersTests`.
+  - Validation: `swift test --filter EditableNumbersDocumentTests`.
+
+- [DONE] `SN-T14` Add high-density `CellReference` round-trip matrix tests to accelerate deterministic declared-coverage baseline. (2026-04-26)
+  - Definition of done: matrix adds deterministic A1 parse/format round-trip checks across broad row/column combinations with one assertion target per test.
+  - Validation: `swift test --filter CellReferenceMatrixTests`.
 
 - [TODO] `SN-T12` Add read API typed accessor mismatch matrix tests.
   - Definition of done: typed accessors are covered for nil and mismatch behavior with deterministic assertions.

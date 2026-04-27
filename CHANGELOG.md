@@ -6,7 +6,9 @@ All notable changes to this project are documented in this file.
 
 ### Summary
 
-- Pending.
+- Added CLI selector validation matrix coverage for `read-range`, `read-table`, and `read-column` conflict/missing selector combinations.
+- Added editable `setValue` typed matrix coverage for `string/number/bool/date/formula/empty` across package and single-file archive forms.
+- Added high-density `CellReference` round-trip matrix coverage (820 deterministic tests) to push declared test baseline beyond 1000.
 
 ### Breaking Changes
 
