@@ -173,6 +173,30 @@ final class EditableNumbersDocumentTests: XCTestCase {
     assertCellValue(reopenedTable.cell(at: address), equals: expectedValue)
   }
 
+  private func typedFormatSnapshot(_ format: EditableCellFormat?) -> String {
+    guard let format else {
+      return "nil"
+    }
+    switch format {
+    case .number(let formatID):
+      return "number#\(formatID)"
+    case .date(let formatID):
+      return "date#\(formatID)"
+    case .currency(let formatID):
+      return "currency#\(formatID)"
+    case .base(let formatID):
+      return "base#\(formatID)"
+    case .fraction(let formatID):
+      return "fraction#\(formatID)"
+    case .percentage(let formatID):
+      return "percentage#\(formatID)"
+    case .scientific(let formatID):
+      return "scientific#\(formatID)"
+    case .custom(let formatID):
+      return "custom#\(formatID)"
+    }
+  }
+
   func testSetCellValuesAndSaveRoundTrip() throws {
     XCTAssertTrue(EditableNumbersDocument.canSaveEditableDocuments())
     let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
@@ -509,13 +533,15 @@ final class EditableNumbersDocumentTests: XCTestCase {
     try table.setValue(.number(42), at: "D1")
     try table.setFormat(.custom(formatID: 404), at: "D1")
 
-    let output = temporaryOutputURL("editable-format-package-roundtrip.numbers")
-    XCTAssertThrowsError(try editable.save(to: output)) { error in
-      guard case .nativeWriteFailed(let details) = error as? EditableNumbersError else {
-        return XCTFail("Unexpected error: \(error)")
-      }
-      XCTAssertTrue(details.contains("Style mutations are unsupported"))
-    }
+    let output = temporaryArchiveOutputURL("editable-format-core-roundtrip.numbers")
+    try editable.save(to: output)
+
+    let reopened = try EditableNumbersDocument.open(at: output)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    XCTAssertEqual(reopenedTable.format("A1"), .number(formatID: 101))
+    XCTAssertEqual(reopenedTable.format("B1"), .currency(formatID: 202))
+    XCTAssertEqual(reopenedTable.format("C1"), .date(formatID: 303))
+    XCTAssertEqual(reopenedTable.format("D1"), .custom(formatID: 404))
   }
 
   func testSetFormatRoundTripPersistsOnSingleFileArchiveViaMetadataOverlay() throws {
@@ -528,12 +554,72 @@ final class EditableNumbersDocumentTests: XCTestCase {
     XCTAssertEqual(table.format("A1"), .currency(formatID: 777))
 
     let output = temporaryArchiveOutputURL("editable-format-archive-roundtrip.numbers")
-    XCTAssertThrowsError(try editable.save(to: output)) { error in
-      guard case .nativeWriteFailed(let details) = error as? EditableNumbersError else {
-        return XCTFail("Unexpected error: \(error)")
-      }
-      XCTAssertTrue(details.contains("Style mutations are unsupported"))
-    }
+    try editable.save(to: output)
+
+    let reopened = try EditableNumbersDocument.open(at: output)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    XCTAssertEqual(reopenedTable.format("A1"), .currency(formatID: 777))
+  }
+
+  func testSetFormatExtendedNumericFamiliesSnapshot() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    try table.setValue(.number(255), at: "A1")
+    try table.setFormat(.base(formatID: 16), at: "A1")
+    try table.setValue(.number(2.75), at: "B1")
+    try table.setFormat(.fraction(formatID: 16), at: "B1")
+    try table.setValue(.number(0.125), at: "C1")
+    try table.setFormat(.percentage(formatID: 0), at: "C1")
+    try table.setValue(.number(1000), at: "D1")
+    try table.setFormat(.scientific(formatID: 0), at: "D1")
+
+    let output = temporaryArchiveOutputURL("editable-format-extended-snapshot.numbers")
+    try editable.save(to: output)
+
+    let reopenedEditable = try EditableNumbersDocument.open(at: output)
+    let reopenedEditableTable = try XCTUnwrap(reopenedEditable.firstSheet?.firstTable)
+    let typedSnapshot = [
+      "A1=\(typedFormatSnapshot(reopenedEditableTable.format("A1")))",
+      "B1=\(typedFormatSnapshot(reopenedEditableTable.format("B1")))",
+      "C1=\(typedFormatSnapshot(reopenedEditableTable.format("C1")))",
+      "D1=\(typedFormatSnapshot(reopenedEditableTable.format("D1")))",
+    ].joined(separator: "\n")
+    XCTAssertEqual(
+      typedSnapshot,
+      """
+      A1=base#16
+      B1=fraction#16
+      C1=percentage#0
+      D1=scientific#0
+      """
+    )
+
+    let reopenedRead = try NumbersDocument.open(at: output)
+    let reopenedReadTable = try XCTUnwrap(reopenedRead.firstSheet?.firstTable)
+    let options = ReadFormattingOptions(
+      localeIdentifier: "en_US_POSIX",
+      usesGroupingSeparator: false,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 4,
+      preferCellNumberFormatHints: true
+    )
+    let renderedSnapshot = [
+      "A1=\(reopenedReadTable.formattedValue("A1", options: options) ?? "<nil>")",
+      "B1=\(reopenedReadTable.formattedValue("B1", options: options) ?? "<nil>")",
+      "C1=\(reopenedReadTable.formattedValue("C1", options: options) ?? "<nil>")",
+      "D1=\(reopenedReadTable.formattedValue("D1", options: options) ?? "<nil>")",
+    ].joined(separator: "\n")
+    XCTAssertEqual(
+      renderedSnapshot,
+      """
+      A1=FF
+      B1=2 3/4
+      C1=12.5%
+      D1=1E+003
+      """
+    )
   }
 
   func testDocumentStyleRegistryCreateApplyAndSaveReopenRoundTrip() throws {

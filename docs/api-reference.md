@@ -640,6 +640,10 @@ public enum EditableCellFormat: Hashable, Sendable {
   case number(formatID: Int32 = 0)
   case date(formatID: Int32 = 0)
   case currency(formatID: Int32 = 0)
+  case base(formatID: Int32 = 16)
+  case fraction(formatID: Int32 = 16)
+  case percentage(formatID: Int32 = 0)
+  case scientific(formatID: Int32 = 0)
   case custom(formatID: Int32)
 }
 ```

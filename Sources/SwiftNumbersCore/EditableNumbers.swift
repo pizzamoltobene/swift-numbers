@@ -94,6 +94,10 @@ public enum EditableCellFormat: Hashable, Sendable {
   case number(formatID: Int32 = 0)
   case date(formatID: Int32 = 0)
   case currency(formatID: Int32 = 0)
+  case base(formatID: Int32 = 16)
+  case fraction(formatID: Int32 = 16)
+  case percentage(formatID: Int32 = 0)
+  case scientific(formatID: Int32 = 0)
   case custom(formatID: Int32)
 }
 
@@ -1699,6 +1703,7 @@ public final class EditableTable {
       return
     }
 
+    let structureChanged = ensureCapacity(for: address)
     let currentStyle = cellStyles[address]
     let nextNumberFormat = format.map(\.readNumberFormat)
     let nextStyle: ReadCellStyle?
@@ -1717,7 +1722,18 @@ public final class EditableTable {
     guard currentStyle != nextStyle else {
       return
     }
-    setStyle(nextStyle, at: address)
+
+    if let nextStyle {
+      cellStyles[address] = nextStyle
+      ownerDocument.ensureStyleRegisteredForAssignment(
+        nextStyle,
+        preferredNamePrefix: "Auto Format Style"
+      )
+    } else {
+      cellStyles.removeValue(forKey: address)
+    }
+    markDirty(address: address, structureChanged: structureChanged)
+    ownerDocument.markStyleRegistryDirty()
   }
 
   public func setFormat(_ format: EditableCellFormat?, at reference: String) throws {
@@ -2361,6 +2377,14 @@ private extension EditableCellFormat {
       return ReadNumberFormat(kind: .date, formatID: formatID)
     case .currency(let formatID):
       return ReadNumberFormat(kind: .currency, formatID: formatID)
+    case .base(let formatID):
+      return ReadNumberFormat(kind: .base, formatID: formatID)
+    case .fraction(let formatID):
+      return ReadNumberFormat(kind: .fraction, formatID: formatID)
+    case .percentage(let formatID):
+      return ReadNumberFormat(kind: .percentage, formatID: formatID)
+    case .scientific(let formatID):
+      return ReadNumberFormat(kind: .scientific, formatID: formatID)
     case .custom(let formatID):
       return ReadNumberFormat(kind: .custom, formatID: formatID)
     }
@@ -2374,6 +2398,14 @@ private extension EditableCellFormat {
       self = .date(formatID: numberFormat.formatID)
     case .currency:
       self = .currency(formatID: numberFormat.formatID)
+    case .base:
+      self = .base(formatID: numberFormat.formatID)
+    case .fraction:
+      self = .fraction(formatID: numberFormat.formatID)
+    case .percentage:
+      self = .percentage(formatID: numberFormat.formatID)
+    case .scientific:
+      self = .scientific(formatID: numberFormat.formatID)
     case .custom, .duration, .text, .bool:
       self = .custom(formatID: numberFormat.formatID)
     }

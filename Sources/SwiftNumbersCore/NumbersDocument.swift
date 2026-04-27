@@ -17,6 +17,111 @@ public enum NumbersDocumentError: LocalizedError {
   }
 }
 
+private struct ReadStyleRegistryOverlay: Decodable {
+  let version: Int
+  let nextStyleOrdinal: Int
+  let styles: [ReadStyleRegistryStyleRecord]
+  let assignments: [ReadStyleRegistryAssignmentRecord]
+}
+
+private struct ReadStyleRegistryStyleRecord: Decodable {
+  let id: String
+  let name: String
+  let style: ReadStyleRegistryStylePayload
+}
+
+private struct ReadStyleRegistryAssignmentRecord: Decodable {
+  let sheetName: String
+  let tableName: String
+  let row: Int
+  let column: Int
+  let styleID: String
+}
+
+private struct ReadStyleRegistryStylePayload: Decodable {
+  let horizontalAlignment: String?
+  let verticalAlignment: String?
+  let backgroundColorHex: String?
+  let fontName: String?
+  let fontSize: Double?
+  let isBold: Bool?
+  let isItalic: Bool?
+  let textColorHex: String?
+  let hasTopBorder: Bool
+  let hasRightBorder: Bool
+  let hasBottomBorder: Bool
+  let hasLeftBorder: Bool
+  let numberFormatKind: String?
+  let numberFormatID: Int32?
+
+  func toReadCellStyle() -> ReadCellStyle {
+    let mappedNumberFormat: ReadNumberFormat?
+    if let numberFormatKind, let kind = ReadNumberFormatKind(rawValue: numberFormatKind) {
+      mappedNumberFormat = ReadNumberFormat(kind: kind, formatID: numberFormatID ?? 0)
+    } else {
+      mappedNumberFormat = nil
+    }
+
+    return ReadCellStyle(
+      horizontalAlignment: Self.decodeHorizontalAlignment(horizontalAlignment),
+      verticalAlignment: Self.decodeVerticalAlignment(verticalAlignment),
+      backgroundColorHex: backgroundColorHex,
+      fontName: fontName,
+      fontSize: fontSize,
+      isBold: isBold,
+      isItalic: isItalic,
+      textColorHex: textColorHex,
+      hasTopBorder: hasTopBorder,
+      hasRightBorder: hasRightBorder,
+      hasBottomBorder: hasBottomBorder,
+      hasLeftBorder: hasLeftBorder,
+      numberFormat: mappedNumberFormat
+    )
+  }
+
+  private static func decodeHorizontalAlignment(_ value: String?) -> ReadHorizontalAlignment? {
+    guard let value else {
+      return nil
+    }
+    switch value {
+    case "left":
+      return .left
+    case "center":
+      return .center
+    case "right":
+      return .right
+    case "justified":
+      return .justified
+    case "natural":
+      return .natural
+    default:
+      if value.hasPrefix("unknown:"), let raw = Int32(value.dropFirst("unknown:".count)) {
+        return .unknown(raw)
+      }
+      return nil
+    }
+  }
+
+  private static func decodeVerticalAlignment(_ value: String?) -> ReadVerticalAlignment? {
+    guard let value else {
+      return nil
+    }
+    switch value {
+    case "top":
+      return .top
+    case "middle":
+      return .middle
+    case "bottom":
+      return .bottom
+    default:
+      if value.hasPrefix("unknown:"), let raw = Int32(value.dropFirst("unknown:".count)) {
+        return .unknown(raw)
+      }
+      return nil
+    }
+  }
+}
+
 public struct NumbersDocument: Sendable {
   public let sourceURL: URL
   public let sheets: [Sheet]
@@ -25,6 +130,7 @@ public struct NumbersDocument: Sendable {
   private static let editableStringEscapePrefix = "__SWIFTNUMBERS_STRING__:"
   private static let editableDateMarkerPrefix = "__SWIFTNUMBERS_DATE__:"
   private static let editableFormulaMarkerPrefix = "__SWIFTNUMBERS_FORMULA__:"
+  private static let styleRegistryMetadataFilename = "SwiftNumbersStyleRegistry.json"
 
   public static func open(at url: URL) throws -> NumbersDocument {
     let container = try NumbersContainer.open(at: url)
@@ -45,7 +151,8 @@ public struct NumbersDocument: Sendable {
         ?? "Real-read path returned no sheets."
       throw NumbersDocumentError.realReadFailed(reason)
     }
-    let sheets = mapResolvedSheets(realRead.sheets)
+    let mappedSheets = mapResolvedSheets(realRead.sheets)
+    let sheets = try applyStyleRegistryOverlayIfPresent(to: mappedSheets, from: container)
     let diagnostics = realRead.diagnostics
     let structuredDiagnostics = realRead.structuredDiagnostics.map(mapReadDiagnostic)
 
@@ -164,6 +271,142 @@ public struct NumbersDocument: Sendable {
     }
 
     return lines.joined(separator: "\n")
+  }
+
+  private static func applyStyleRegistryOverlayIfPresent(
+    to sheets: [Sheet],
+    from container: NumbersContainer
+  ) throws -> [Sheet] {
+    guard
+      let data = try container.readMetadataFile(named: styleRegistryMetadataFilename),
+      !data.isEmpty
+    else {
+      return sheets
+    }
+
+    let decoder = JSONDecoder()
+    let overlay = try decoder.decode(ReadStyleRegistryOverlay.self, from: data)
+
+    var stylesByID: [String: ReadCellStyle] = [:]
+    stylesByID.reserveCapacity(overlay.styles.count)
+    for styleRecord in overlay.styles {
+      stylesByID[styleRecord.id] = styleRecord.style.toReadCellStyle()
+    }
+
+    struct TableKey: Hashable {
+      let sheetName: String
+      let tableName: String
+    }
+
+    var styleAssignmentsByTable: [TableKey: [CellAddress: ReadCellStyle]] = [:]
+    styleAssignmentsByTable.reserveCapacity(overlay.assignments.count)
+
+    for assignment in overlay.assignments {
+      guard let style = stylesByID[assignment.styleID] else {
+        continue
+      }
+      let tableKey = TableKey(sheetName: assignment.sheetName, tableName: assignment.tableName)
+      let address = CellAddress(row: assignment.row, column: assignment.column)
+      var assignmentMap = styleAssignmentsByTable[tableKey] ?? [:]
+      assignmentMap[address] = style
+      styleAssignmentsByTable[tableKey] = assignmentMap
+    }
+
+    guard !styleAssignmentsByTable.isEmpty else {
+      return sheets
+    }
+
+    return sheets.map { sheet in
+      let remappedTables = sheet.tables.map { table in
+        let tableKey = TableKey(sheetName: sheet.name, tableName: table.name)
+        guard let assignments = styleAssignmentsByTable[tableKey] else {
+          return table
+        }
+        return applyingOverlayStyles(assignments, to: table)
+      }
+
+      return Sheet(id: sheet.id, name: sheet.name, tables: remappedTables)
+    }
+  }
+
+  private static func applyingOverlayStyles(
+    _ styleAssignments: [CellAddress: ReadCellStyle],
+    to table: Table
+  ) -> Table {
+    guard !styleAssignments.isEmpty else {
+      return table
+    }
+
+    let populatedReadCells = table.populatedCells(sorted: false)
+    var readCellsByAddress = Dictionary(uniqueKeysWithValues: populatedReadCells.map { ($0.address, $0) })
+    var didMutate = false
+
+    for (address, style) in styleAssignments {
+      guard address.row >= 0, address.column >= 0 else {
+        continue
+      }
+      guard address.row < table.rowCount, address.column < table.columnCount else {
+        continue
+      }
+
+      if let existing = readCellsByAddress[address] {
+        guard existing.style != style else {
+          continue
+        }
+        readCellsByAddress[address] = readCell(existing, replacingStyleWith: style)
+        didMutate = true
+      } else {
+        readCellsByAddress[address] = ReadCell(
+          address: address,
+          value: .empty,
+          kind: .empty,
+          readValue: .empty,
+          formatted: "",
+          style: style,
+          rawCellType: 0
+        )
+        didMutate = true
+      }
+    }
+
+    guard didMutate else {
+      return table
+    }
+
+    let cellsByAddress = Dictionary(uniqueKeysWithValues: populatedReadCells.map { ($0.address, $0.value) })
+    let formulasByAddress = Dictionary(uniqueKeysWithValues: table.formulas().map { ($0.address, $0) })
+
+    return Table(
+      id: table.id,
+      name: table.name,
+      metadata: table.metadata,
+      cells: cellsByAddress,
+      readCells: readCellsByAddress,
+      formulas: formulasByAddress
+    )
+  }
+
+  private static func readCell(
+    _ existing: ReadCell,
+    replacingStyleWith style: ReadCellStyle?
+  ) -> ReadCell {
+    ReadCell(
+      address: existing.address,
+      value: existing.value,
+      kind: existing.kind,
+      readValue: existing.readValue,
+      formulaResult: existing.formulaResult,
+      formatted: existing.formatted,
+      richText: existing.richText,
+      style: style,
+      rawCellType: existing.rawCellType,
+      stringID: existing.stringID,
+      richTextID: existing.richTextID,
+      formulaID: existing.formulaID,
+      formulaErrorID: existing.formulaErrorID,
+      mergeRange: existing.mergeRange,
+      mergeRole: existing.mergeRole
+    )
   }
 
   private static func mapResolvedSheets(_ sheets: [IWAResolvedSheet]) -> [Sheet] {

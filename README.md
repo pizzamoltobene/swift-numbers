@@ -111,7 +111,7 @@ Start here: [Docs Hub](docs/index.md)
 - Supported in `v0.3.2`: core read/edit/save workflows for tabular data.
 - Writable cell-style bundles are available in editable API (`setStyle`) with deterministic save/reopen roundtrip via metadata overlay.
 - Reusable document style registry API is now available (`registerStyle`, `registeredStyles`, `applyStyle(id:at:)`) with deterministic save/reopen persistence.
-- Writable cell-format API (`setFormat`) now supports number/date/currency/custom format hints with deterministic save/reopen roundtrip.
+- Writable cell-format API (`setFormat`) now supports number/date/currency/custom plus extended numeric families (`base`, `fraction`, `percentage`, `scientific`) with deterministic save/reopen roundtrip.
 - Reusable custom-format registry API is now available (`registerCustomFormat`, `registeredCustomFormats`, `applyCustomFormat(id:at:)`) for deterministic named custom-format application.
 - Row/column deletion mutations are now available in editable workflows (`deleteRow(at:)` / `deleteColumn(at:)`) with deterministic index shifting and bounds validation.
 - Header metadata mutation API is now available in editable workflows (`setHeaderRowCount(_:)` / `setHeaderColumnCount(_:)`) with native save/reopen persistence.

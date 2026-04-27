@@ -6,6 +6,22 @@ All notable changes to this project are documented in this file.
 
 ### Summary
 
+- Pending.
+
+### Breaking Changes
+
+- None.
+
+### Rollback Hint
+
+- Revert to the previous stable tag and redeploy package artifacts.
+
+## [0.3.9] - 2026-04-27
+
+### Summary
+
+- Expanded editable `setFormat` format families to include `base`, `fraction`, `percentage`, and `scientific`, with rendered/typed save-reopen snapshot coverage.
+- `NumbersDocument.open` now hydrates style-registry metadata overlay assignments so persisted style number-format hints are honored by `formattedValue(...)` after reopen.
 - Added editable border mutation API (`setBorder(_:side:at:)`) with deterministic merged-range edge handling and save/reopen roundtrip coverage.
 - Added CLI selector validation matrix coverage for `read-range`, `read-table`, and `read-column` conflict/missing selector combinations.
 - Added editable `setValue` typed matrix coverage for `string/number/bool/date/formula/empty` across package and single-file archive forms.

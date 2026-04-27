@@ -102,6 +102,10 @@ public enum ReadNumberFormatKind: String, Hashable, Sendable {
   case duration
   case text
   case bool
+  case base
+  case fraction
+  case percentage
+  case scientific
   case custom
 }
 
@@ -346,6 +350,8 @@ public enum ReadNumberFormatMode: Hashable, Sendable {
   case currency(code: String?)
   case percent
   case scientific
+  case fraction(maxDenominator: Int)
+  case base(radix: Int, uppercase: Bool)
   case pattern(String)
 }
 
@@ -1314,6 +1320,14 @@ public struct Table: Hashable, Sendable {
       return .decimal
     case .currency:
       return .currency(code: nil)
+    case .percentage:
+      return .percent
+    case .scientific:
+      return .scientific
+    case .fraction:
+      return .fraction(maxDenominator: normalizedMaxDenominator(from: numberFormat.formatID))
+    case .base:
+      return .base(radix: normalizedRadix(from: numberFormat.formatID), uppercase: true)
     case .date, .duration, .text, .bool, .custom:
       return nil
     }
@@ -1345,12 +1359,156 @@ public struct Table: Hashable, Sendable {
       formatter.numberStyle = .percent
     case .scientific:
       formatter.numberStyle = .scientific
+    case .fraction(let maxDenominator):
+      return fractionString(for: value, maxDenominator: maxDenominator)
+    case .base(let radix, let uppercase):
+      return baseString(
+        for: value,
+        radix: radix,
+        uppercase: uppercase,
+        maximumFractionDigits: options.maximumFractionDigits
+      )
     case .pattern(let pattern):
       formatter.numberStyle = .decimal
       formatter.positiveFormat = pattern
     }
 
     return formatter.string(from: NSNumber(value: value)) ?? String(value)
+  }
+
+  private static func normalizedMaxDenominator(from formatID: Int32) -> Int {
+    let raw = abs(Int(formatID))
+    let defaultDenominator = 16
+    if raw == 0 {
+      return defaultDenominator
+    }
+    return min(max(raw, 2), 1024)
+  }
+
+  private static func normalizedRadix(from formatID: Int32) -> Int {
+    let raw = abs(Int(formatID))
+    let defaultRadix = 16
+    if raw == 0 {
+      return defaultRadix
+    }
+    return min(max(raw, 2), 36)
+  }
+
+  private static func fractionString(for value: Double, maxDenominator: Int) -> String {
+    guard value.isFinite else {
+      return String(value)
+    }
+
+    let sign = value < 0 ? "-" : ""
+    let absolute = abs(value)
+    let whole = Int(absolute.rounded(.down))
+    let fractional = absolute - Double(whole)
+    if fractional < 1e-12 {
+      return sign + String(whole)
+    }
+
+    let denominatorLimit = min(max(maxDenominator, 2), 4096)
+    var bestNumerator = 0
+    var bestDenominator = 1
+    var bestError = Double.greatestFiniteMagnitude
+
+    for denominator in 1...denominatorLimit {
+      let scaled = fractional * Double(denominator)
+      let numerator = Int(scaled.rounded())
+      let error = abs(scaled - Double(numerator))
+      if error < bestError {
+        bestError = error
+        bestNumerator = numerator
+        bestDenominator = denominator
+      }
+      if error < 1e-10 {
+        break
+      }
+    }
+
+    if bestNumerator == 0 {
+      return sign + String(whole)
+    }
+
+    if bestNumerator == bestDenominator {
+      return sign + String(whole + 1)
+    }
+
+    let divisor = greatestCommonDivisor(bestNumerator, bestDenominator)
+    let numerator = bestNumerator / divisor
+    let denominator = bestDenominator / divisor
+    if whole > 0 {
+      return "\(sign)\(whole) \(numerator)/\(denominator)"
+    }
+    return "\(sign)\(numerator)/\(denominator)"
+  }
+
+  private static func baseString(
+    for value: Double,
+    radix: Int,
+    uppercase: Bool,
+    maximumFractionDigits: Int
+  ) -> String {
+    guard value.isFinite else {
+      return String(value)
+    }
+
+    let normalizedRadix = min(max(radix, 2), 36)
+    let symbols = uppercase
+      ? Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+      : Array("0123456789abcdefghijklmnopqrstuvwxyz")
+
+    let sign = value < 0 ? "-" : ""
+    let absolute = abs(value)
+    guard absolute <= Double(Int64.max) else {
+      return String(value)
+    }
+
+    let wholePart = Int64(absolute.rounded(.towardZero))
+    var integerDigits: [Character] = []
+    var wholeRemainder = wholePart
+    repeat {
+      let digit = Int(wholeRemainder % Int64(normalizedRadix))
+      integerDigits.append(symbols[digit])
+      wholeRemainder /= Int64(normalizedRadix)
+    } while wholeRemainder > 0
+    let integerString = String(integerDigits.reversed())
+
+    var fractional = absolute - Double(wholePart)
+    let fractionDigitLimit = min(max(maximumFractionDigits, 0), 12)
+    if fractionDigitLimit == 0 || fractional < 1e-12 {
+      return sign + integerString
+    }
+
+    var fractionDigits: [Character] = []
+    for _ in 0..<fractionDigitLimit {
+      if fractional < 1e-12 {
+        break
+      }
+      fractional *= Double(normalizedRadix)
+      let digit = Int(fractional.rounded(.down))
+      fractionDigits.append(symbols[min(max(digit, 0), normalizedRadix - 1)])
+      fractional -= Double(digit)
+    }
+
+    while fractionDigits.last == "0" {
+      fractionDigits.removeLast()
+    }
+    if fractionDigits.isEmpty {
+      return sign + integerString
+    }
+    return sign + integerString + "." + String(fractionDigits)
+  }
+
+  private static func greatestCommonDivisor(_ lhs: Int, _ rhs: Int) -> Int {
+    var a = abs(lhs)
+    var b = abs(rhs)
+    while b != 0 {
+      let remainder = a % b
+      a = b
+      b = remainder
+    }
+    return max(a, 1)
   }
 
   private static func dateString(

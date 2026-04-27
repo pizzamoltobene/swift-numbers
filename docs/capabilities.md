@@ -200,7 +200,7 @@ This section gives operation-by-operation examples with:
 | Apply style bundle | `setStyle(_:at:)` | Style writes currently persist via metadata-overlay path |
 | Set one border side | `setBorder(_:side:at:)` | Side-specific border mutation; merged ranges apply deterministically to the full merged edge |
 | Apply registered style by identifier | `applyStyle(id:at:)` | Uses `registerStyle`/`registeredStyles` definitions and persists via metadata overlay |
-| Apply number/date/currency/custom format | `setFormat(_:at:)` | Persists via style number-format hints (`ReadCellStyle.numberFormat`) |
+| Apply number/date/currency/custom/base/fraction/percentage/scientific format | `setFormat(_:at:)` | Persists via style number-format hints (`ReadCellStyle.numberFormat`) |
 | Apply registered custom format by identifier | `applyCustomFormat(id:at:)` | Uses `registerCustomFormat` definitions and applies `.custom(formatID:)` deterministically |
 | Add more records | `appendRow(_:)` | Grows row count |
 | Insert records at position | `insertRow(_:at:)` | Shifts rows below |
@@ -727,7 +727,7 @@ func applyCustomFormat(id customFormatID: String, at reference: String) throws
 
 **Purpose**
 
-Apply or clear number/date/currency/custom format hints at coordinate or A1 reference.
+Apply or clear number/date/currency/custom format hints, including extended numeric families (`base`, `fraction`, `percentage`, `scientific`), at coordinate or A1 reference.
 
 **Signatures**
 

@@ -236,7 +236,7 @@ Code baseline source for this milestone:
   - Definition of done: editable API can set cell borders by side with deterministic conflict handling for merged ranges.
   - Validation: border roundtrip tests verify side-specific persistence and merged-edge behavior.
 
-- [TODO] `SN-R78` Expand format write API with extended numeric families.
+- [DONE] `SN-R78` Expand format write API with extended numeric families. (2026-04-26)
   - Definition of done: format API supports base, fraction, percentage, and scientific modes in addition to existing core formats.
   - Validation: formatting snapshot tests verify rendered and typed outputs for each new mode.
 
