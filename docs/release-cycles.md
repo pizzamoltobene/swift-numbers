@@ -16,3 +16,4 @@ This file tracks successful autonomous release cycles.
 | `v0.3.8` | 2026-04-27 | `c77d029` | pass | Official GitHub release published. |
 | `v0.3.9` | 2026-04-27 | `20e275a` | pass | Official GitHub release published. |
 | `v0.3.10` | 2026-04-27 | `f91ee42` | pass | Official GitHub release published. |
+| `v0.3.11` | 2026-04-27 | `3a0206a` | pass | Official GitHub release published. |
