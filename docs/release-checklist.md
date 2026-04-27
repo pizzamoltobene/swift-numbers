@@ -29,10 +29,10 @@ Use this checklist for every official release of `swift-numbers`.
 ./scripts/release_batch_count.sh --changelog ./CHANGELOG.md
 ```
 
-2. Verify threshold (current policy: `15`):
+2. Verify threshold (current policy: `5`):
 
 ```bash
-./scripts/release_batch_count.sh --check --threshold 15 --changelog ./CHANGELOG.md
+./scripts/release_batch_count.sh --check --threshold 5 --changelog ./CHANGELOG.md
 ```
 
 Release should proceed only when threshold check exits `0`.

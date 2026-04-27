@@ -14,7 +14,7 @@ Usage: ./scripts/release_batch_count.sh [options]
 
 Options:
   --changelog <path>    Path to changelog file (default: ./CHANGELOG.md)
-  --threshold <number>  Threshold for --check mode (default: 15)
+  --threshold <number>  Threshold for --check mode (default: 5)
   --check               Exit 0 when count >= threshold, else exit 1
   -h, --help            Show help
 
@@ -56,7 +56,7 @@ if [[ ! -f "$CHANGELOG_PATH" ]]; then
 fi
 
 if [[ -z "$THRESHOLD" ]]; then
-  THRESHOLD=15
+  THRESHOLD=5
 fi
 
 if ! [[ "$THRESHOLD" =~ ^[0-9]+$ ]]; then

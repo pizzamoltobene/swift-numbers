@@ -16,6 +16,24 @@ All notable changes to this project are documented in this file.
 
 - Revert to the previous stable tag and redeploy package artifacts.
 
+## [0.3.8] - 2026-04-27
+
+### Summary
+
+- Added editable table geometry mutations (`setRowHeight`, `setColumnWidth`) and read geometry helpers (`rowHeight`, `columnWidth`, `cellGeometry`) with native persistence and save/reopen regression coverage.
+- Added dedicated testing-autopilot control plane with policy/roadmap/operations docs, deterministic test-growth reporting (`scripts/test-growth-report.sh`), deterministic testing backlog synthesis (`scripts/testing_backlog_synthesis.sh`), and CI wiring including a scheduled `Testing Autopilot` workflow.
+- Added document style registry APIs (`registerStyle`, `registeredStyles`, `registeredStyle(id:)`, `applyStyle(id:at:)`) with deterministic save/reopen persistence and duplicate-name validation.
+- Added document custom-format registry APIs (`registerCustomFormat`, `registeredCustomFormats`, `registeredCustomFormat(id:)`, `applyCustomFormat(id:at:)`) with deterministic save/reopen persistence and duplicate/unknown identifier validation.
+- Reduced autonomous release batch threshold from 15 to 5 changelog summary items (`scripts/release_batch_count.sh` default and policy docs aligned).
+
+### Breaking Changes
+
+- None.
+
+### Rollback Hint
+
+- Revert to the previous stable tag and redeploy package artifacts.
+
 ## [0.3.7] - 2026-04-27
 
 ### Summary

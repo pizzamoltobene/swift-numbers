@@ -6,10 +6,16 @@ public enum EditableNumbersError: LocalizedError {
   case sheetNotFound(String)
   case tableNotFound(sheet: String, table: String)
   case duplicateTableName(sheet: String, table: String)
+  case duplicateStyleName(String)
+  case styleNotFound(String)
+  case duplicateCustomFormatName(String)
+  case customFormatNotFound(String)
   case invalidCellReference(String)
   case invalidRangeReference(String)
   case invalidRowIndex(Int)
   case invalidColumnIndex(Int)
+  case invalidHeaderRowCount(Int)
+  case invalidHeaderColumnCount(Int)
   case groupedTableMutationUnsupported(sheet: String, table: String, operation: String)
   case pivotLinkedTableMutationUnsupported(sheet: String, table: String, operation: String)
   case nativeWriteFailed(String)
@@ -22,6 +28,14 @@ public enum EditableNumbersError: LocalizedError {
       return "Table not found: \(sheet)/\(table)"
     case .duplicateTableName(let sheet, let table):
       return "Table already exists: \(sheet)/\(table)"
+    case .duplicateStyleName(let name):
+      return "Style already exists: \(name)"
+    case .styleNotFound(let identifier):
+      return "Style not found: \(identifier)"
+    case .duplicateCustomFormatName(let name):
+      return "Custom format already exists: \(name)"
+    case .customFormatNotFound(let identifier):
+      return "Custom format not found: \(identifier)"
     case .invalidCellReference(let raw):
       return "Invalid cell reference: \(raw)"
     case .invalidRangeReference(let raw):
@@ -30,6 +44,10 @@ public enum EditableNumbersError: LocalizedError {
       return "Invalid row index: \(row)"
     case .invalidColumnIndex(let column):
       return "Invalid column index: \(column)"
+    case .invalidHeaderRowCount(let count):
+      return "Invalid header row count: \(count)"
+    case .invalidHeaderColumnCount(let count):
+      return "Invalid header column count: \(count)"
     case .groupedTableMutationUnsupported(let sheet, let table, let operation):
       return
         "Unsafe grouped-table mutation blocked for \(sheet)/\(table) during \(operation). Grouped tables are currently read-only for structural edits. Remove grouping in Apple Numbers and retry."
@@ -39,6 +57,30 @@ public enum EditableNumbersError: LocalizedError {
     case .nativeWriteFailed(let details):
       return "Swift-native write failed: \(details)"
     }
+  }
+}
+
+public struct RegisteredDocumentStyle: Hashable, Sendable {
+  public let id: String
+  public let name: String
+  public let style: ReadCellStyle
+
+  public init(id: String, name: String, style: ReadCellStyle) {
+    self.id = id
+    self.name = name
+    self.style = style
+  }
+}
+
+public struct RegisteredDocumentCustomFormat: Hashable, Sendable {
+  public let id: String
+  public let name: String
+  public let formatID: Int32
+
+  public init(id: String, name: String, formatID: Int32) {
+    self.id = id
+    self.name = name
+    self.formatID = formatID
   }
 }
 
@@ -133,11 +175,24 @@ public final class EditableNumbersDocument {
   public private(set) var sheets: [EditableSheet] = []
   public private(set) var dirtyState: DocumentDirtyState = .clean
 
+  private static let styleRegistryMetadataFilename = "SwiftNumbersStyleRegistry.json"
+  private static let customFormatRegistryMetadataFilename = "SwiftNumbersCustomFormatRegistry.json"
+
   private var operations: [EditOperation] = []
   private var workingSourceURL: URL
+  private var styleRegistryDirty = false
+  private var customFormatRegistryDirty = false
+  private var registeredStylesByID: [String: RegisteredDocumentStyle] = [:]
+  private var styleIDsByName: [String: String] = [:]
+  private var styleOrder: [String] = []
+  private var nextStyleOrdinal: Int = 1
+  private var registeredCustomFormatsByID: [String: RegisteredDocumentCustomFormat] = [:]
+  private var customFormatIDsByName: [String: String] = [:]
+  private var customFormatOrder: [String] = []
+  private var nextCustomFormatOrdinal: Int = 1
 
   public var hasChanges: Bool {
-    !operations.isEmpty
+    !operations.isEmpty || styleRegistryDirty || customFormatRegistryDirty
   }
 
   public var firstSheet: EditableSheet? {
@@ -154,11 +209,65 @@ public final class EditableNumbersDocument {
     let readOnly = try NumbersDocument.open(at: url)
     let editable = EditableNumbersDocument(sourceURL: url)
     editable.bootstrap(from: readOnly.sheets)
+    try editable.loadStyleRegistryOverlay(from: url)
+    try editable.loadCustomFormatRegistryOverlay(from: url)
     return editable
   }
 
   public static func canSaveEditableDocuments() -> Bool {
     true
+  }
+
+  @discardableResult
+  public func registerStyle(named name: String, style: ReadCellStyle) throws -> String {
+    let normalizedName = normalizedStyleName(name)
+    guard styleIDsByName[normalizedName] == nil else {
+      throw EditableNumbersError.duplicateStyleName(normalizedName)
+    }
+
+    let styleID = allocateStyleID()
+    let definition = RegisteredDocumentStyle(id: styleID, name: normalizedName, style: style)
+    registeredStylesByID[styleID] = definition
+    styleIDsByName[normalizedName] = styleID
+    styleOrder.append(styleID)
+    markStyleRegistryDirty()
+    return styleID
+  }
+
+  public func registeredStyles() -> [RegisteredDocumentStyle] {
+    styleOrder.compactMap { registeredStylesByID[$0] }
+  }
+
+  public func registeredStyle(id styleID: String) -> RegisteredDocumentStyle? {
+    registeredStylesByID[styleID]
+  }
+
+  @discardableResult
+  public func registerCustomFormat(named name: String, formatID: Int32) throws -> String {
+    let normalizedName = normalizedCustomFormatName(name)
+    guard customFormatIDsByName[normalizedName] == nil else {
+      throw EditableNumbersError.duplicateCustomFormatName(normalizedName)
+    }
+
+    let customFormatID = allocateCustomFormatID()
+    let definition = RegisteredDocumentCustomFormat(
+      id: customFormatID,
+      name: normalizedName,
+      formatID: formatID
+    )
+    registeredCustomFormatsByID[customFormatID] = definition
+    customFormatIDsByName[normalizedName] = customFormatID
+    customFormatOrder.append(customFormatID)
+    markCustomFormatRegistryDirty()
+    return customFormatID
+  }
+
+  public func registeredCustomFormats() -> [RegisteredDocumentCustomFormat] {
+    customFormatOrder.compactMap { registeredCustomFormatsByID[$0] }
+  }
+
+  public func registeredCustomFormat(id customFormatID: String) -> RegisteredDocumentCustomFormat? {
+    registeredCustomFormatsByID[customFormatID]
   }
 
   public func sheet(named name: String) throws -> EditableSheet {
@@ -179,6 +288,7 @@ public final class EditableNumbersDocument {
       columnCount: 1,
       mergeRanges: [],
       cells: [:],
+      ownerDocument: self,
       ownerSheetName: resolvedName,
       mutationSink: makeMutationSink()
     )
@@ -220,15 +330,17 @@ public final class EditableNumbersDocument {
   private func write(to destinationURL: URL) throws {
     if operations.isEmpty {
       try copyContainer(from: workingSourceURL, to: destinationURL)
-      return
-    }
-    try validateOperationAddressability()
+    } else {
+      try validateOperationAddressability()
 
-    try NativeWriterBackend.save(
-      sourceURL: workingSourceURL,
-      destinationURL: destinationURL,
-      operations: operations
-    )
+      try NativeWriterBackend.save(
+        sourceURL: workingSourceURL,
+        destinationURL: destinationURL,
+        operations: operations
+      )
+    }
+    try writeStyleRegistryOverlay(to: destinationURL)
+    try writeCustomFormatRegistryOverlay(to: destinationURL)
   }
 
   public func saveInPlace() throws {
@@ -274,6 +386,8 @@ public final class EditableNumbersDocument {
 
   private func markSaved() {
     operations.removeAll(keepingCapacity: true)
+    styleRegistryDirty = false
+    customFormatRegistryDirty = false
     dirtyState = .clean
     for sheet in sheets {
       sheet.markClean()
@@ -296,6 +410,10 @@ public final class EditableNumbersDocument {
           name: table.name,
           rowCount: table.metadata.rowCount,
           columnCount: table.metadata.columnCount,
+          headerRowCount: table.metadata.headerRowCount,
+          headerColumnCount: table.metadata.headerColumnCount,
+          rowHeights: table.metadata.rowHeights,
+          columnWidths: table.metadata.columnWidths,
           mergeRanges: table.metadata.mergeRanges,
           objectIdentifiers: table.metadata.objectIdentifiers,
           pivotLinks: table.metadata.pivotLinks,
@@ -305,6 +423,7 @@ public final class EditableNumbersDocument {
           captionTextSupported: table.metadata.captionTextSupported,
           cells: table.allCells,
           cellStyles: styleCells,
+          ownerDocument: self,
           ownerSheetName: sourceSheet.name,
           mutationSink: sink
         )
@@ -393,6 +512,619 @@ public final class EditableNumbersDocument {
       index += 1
     }
   }
+
+  private func normalizedStyleName(_ raw: String) -> String {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? "Style \(max(styleOrder.count + 1, 1))" : trimmed
+  }
+
+  private func normalizedCustomFormatName(_ raw: String) -> String {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? "Custom Format \(max(customFormatOrder.count + 1, 1))" : trimmed
+  }
+
+  private func allocateStyleID() -> String {
+    while true {
+      let candidate = "style-\(nextStyleOrdinal)"
+      nextStyleOrdinal += 1
+      if registeredStylesByID[candidate] == nil {
+        return candidate
+      }
+    }
+  }
+
+  private func allocateCustomFormatID() -> String {
+    while true {
+      let candidate = "custom-format-\(nextCustomFormatOrdinal)"
+      nextCustomFormatOrdinal += 1
+      if registeredCustomFormatsByID[candidate] == nil {
+        return candidate
+      }
+    }
+  }
+
+  fileprivate func markStyleRegistryDirty() {
+    styleRegistryDirty = true
+    if dirtyState == .clean {
+      dirtyState = .dataDirty
+    }
+  }
+
+  fileprivate func markCustomFormatRegistryDirty() {
+    customFormatRegistryDirty = true
+    if dirtyState == .clean {
+      dirtyState = .dataDirty
+    }
+  }
+
+  fileprivate func registeredStyleValue(for styleID: String) -> ReadCellStyle? {
+    registeredStylesByID[styleID]?.style
+  }
+
+  fileprivate func styleIdentifier(for style: ReadCellStyle) -> String? {
+    for styleID in styleOrder {
+      guard let candidate = registeredStylesByID[styleID] else {
+        continue
+      }
+      if candidate.style == style {
+        return styleID
+      }
+    }
+    return nil
+  }
+
+  fileprivate func registeredCustomFormatValue(for customFormatID: String) -> Int32? {
+    registeredCustomFormatsByID[customFormatID]?.formatID
+  }
+
+  fileprivate func customFormatIdentifier(for formatID: Int32) -> String? {
+    for customFormatID in customFormatOrder {
+      guard let definition = registeredCustomFormatsByID[customFormatID] else {
+        continue
+      }
+      if definition.formatID == formatID {
+        return customFormatID
+      }
+    }
+    return nil
+  }
+
+  private func loadStyleRegistryOverlay(from sourceURL: URL) throws {
+    let container = try NumbersContainer.open(at: sourceURL)
+    guard
+      let data = try container.readMetadataFile(named: Self.styleRegistryMetadataFilename),
+      !data.isEmpty
+    else {
+      return
+    }
+
+    let decoder = JSONDecoder()
+    let overlay = try decoder.decode(StyleRegistryOverlay.self, from: data)
+
+    registeredStylesByID.removeAll(keepingCapacity: true)
+    styleIDsByName.removeAll(keepingCapacity: true)
+    styleOrder.removeAll(keepingCapacity: true)
+
+    var maxObservedOrdinal = 0
+    for styleRecord in overlay.styles {
+      let normalizedName = normalizedStyleName(styleRecord.name)
+      guard styleIDsByName[normalizedName] == nil else {
+        continue
+      }
+      let style = styleRecord.style.toReadCellStyle()
+      let definition = RegisteredDocumentStyle(id: styleRecord.id, name: normalizedName, style: style)
+      registeredStylesByID[styleRecord.id] = definition
+      styleIDsByName[normalizedName] = styleRecord.id
+      styleOrder.append(styleRecord.id)
+
+      if styleRecord.id.hasPrefix("style-"),
+        let ordinal = Int(styleRecord.id.dropFirst("style-".count))
+      {
+        maxObservedOrdinal = max(maxObservedOrdinal, ordinal)
+      }
+    }
+
+    nextStyleOrdinal = max(maxObservedOrdinal + 1, max(overlay.nextStyleOrdinal, 1))
+
+    for assignment in overlay.assignments {
+      guard let table = table(named: assignment.tableName, onSheetNamed: assignment.sheetName) else {
+        continue
+      }
+      guard let style = registeredStyleValue(for: assignment.styleID) else {
+        continue
+      }
+      table.restoreRegisteredStyle(
+        id: assignment.styleID,
+        style: style,
+        at: CellAddress(row: assignment.row, column: assignment.column)
+      )
+    }
+
+    styleRegistryDirty = false
+  }
+
+  private func loadCustomFormatRegistryOverlay(from sourceURL: URL) throws {
+    let container = try NumbersContainer.open(at: sourceURL)
+    guard
+      let data = try container.readMetadataFile(named: Self.customFormatRegistryMetadataFilename),
+      !data.isEmpty
+    else {
+      return
+    }
+
+    let decoder = JSONDecoder()
+    let overlay = try decoder.decode(CustomFormatRegistryOverlay.self, from: data)
+
+    registeredCustomFormatsByID.removeAll(keepingCapacity: true)
+    customFormatIDsByName.removeAll(keepingCapacity: true)
+    customFormatOrder.removeAll(keepingCapacity: true)
+
+    var maxObservedOrdinal = 0
+    for record in overlay.formats {
+      let normalizedName = normalizedCustomFormatName(record.name)
+      guard customFormatIDsByName[normalizedName] == nil else {
+        continue
+      }
+
+      let definition = RegisteredDocumentCustomFormat(
+        id: record.id,
+        name: normalizedName,
+        formatID: record.formatID
+      )
+      registeredCustomFormatsByID[record.id] = definition
+      customFormatIDsByName[normalizedName] = record.id
+      customFormatOrder.append(record.id)
+
+      if record.id.hasPrefix("custom-format-"),
+        let ordinal = Int(record.id.dropFirst("custom-format-".count))
+      {
+        maxObservedOrdinal = max(maxObservedOrdinal, ordinal)
+      }
+    }
+
+    nextCustomFormatOrdinal = max(maxObservedOrdinal + 1, max(overlay.nextCustomFormatOrdinal, 1))
+
+    for assignment in overlay.assignments {
+      guard let table = table(named: assignment.tableName, onSheetNamed: assignment.sheetName) else {
+        continue
+      }
+      guard let formatID = registeredCustomFormatValue(for: assignment.customFormatID) else {
+        continue
+      }
+      table.restoreRegisteredCustomFormat(
+        id: assignment.customFormatID,
+        formatID: formatID,
+        at: CellAddress(row: assignment.row, column: assignment.column)
+      )
+    }
+
+    customFormatRegistryDirty = false
+  }
+
+  private func writeStyleRegistryOverlay(to destinationURL: URL) throws {
+    guard !registeredStylesByID.isEmpty else {
+      return
+    }
+
+    let overlay = buildStyleRegistryOverlay()
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    let overlayData = try encoder.encode(overlay)
+
+    let fileManager = FileManager.default
+    let tempURL = destinationURL.deletingLastPathComponent().appendingPathComponent(
+      ".swiftnumbers-style-registry-\(UUID().uuidString)-\(destinationURL.lastPathComponent)",
+      isDirectory: false
+    )
+    defer {
+      if fileManager.fileExists(atPath: tempURL.path) {
+        try? fileManager.removeItem(at: tempURL)
+      }
+    }
+
+    try NumbersContainer.copyContainer(
+      from: destinationURL,
+      to: tempURL,
+      replacingMetadataFiles: [Self.styleRegistryMetadataFilename: overlayData]
+    )
+
+    do {
+      _ = try fileManager.replaceItemAt(
+        destinationURL,
+        withItemAt: tempURL,
+        backupItemName: nil,
+        options: [.usingNewMetadataOnly]
+      )
+    } catch {
+      if fileManager.fileExists(atPath: destinationURL.path) {
+        try fileManager.removeItem(at: destinationURL)
+      }
+      try fileManager.moveItem(at: tempURL, to: destinationURL)
+    }
+  }
+
+  private func writeCustomFormatRegistryOverlay(to destinationURL: URL) throws {
+    guard !registeredCustomFormatsByID.isEmpty else {
+      return
+    }
+
+    let overlay = buildCustomFormatRegistryOverlay()
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    let overlayData = try encoder.encode(overlay)
+
+    let fileManager = FileManager.default
+    let tempURL = destinationURL.deletingLastPathComponent().appendingPathComponent(
+      ".swiftnumbers-custom-format-registry-\(UUID().uuidString)-\(destinationURL.lastPathComponent)",
+      isDirectory: false
+    )
+    defer {
+      if fileManager.fileExists(atPath: tempURL.path) {
+        try? fileManager.removeItem(at: tempURL)
+      }
+    }
+
+    try NumbersContainer.copyContainer(
+      from: destinationURL,
+      to: tempURL,
+      replacingMetadataFiles: [Self.customFormatRegistryMetadataFilename: overlayData]
+    )
+
+    do {
+      _ = try fileManager.replaceItemAt(
+        destinationURL,
+        withItemAt: tempURL,
+        backupItemName: nil,
+        options: [.usingNewMetadataOnly]
+      )
+    } catch {
+      if fileManager.fileExists(atPath: destinationURL.path) {
+        try fileManager.removeItem(at: destinationURL)
+      }
+      try fileManager.moveItem(at: tempURL, to: destinationURL)
+    }
+  }
+
+  private func buildStyleRegistryOverlay() -> StyleRegistryOverlay {
+    let styleRecords: [StyleRegistryStyleRecord] = styleOrder.compactMap { styleID in
+      guard let definition = registeredStylesByID[styleID] else {
+        return nil
+      }
+      return StyleRegistryStyleRecord(
+        id: definition.id,
+        name: definition.name,
+        style: .init(from: definition.style)
+      )
+    }
+
+    var assignmentRecords: [StyleRegistryAssignmentRecord] = []
+    for sheet in sheets {
+      for table in sheet.tables {
+        let styleCells = table.allCellStyles.sorted { lhs, rhs in
+          if lhs.key.row != rhs.key.row {
+            return lhs.key.row < rhs.key.row
+          }
+          return lhs.key.column < rhs.key.column
+        }
+        for (address, style) in styleCells {
+          guard let styleID = styleIdentifier(for: style) else {
+            continue
+          }
+          assignmentRecords.append(
+            StyleRegistryAssignmentRecord(
+              sheetName: sheet.name,
+              tableName: table.name,
+              row: address.row,
+              column: address.column,
+              styleID: styleID
+            )
+          )
+        }
+      }
+    }
+
+    assignmentRecords.sort {
+      if $0.sheetName != $1.sheetName {
+        return $0.sheetName < $1.sheetName
+      }
+      if $0.tableName != $1.tableName {
+        return $0.tableName < $1.tableName
+      }
+      if $0.row != $1.row {
+        return $0.row < $1.row
+      }
+      if $0.column != $1.column {
+        return $0.column < $1.column
+      }
+      return $0.styleID < $1.styleID
+    }
+
+    return StyleRegistryOverlay(
+      version: 1,
+      nextStyleOrdinal: nextStyleOrdinal,
+      styles: styleRecords,
+      assignments: assignmentRecords
+    )
+  }
+
+  private func buildCustomFormatRegistryOverlay() -> CustomFormatRegistryOverlay {
+    let records: [CustomFormatRegistryFormatRecord] = customFormatOrder.compactMap { customFormatID in
+      guard let definition = registeredCustomFormatsByID[customFormatID] else {
+        return nil
+      }
+      return CustomFormatRegistryFormatRecord(
+        id: definition.id,
+        name: definition.name,
+        formatID: definition.formatID
+      )
+    }
+
+    var assignmentRecords: [CustomFormatRegistryAssignmentRecord] = []
+    for sheet in sheets {
+      for table in sheet.tables {
+        let styleCells = table.allCellStyles.sorted { lhs, rhs in
+          if lhs.key.row != rhs.key.row {
+            return lhs.key.row < rhs.key.row
+          }
+          return lhs.key.column < rhs.key.column
+        }
+        for (address, style) in styleCells {
+          guard
+            let numberFormat = style.numberFormat,
+            numberFormat.kind == .custom,
+            let customFormatID = customFormatIdentifier(for: numberFormat.formatID)
+          else {
+            continue
+          }
+          assignmentRecords.append(
+            CustomFormatRegistryAssignmentRecord(
+              sheetName: sheet.name,
+              tableName: table.name,
+              row: address.row,
+              column: address.column,
+              customFormatID: customFormatID
+            )
+          )
+        }
+      }
+    }
+
+    assignmentRecords.sort {
+      if $0.sheetName != $1.sheetName {
+        return $0.sheetName < $1.sheetName
+      }
+      if $0.tableName != $1.tableName {
+        return $0.tableName < $1.tableName
+      }
+      if $0.row != $1.row {
+        return $0.row < $1.row
+      }
+      if $0.column != $1.column {
+        return $0.column < $1.column
+      }
+      return $0.customFormatID < $1.customFormatID
+    }
+
+    return CustomFormatRegistryOverlay(
+      version: 1,
+      nextCustomFormatOrdinal: nextCustomFormatOrdinal,
+      formats: records,
+      assignments: assignmentRecords
+    )
+  }
+
+  private func table(named tableName: String, onSheetNamed sheetName: String) -> EditableTable? {
+    guard let sheet = sheets.first(where: { $0.name == sheetName }) else {
+      return nil
+    }
+    return sheet.tables.first(where: { $0.name == tableName })
+  }
+}
+
+private struct StyleRegistryOverlay: Codable {
+  let version: Int
+  let nextStyleOrdinal: Int
+  let styles: [StyleRegistryStyleRecord]
+  let assignments: [StyleRegistryAssignmentRecord]
+}
+
+private struct StyleRegistryStyleRecord: Codable {
+  let id: String
+  let name: String
+  let style: StyleRegistryStylePayload
+}
+
+private struct StyleRegistryAssignmentRecord: Codable {
+  let sheetName: String
+  let tableName: String
+  let row: Int
+  let column: Int
+  let styleID: String
+}
+
+private struct CustomFormatRegistryOverlay: Codable {
+  let version: Int
+  let nextCustomFormatOrdinal: Int
+  let formats: [CustomFormatRegistryFormatRecord]
+  let assignments: [CustomFormatRegistryAssignmentRecord]
+
+  private enum CodingKeys: String, CodingKey {
+    case version
+    case nextCustomFormatOrdinal
+    case formats
+    case assignments
+  }
+
+  init(
+    version: Int,
+    nextCustomFormatOrdinal: Int,
+    formats: [CustomFormatRegistryFormatRecord],
+    assignments: [CustomFormatRegistryAssignmentRecord]
+  ) {
+    self.version = version
+    self.nextCustomFormatOrdinal = nextCustomFormatOrdinal
+    self.formats = formats
+    self.assignments = assignments
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    version = try container.decode(Int.self, forKey: .version)
+    nextCustomFormatOrdinal = try container.decode(Int.self, forKey: .nextCustomFormatOrdinal)
+    formats = try container.decode([CustomFormatRegistryFormatRecord].self, forKey: .formats)
+    assignments = try container.decodeIfPresent([CustomFormatRegistryAssignmentRecord].self, forKey: .assignments) ?? []
+  }
+}
+
+private struct CustomFormatRegistryFormatRecord: Codable {
+  let id: String
+  let name: String
+  let formatID: Int32
+}
+
+private struct CustomFormatRegistryAssignmentRecord: Codable {
+  let sheetName: String
+  let tableName: String
+  let row: Int
+  let column: Int
+  let customFormatID: String
+}
+
+private struct StyleRegistryStylePayload: Codable {
+  let horizontalAlignment: String?
+  let verticalAlignment: String?
+  let backgroundColorHex: String?
+  let fontName: String?
+  let fontSize: Double?
+  let isBold: Bool?
+  let isItalic: Bool?
+  let textColorHex: String?
+  let hasTopBorder: Bool
+  let hasRightBorder: Bool
+  let hasBottomBorder: Bool
+  let hasLeftBorder: Bool
+  let numberFormatKind: String?
+  let numberFormatID: Int32?
+
+  init(from style: ReadCellStyle) {
+    self.horizontalAlignment = Self.encodeHorizontalAlignment(style.horizontalAlignment)
+    self.verticalAlignment = Self.encodeVerticalAlignment(style.verticalAlignment)
+    self.backgroundColorHex = style.backgroundColorHex
+    self.fontName = style.fontName
+    self.fontSize = style.fontSize
+    self.isBold = style.isBold
+    self.isItalic = style.isItalic
+    self.textColorHex = style.textColorHex
+    self.hasTopBorder = style.hasTopBorder
+    self.hasRightBorder = style.hasRightBorder
+    self.hasBottomBorder = style.hasBottomBorder
+    self.hasLeftBorder = style.hasLeftBorder
+    self.numberFormatKind = style.numberFormat?.kind.rawValue
+    self.numberFormatID = style.numberFormat?.formatID
+  }
+
+  func toReadCellStyle() -> ReadCellStyle {
+    let mappedNumberFormat: ReadNumberFormat?
+    if let numberFormatKind, let kind = ReadNumberFormatKind(rawValue: numberFormatKind) {
+      mappedNumberFormat = ReadNumberFormat(kind: kind, formatID: numberFormatID ?? 0)
+    } else {
+      mappedNumberFormat = nil
+    }
+
+    return ReadCellStyle(
+      horizontalAlignment: Self.decodeHorizontalAlignment(horizontalAlignment),
+      verticalAlignment: Self.decodeVerticalAlignment(verticalAlignment),
+      backgroundColorHex: backgroundColorHex,
+      fontName: fontName,
+      fontSize: fontSize,
+      isBold: isBold,
+      isItalic: isItalic,
+      textColorHex: textColorHex,
+      hasTopBorder: hasTopBorder,
+      hasRightBorder: hasRightBorder,
+      hasBottomBorder: hasBottomBorder,
+      hasLeftBorder: hasLeftBorder,
+      numberFormat: mappedNumberFormat
+    )
+  }
+
+  private static func encodeHorizontalAlignment(_ value: ReadHorizontalAlignment?) -> String? {
+    guard let value else {
+      return nil
+    }
+    switch value {
+    case .left:
+      return "left"
+    case .center:
+      return "center"
+    case .right:
+      return "right"
+    case .justified:
+      return "justified"
+    case .natural:
+      return "natural"
+    case .unknown(let raw):
+      return "unknown:\(raw)"
+    }
+  }
+
+  private static func decodeHorizontalAlignment(_ value: String?) -> ReadHorizontalAlignment? {
+    guard let value else {
+      return nil
+    }
+    switch value {
+    case "left":
+      return .left
+    case "center":
+      return .center
+    case "right":
+      return .right
+    case "justified":
+      return .justified
+    case "natural":
+      return .natural
+    default:
+      if value.hasPrefix("unknown:"), let raw = Int32(value.dropFirst("unknown:".count)) {
+        return .unknown(raw)
+      }
+      return nil
+    }
+  }
+
+  private static func encodeVerticalAlignment(_ value: ReadVerticalAlignment?) -> String? {
+    guard let value else {
+      return nil
+    }
+    switch value {
+    case .top:
+      return "top"
+    case .middle:
+      return "middle"
+    case .bottom:
+      return "bottom"
+    case .unknown(let raw):
+      return "unknown:\(raw)"
+    }
+  }
+
+  private static func decodeVerticalAlignment(_ value: String?) -> ReadVerticalAlignment? {
+    guard let value else {
+      return nil
+    }
+    switch value {
+    case "top":
+      return .top
+    case "middle":
+      return .middle
+    case "bottom":
+      return .bottom
+    default:
+      if value.hasPrefix("unknown:"), let raw = Int32(value.dropFirst("unknown:".count)) {
+        return .unknown(raw)
+      }
+      return nil
+    }
+  }
 }
 
 private struct SheetTableNameKey: Hashable {
@@ -454,6 +1186,7 @@ public final class EditableSheet {
       columnCount: columns,
       mergeRanges: [],
       cells: [:],
+      ownerDocument: ownerDocument,
       ownerSheetName: self.name,
       mutationSink: mutationSink
     )
@@ -491,6 +1224,10 @@ public final class EditableTable {
 
   private(set) var rowCount: Int
   private(set) var columnCount: Int
+  private(set) var headerRowCount: Int
+  private(set) var headerColumnCount: Int
+  private(set) var rowHeights: [Double?]
+  private(set) var columnWidths: [Double?]
   private(set) var mergeRanges: [MergeRange]
   private var objectIdentifiers: TableObjectIdentifiers?
   private var pivotLinks: [PivotLinkMetadata]
@@ -501,6 +1238,7 @@ public final class EditableTable {
   private var cells: [CellAddress: CellValue]
   private var cellStyles: [CellAddress: ReadCellStyle]
   private var dirtyCells: Set<CellAddress> = []
+  private unowned let ownerDocument: EditableNumbersDocument
   private let ownerSheetName: String
   private let mutationSink: MutationSink
 
@@ -508,6 +1246,10 @@ public final class EditableTable {
     TableMetadata(
       rowCount: rowCount,
       columnCount: columnCount,
+      headerRowCount: headerRowCount,
+      headerColumnCount: headerColumnCount,
+      rowHeights: rowHeights,
+      columnWidths: columnWidths,
       mergeRanges: mergeRanges,
       tableNameVisible: tableNameVisible,
       captionVisible: captionVisible,
@@ -535,6 +1277,10 @@ public final class EditableTable {
     name: String,
     rowCount: Int,
     columnCount: Int,
+    headerRowCount: Int = 0,
+    headerColumnCount: Int = 0,
+    rowHeights: [Double?] = [],
+    columnWidths: [Double?] = [],
     mergeRanges: [MergeRange],
     objectIdentifiers: TableObjectIdentifiers? = nil,
     pivotLinks: [PivotLinkMetadata] = [],
@@ -544,6 +1290,7 @@ public final class EditableTable {
     captionTextSupported: Bool = false,
     cells: [CellAddress: CellValue],
     cellStyles: [CellAddress: ReadCellStyle] = [:],
+    ownerDocument: EditableNumbersDocument,
     ownerSheetName: String,
     mutationSink: @escaping MutationSink
   ) {
@@ -551,6 +1298,10 @@ public final class EditableTable {
     self.name = name
     self.rowCount = rowCount
     self.columnCount = columnCount
+    self.headerRowCount = max(min(headerRowCount, rowCount), 0)
+    self.headerColumnCount = max(min(headerColumnCount, columnCount), 0)
+    self.rowHeights = Self.normalizedGeometryValues(rowHeights, count: rowCount)
+    self.columnWidths = Self.normalizedGeometryValues(columnWidths, count: columnCount)
     self.mergeRanges = mergeRanges
     self.objectIdentifiers = objectIdentifiers
     self.pivotLinks = pivotLinks
@@ -560,6 +1311,7 @@ public final class EditableTable {
     self.captionTextSupported = captionTextSupported
     self.cells = cells
     self.cellStyles = cellStyles
+    self.ownerDocument = ownerDocument
     self.ownerSheetName = ownerSheetName
     self.mutationSink = mutationSink
   }
@@ -598,6 +1350,119 @@ public final class EditableTable {
 
   public var tableCaptionText: String? {
     captionText
+  }
+
+  public func rowHeight(at rowIndex: Int) -> Double? {
+    guard rowIndex >= 0, rowIndex < rowCount else {
+      return nil
+    }
+    guard rowIndex < rowHeights.count else {
+      return nil
+    }
+    return rowHeights[rowIndex]
+  }
+
+  public func columnWidth(at columnIndex: Int) -> Double? {
+    guard columnIndex >= 0, columnIndex < columnCount else {
+      return nil
+    }
+    guard columnIndex < columnWidths.count else {
+      return nil
+    }
+    return columnWidths[columnIndex]
+  }
+
+  public func setRowHeight(_ height: Double, at rowIndex: Int) throws {
+    guard rowIndex >= 0, rowIndex < rowCount else {
+      throw EditableNumbersError.invalidRowIndex(rowIndex)
+    }
+    guard height >= 0 else {
+      throw EditableNumbersError.nativeWriteFailed("Row height must be >= 0.")
+    }
+    if rowIndex >= rowHeights.count {
+      rowHeights.append(contentsOf: repeatElement(nil, count: rowIndex - rowHeights.count + 1))
+    }
+    guard rowHeights[rowIndex] != height else {
+      return
+    }
+    rowHeights[rowIndex] = height
+    markDirty(structureChanged: false)
+    mutationSink(
+      .setRowHeight(
+        sheetName: ownerSheetName,
+        tableName: name,
+        rowIndex: rowIndex,
+        height: height
+      ),
+      false
+    )
+  }
+
+  public func setColumnWidth(_ width: Double, at columnIndex: Int) throws {
+    guard columnIndex >= 0, columnIndex < columnCount else {
+      throw EditableNumbersError.invalidColumnIndex(columnIndex)
+    }
+    guard width >= 0 else {
+      throw EditableNumbersError.nativeWriteFailed("Column width must be >= 0.")
+    }
+    if columnIndex >= columnWidths.count {
+      columnWidths.append(
+        contentsOf: repeatElement(nil, count: columnIndex - columnWidths.count + 1))
+    }
+    guard columnWidths[columnIndex] != width else {
+      return
+    }
+    columnWidths[columnIndex] = width
+    markDirty(structureChanged: false)
+    mutationSink(
+      .setColumnWidth(
+        sheetName: ownerSheetName,
+        tableName: name,
+        columnIndex: columnIndex,
+        width: width
+      ),
+      false
+    )
+  }
+
+  public func setHeaderRowCount(_ count: Int) throws {
+    guard count >= 0, count <= rowCount else {
+      throw EditableNumbersError.invalidHeaderRowCount(count)
+    }
+    guard headerRowCount != count else {
+      return
+    }
+    headerRowCount = count
+    markDirty(structureChanged: true)
+    mutationSink(
+      .setHeaderCounts(
+        sheetName: ownerSheetName,
+        tableName: name,
+        headerRowCount: headerRowCount,
+        headerColumnCount: headerColumnCount
+      ),
+      true
+    )
+  }
+
+  public func setHeaderColumnCount(_ count: Int) throws {
+    guard count >= 0, count <= columnCount else {
+      throw EditableNumbersError.invalidHeaderColumnCount(count)
+    }
+    guard headerColumnCount != count else {
+      return
+    }
+    headerColumnCount = count
+    markDirty(structureChanged: true)
+    mutationSink(
+      .setHeaderCounts(
+        sheetName: ownerSheetName,
+        tableName: name,
+        headerRowCount: headerRowCount,
+        headerColumnCount: headerColumnCount
+      ),
+      true
+    )
   }
 
   public func setTableNameVisible(_ isVisible: Bool) throws {
@@ -721,6 +1586,30 @@ public final class EditableTable {
     setStyle(style, at: parsed.address)
   }
 
+  public func applyStyle(id styleID: String, at address: CellAddress) throws {
+    guard let style = ownerDocument.registeredStyleValue(for: styleID) else {
+      throw EditableNumbersError.styleNotFound(styleID)
+    }
+    applyRegisteredStyle(style, at: address, markDocumentDirty: true)
+  }
+
+  public func applyStyle(id styleID: String, at reference: String) throws {
+    let parsed = try CellReference(reference)
+    try applyStyle(id: styleID, at: parsed.address)
+  }
+
+  public func applyCustomFormat(id customFormatID: String, at address: CellAddress) throws {
+    guard let formatID = ownerDocument.registeredCustomFormatValue(for: customFormatID) else {
+      throw EditableNumbersError.customFormatNotFound(customFormatID)
+    }
+    applyRegisteredCustomFormat(formatID, at: address, markDocumentDirty: true)
+  }
+
+  public func applyCustomFormat(id customFormatID: String, at reference: String) throws {
+    let parsed = try CellReference(reference)
+    try applyCustomFormat(id: customFormatID, at: parsed.address)
+  }
+
   public func setFormat(_ format: EditableCellFormat?, at address: CellAddress) {
     guard address.row >= 0, address.column >= 0 else {
       return
@@ -762,8 +1651,13 @@ public final class EditableTable {
   public func appendRow(_ values: [CellValue]) {
     let rowIndex = rowCount
     rowCount += 1
+    rowHeights.append(nil)
     if values.count > columnCount {
+      let previous = columnCount
       columnCount = values.count
+      if values.count > previous {
+        columnWidths.append(contentsOf: repeatElement(nil, count: values.count - previous))
+      }
     }
     for (column, value) in values.enumerated() where value != .empty {
       cells[CellAddress(row: rowIndex, column: column)] = value
@@ -790,8 +1684,13 @@ public final class EditableTable {
     cells = shifted
 
     rowCount += 1
+    rowHeights.insert(nil, at: rowIndex)
     if values.count > columnCount {
+      let previous = columnCount
       columnCount = values.count
+      if values.count > previous {
+        columnWidths.append(contentsOf: repeatElement(nil, count: values.count - previous))
+      }
     }
 
     for (column, value) in values.enumerated() where value != .empty {
@@ -813,8 +1712,13 @@ public final class EditableTable {
   public func appendColumn(_ values: [CellValue]) {
     let columnIndex = columnCount
     columnCount += 1
+    columnWidths.append(nil)
     if values.count > rowCount {
+      let previous = rowCount
       rowCount = values.count
+      if values.count > previous {
+        rowHeights.append(contentsOf: repeatElement(nil, count: values.count - previous))
+      }
     }
     for (row, value) in values.enumerated() where value != .empty {
       cells[CellAddress(row: row, column: columnIndex)] = value
@@ -860,6 +1764,10 @@ public final class EditableTable {
     cellStyles = shiftedStyles
 
     rowCount -= 1
+    if rowIndex < rowHeights.count {
+      rowHeights.remove(at: rowIndex)
+    }
+    headerRowCount = min(headerRowCount, rowCount)
     mergeRanges = Self.mergeRangesByDeletingRow(rowIndex, from: mergeRanges)
 
     markDirty(structureChanged: true)
@@ -900,6 +1808,10 @@ public final class EditableTable {
     cellStyles = shiftedStyles
 
     columnCount -= 1
+    if columnIndex < columnWidths.count {
+      columnWidths.remove(at: columnIndex)
+    }
+    headerColumnCount = min(headerColumnCount, columnCount)
     mergeRanges = Self.mergeRangesByDeletingColumn(columnIndex, from: mergeRanges)
 
     markDirty(structureChanged: true)
@@ -935,6 +1847,30 @@ public final class EditableTable {
     cellStyles[address]
   }
 
+  fileprivate func restoreRegisteredStyle(
+    id styleID: String,
+    style: ReadCellStyle,
+    at address: CellAddress
+  ) {
+    _ = styleID
+    guard address.row >= 0, address.column >= 0 else {
+      return
+    }
+    guard address.row < rowCount, address.column < columnCount else {
+      return
+    }
+    cellStyles[address] = style
+  }
+
+  fileprivate func restoreRegisteredCustomFormat(
+    id customFormatID: String,
+    formatID: Int32,
+    at address: CellAddress
+  ) {
+    _ = customFormatID
+    applyRegisteredCustomFormat(formatID, at: address, markDocumentDirty: false)
+  }
+
   fileprivate func format(for address: CellAddress) -> EditableCellFormat? {
     format(at: address)
   }
@@ -942,11 +1878,15 @@ public final class EditableTable {
   private func ensureCapacity(for address: CellAddress) -> Bool {
     var structureChanged = false
     if address.row >= rowCount {
+      let previous = rowCount
       rowCount = address.row + 1
+      rowHeights.append(contentsOf: repeatElement(nil, count: rowCount - previous))
       structureChanged = true
     }
     if address.column >= columnCount {
+      let previous = columnCount
       columnCount = address.column + 1
+      columnWidths.append(contentsOf: repeatElement(nil, count: columnCount - previous))
       structureChanged = true
     }
     return structureChanged
@@ -1167,6 +2107,72 @@ public final class EditableTable {
       || style.hasLeftBorder
       || style.numberFormat != nil
   }
+
+  private static func normalizedGeometryValues(_ values: [Double?], count: Int) -> [Double?] {
+    guard count > 0 else {
+      return []
+    }
+    if values.count >= count {
+      return Array(values.prefix(count))
+    }
+    return values + Array(repeating: nil, count: count - values.count)
+  }
+
+  private func applyRegisteredCustomFormat(
+    _ formatID: Int32,
+    at address: CellAddress,
+    markDocumentDirty: Bool
+  ) {
+    guard address.row >= 0, address.column >= 0 else {
+      return
+    }
+
+    let structureChanged = ensureCapacity(for: address)
+    let currentStyle = cellStyles[address]
+    let nextStyle: ReadCellStyle?
+    if let currentStyle {
+      let updatedStyle = Self.styleByUpdatingNumberFormat(
+        currentStyle,
+        numberFormat: ReadNumberFormat(kind: .custom, formatID: formatID)
+      )
+      nextStyle = Self.styleHasVisibleFields(updatedStyle) ? updatedStyle : nil
+    } else {
+      nextStyle = ReadCellStyle(numberFormat: ReadNumberFormat(kind: .custom, formatID: formatID))
+    }
+
+    guard currentStyle != nextStyle else {
+      return
+    }
+
+    if let nextStyle {
+      cellStyles[address] = nextStyle
+    } else {
+      cellStyles.removeValue(forKey: address)
+    }
+    markDirty(address: address, structureChanged: structureChanged)
+    if markDocumentDirty {
+      ownerDocument.markCustomFormatRegistryDirty()
+    }
+  }
+
+  private func applyRegisteredStyle(
+    _ style: ReadCellStyle,
+    at address: CellAddress,
+    markDocumentDirty: Bool
+  ) {
+    guard address.row >= 0, address.column >= 0 else {
+      return
+    }
+    let structureChanged = ensureCapacity(for: address)
+    guard cellStyles[address] != style else {
+      return
+    }
+    cellStyles[address] = style
+    markDirty(address: address, structureChanged: structureChanged)
+    if markDocumentDirty {
+      ownerDocument.markStyleRegistryDirty()
+    }
+  }
 }
 
 public final class EditableCell {
@@ -1243,6 +2249,14 @@ enum EditOperation {
   case setTableNameVisibility(sheetName: String, tableName: String, isVisible: Bool)
   case setCaptionVisibility(sheetName: String, tableName: String, isVisible: Bool)
   case setCaptionText(sheetName: String, tableName: String, text: String)
+  case setHeaderCounts(
+    sheetName: String,
+    tableName: String,
+    headerRowCount: Int,
+    headerColumnCount: Int
+  )
+  case setRowHeight(sheetName: String, tableName: String, rowIndex: Int, height: Double)
+  case setColumnWidth(sheetName: String, tableName: String, columnIndex: Int, width: Double)
   case addTable(sheetName: String, tableName: String, rows: Int, columns: Int)
   case addSheet(name: String)
 }

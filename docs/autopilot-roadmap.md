@@ -216,19 +216,19 @@ Code baseline source for this milestone:
   - Definition of done: merged ranges can be removed through public editable API with deterministic merge metadata updates.
   - Validation: merge/unmerge roundtrip tests pass for read-cell/read-range/read-table and metadata paths.
 
-- [TODO] `SN-R73` Add header-row/header-column mutation API.
+- [DONE] `SN-R73` Add header-row/header-column mutation API. (2026-04-26)
   - Definition of done: editable API can set table header row/column counts and persists values after save/reopen.
   - Validation: fixture tests confirm header semantics and selector behavior in CLI/read APIs.
 
-- [TODO] `SN-R74` Add table geometry mutation/read API (row height, column width, coordinates).
+- [DONE] `SN-R74` Add table geometry mutation/read API (row height, column width, coordinates). (2026-04-26)
   - Definition of done: geometry metadata can be read and mutated through supported APIs with persistence guarantees.
   - Validation: save/reopen tests assert geometry values on edited cells/tables.
 
-- [TODO] `SN-R75` Add document style registry APIs.
+- [DONE] `SN-R75` Add document style registry APIs. (2026-04-26)
   - Definition of done: editable document API can create/list reusable styles and apply them by identifier.
   - Validation: style registry tests cover create/apply/save/reopen and duplicate-name handling.
 
-- [TODO] `SN-R76` Add document custom-format registry APIs.
+- [DONE] `SN-R76` Add document custom-format registry APIs. (2026-04-26)
   - Definition of done: editable document API can create/list named custom formats and apply them to cells.
   - Validation: custom format tests cover datetime/number/text variants and persistence.
 

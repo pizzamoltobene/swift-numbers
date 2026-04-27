@@ -1,0 +1,39 @@
+name: Testing Autopilot
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+jobs:
+  testing-growth:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Select Xcode 16
+        run: |
+          set -euo pipefail
+          XCODE_APP="$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [[ -z "$XCODE_APP" ]]; then
+            echo "No Xcode 16.x installation found on runner"
+            ls -1 /Applications | grep -E '^Xcode' || true
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+      - name: Swift Version
+        run: swift --version
+      - name: Synthesize Testing Backlog (Preview)
+        run: |
+          mkdir -p .local
+          ./scripts/testing_backlog_synthesis.sh --dry-run > .local/testing-backlog-preview.md
+      - name: Run Test Growth Report
+        run: ./scripts/test-growth-report.sh --run-tests --target 1000 > .local/test-growth-report.txt
+      - name: Upload Testing Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: testing-autopilot-reports
+          path: |
+            .local/testing-backlog-preview.md
+            .local/test-growth-report.txt

@@ -82,7 +82,7 @@ Autopilot must collect and score signals from:
 - User-visible behavior changes require docs updates and `CHANGELOG.md` updates.
 - Release only after quality gates pass and batch threshold is met.
 - Batch threshold rule:
-  - release when `CHANGELOG.md` `## [Unreleased] -> ### Summary` has at least `15` non-placeholder bullets
+  - release when `CHANGELOG.md` `## [Unreleased] -> ### Summary` has at least `5` non-placeholder bullets
   - compute count with `./scripts/release_batch_count.sh --changelog ./CHANGELOG.md`
 
 ## Concurrency and Lease Rules

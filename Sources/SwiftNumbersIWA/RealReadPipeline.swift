@@ -241,6 +241,10 @@ public struct IWAResolvedTable: Hashable, Sendable {
   public let tableModelObjectID: UInt64
   public let rowCount: Int
   public let columnCount: Int
+  public let headerRowCount: Int
+  public let headerColumnCount: Int
+  public let rowHeights: [Double?]
+  public let columnWidths: [Double?]
   public let merges: [IWAResolvedMergeRange]
   public let tableNameVisible: Bool?
   public let captionVisible: Bool?
@@ -256,6 +260,10 @@ public struct IWAResolvedTable: Hashable, Sendable {
     tableModelObjectID: UInt64 = 0,
     rowCount: Int,
     columnCount: Int,
+    headerRowCount: Int = 0,
+    headerColumnCount: Int = 0,
+    rowHeights: [Double?] = [],
+    columnWidths: [Double?] = [],
     merges: [IWAResolvedMergeRange],
     tableNameVisible: Bool? = nil,
     captionVisible: Bool? = nil,
@@ -270,6 +278,10 @@ public struct IWAResolvedTable: Hashable, Sendable {
     self.tableModelObjectID = tableModelObjectID
     self.rowCount = rowCount
     self.columnCount = columnCount
+    self.headerRowCount = headerRowCount
+    self.headerColumnCount = headerColumnCount
+    self.rowHeights = rowHeights
+    self.columnWidths = columnWidths
     self.merges = merges
     self.tableNameVisible = tableNameVisible
     self.captionVisible = captionVisible
@@ -881,11 +893,18 @@ public enum IWARealDocumentReader {
       let tableName = tableModel.tableName.isEmpty ? "Table \(tableID)" : tableModel.tableName
       let rowCount = Int(tableModel.numberOfRows)
       let columnCount = Int(tableModel.numberOfColumns)
+      let headerRowCount = Int(tableModel.numberOfHeaderRows)
+      let headerColumnCount = Int(tableModel.numberOfHeaderColumns)
+      let dataStore = tableModel.baseDataStore
+      let rowHeights = decodeRowHeaderSizes(dataStore.rowHeaders, rowCount: rowCount)
+      let columnWidths = decodeColumnHeaderSizes(
+        dataStore.columnHeaders,
+        columnCount: columnCount
+      )
       let tableNameVisible = tableModel.hasTableNameEnabled ? tableModel.tableNameEnabled : nil
       let captionVisible = tableInfo.super.hasCaptionHidden ? !tableInfo.super.captionHidden : nil
       let caption = resolveCaptionMetadata(drawable: tableInfo.super)
 
-      let dataStore = tableModel.baseDataStore
       let stringLookup = decodeStringTable(dataStore.stringTable)
       let formulaLookup = decodeFormulaTable(dataStore.formulaTable)
       let styleObjectByID = decodeStyleTable(dataStore.styleTable)
@@ -975,6 +994,10 @@ public enum IWARealDocumentReader {
         tableModelObjectID: tableModelObjectID,
         rowCount: rowCount,
         columnCount: columnCount,
+        headerRowCount: headerRowCount,
+        headerColumnCount: headerColumnCount,
+        rowHeights: rowHeights,
+        columnWidths: columnWidths,
         merges: merges,
         tableNameVisible: tableNameVisible,
         captionVisible: captionVisible,
@@ -1368,6 +1391,75 @@ public enum IWARealDocumentReader {
       }
 
       return rowStorageMap
+    }
+
+    private func decodeRowHeaderSizes(
+      _ headerStorage: TST_HeaderStorage,
+      rowCount: Int
+    ) -> [Double?] {
+      guard rowCount > 0 else {
+        return []
+      }
+      var sizes = [Double?](repeating: nil, count: rowCount)
+
+      for bucketRef in headerStorage.buckets {
+        let bucketObjectID = bucketRef.identifier
+        guard bucketObjectID > 0 else {
+          continue
+        }
+        guard
+          let bucket: TST_HeaderStorageBucket = decode(
+            objectID: bucketObjectID,
+            typeID: TypeID.headerStorageBucket,
+            as: TST_HeaderStorageBucket.self
+          )
+        else {
+          continue
+        }
+        for header in bucket.headers where header.hasSize {
+          let rowIndex = Int(header.index)
+          guard rowIndex >= 0, rowIndex < sizes.count else {
+            continue
+          }
+          sizes[rowIndex] = Double(header.size)
+        }
+      }
+
+      return sizes
+    }
+
+    private func decodeColumnHeaderSizes(
+      _ columnHeadersRef: TSP_Reference,
+      columnCount: Int
+    ) -> [Double?] {
+      guard columnCount > 0 else {
+        return []
+      }
+
+      var sizes = [Double?](repeating: nil, count: columnCount)
+      let bucketObjectID = columnHeadersRef.identifier
+      guard bucketObjectID > 0 else {
+        return sizes
+      }
+      guard
+        let bucket: TST_HeaderStorageBucket = decode(
+          objectID: bucketObjectID,
+          typeID: TypeID.headerStorageBucket,
+          as: TST_HeaderStorageBucket.self
+        )
+      else {
+        return sizes
+      }
+
+      for header in bucket.headers where header.hasSize {
+        let columnIndex = Int(header.index)
+        guard columnIndex >= 0, columnIndex < sizes.count else {
+          continue
+        }
+        sizes[columnIndex] = Double(header.size)
+      }
+
+      return sizes
     }
 
     private func decodeRowBuffers(_ tileStorage: TST_TileStorage, columnCount: Int) -> [[Data?]] {

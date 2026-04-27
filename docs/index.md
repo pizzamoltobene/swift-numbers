@@ -21,6 +21,9 @@ Documentation hub for `SwiftNumbers v0.3.2`.
 | Internal architecture | [Architecture](architecture.md) |
 | Infinite improvement rules for Autopilot | [Autopilot Policy](autopilot-policy.md) |
 | Roadmap-driven autonomous loop | [Autopilot Roadmap](autopilot-roadmap.md) |
+| Test-only autonomous growth policy | [Testing Autopilot Policy](testing-autopilot-policy.md) |
+| Test-only autonomous queue and milestones | [Testing Autopilot Roadmap](testing-autopilot-roadmap.md) |
+| Test-only autonomous runbook | [Testing Autopilot Operations](testing-autopilot-operations.md) |
 | Capability-gap baseline and priorities | [Capability Gap Baseline](capability-gap-baseline.md) |
 | Code-verified `numbers-parser` capability inventory | [numbers-parser Code Capability Map](numbers-parser-code-capability-map.md) |
 | Pause/resume + unblock runbook for Autopilot | [Autopilot Operations](autopilot-operations.md) |

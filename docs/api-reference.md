@@ -35,6 +35,8 @@ import SwiftNumbersCore
 | `invalidRangeReference` | `String` |
 | `invalidRowIndex` | `Int` |
 | `invalidColumnIndex` | `Int` |
+| `invalidHeaderRowCount` | `Int` |
+| `invalidHeaderColumnCount` | `Int` |
 | `nativeWriteFailed` | `String` |
 
 ### `DocumentDirtyState: String, Sendable`
@@ -104,9 +106,21 @@ public struct PivotLinkMetadata: Hashable, Sendable {
   )
 }
 
+public struct TableCellGeometry: Hashable, Sendable {
+  public let originX: Double
+  public let originY: Double
+  public let width: Double
+  public let height: Double
+  public init(originX: Double, originY: Double, width: Double, height: Double)
+}
+
 public struct TableMetadata: Hashable, Sendable {
   public let rowCount: Int
   public let columnCount: Int
+  public let headerRowCount: Int
+  public let headerColumnCount: Int
+  public let rowHeights: [Double?]
+  public let columnWidths: [Double?]
   public let mergeRanges: [MergeRange]
   public let tableNameVisible: Bool?
   public let captionVisible: Bool?
@@ -117,6 +131,10 @@ public struct TableMetadata: Hashable, Sendable {
   public init(
     rowCount: Int,
     columnCount: Int,
+    headerRowCount: Int = 0,
+    headerColumnCount: Int = 0,
+    rowHeights: [Double?] = [],
+    columnWidths: [Double?] = [],
     mergeRanges: [MergeRange],
     tableNameVisible: Bool? = nil,
     captionVisible: Bool? = nil,
@@ -150,6 +168,18 @@ public struct Table: Hashable, Sendable {
   public func formulaResult(_ reference: String) -> FormulaResultRead?
   public var rowCount: Int { get }
   public var columnCount: Int { get }
+  public func rowHeight(at rowIndex: Int) -> Double?
+  public func columnWidth(at columnIndex: Int) -> Double?
+  public func cellGeometry(
+    at address: CellAddress,
+    defaultRowHeight: Double = 20,
+    defaultColumnWidth: Double = 100
+  ) -> TableCellGeometry?
+  public func cellGeometry(
+    _ reference: String,
+    defaultRowHeight: Double = 20,
+    defaultColumnWidth: Double = 100
+  ) -> TableCellGeometry?
   public var usedRange: CellRange? { get }
   public func populatedCells(sorted: Bool = true) -> [ReadCell]
   public func rows() -> [[CellValue]]
@@ -470,6 +500,16 @@ public final class EditableNumbersDocument {
   public static func open(at url: URL) throws -> EditableNumbersDocument
   public static func canSaveEditableDocuments() -> Bool
 
+  @discardableResult
+  public func registerStyle(named name: String, style: ReadCellStyle) throws -> String
+  public func registeredStyles() -> [RegisteredDocumentStyle]
+  public func registeredStyle(id styleID: String) -> RegisteredDocumentStyle?
+
+  @discardableResult
+  public func registerCustomFormat(named name: String, formatID: Int32) throws -> String
+  public func registeredCustomFormats() -> [RegisteredDocumentCustomFormat]
+  public func registeredCustomFormat(id customFormatID: String) -> RegisteredDocumentCustomFormat?
+
   public func sheet(named name: String) throws -> EditableSheet
   @discardableResult
   public func addSheet(named name: String) -> EditableSheet
@@ -484,6 +524,26 @@ public final class EditableNumbersDocument {
 
   public func save(to outputURL: URL) throws
   public func saveInPlace() throws
+}
+```
+
+### `RegisteredDocumentStyle`
+
+```swift
+public struct RegisteredDocumentStyle: Hashable, Sendable {
+  public let id: String
+  public let name: String
+  public let style: ReadCellStyle
+}
+```
+
+### `RegisteredDocumentCustomFormat`
+
+```swift
+public struct RegisteredDocumentCustomFormat: Hashable, Sendable {
+  public let id: String
+  public let name: String
+  public let formatID: Int32
 }
 ```
 
@@ -525,11 +585,21 @@ public final class EditableTable {
   public var isTableNameVisible: Bool? { get }
   public var isCaptionVisible: Bool? { get }
   public var tableCaptionText: String? { get }
+  public func rowHeight(at rowIndex: Int) -> Double?
+  public func columnWidth(at columnIndex: Int) -> Double?
+  public func setHeaderRowCount(_ count: Int) throws
+  public func setHeaderColumnCount(_ count: Int) throws
+  public func setRowHeight(_ height: Double, at rowIndex: Int) throws
+  public func setColumnWidth(_ width: Double, at columnIndex: Int) throws
 
   public func setValue(_ value: CellValue, at address: CellAddress)
   public func setValue(_ value: CellValue, at reference: String) throws
   public func setStyle(_ style: ReadCellStyle?, at address: CellAddress)
   public func setStyle(_ style: ReadCellStyle?, at reference: String) throws
+  public func applyStyle(id styleID: String, at address: CellAddress) throws
+  public func applyStyle(id styleID: String, at reference: String) throws
+  public func applyCustomFormat(id customFormatID: String, at address: CellAddress) throws
+  public func applyCustomFormat(id customFormatID: String, at reference: String) throws
   public func setFormat(_ format: EditableCellFormat?, at address: CellAddress)
   public func setFormat(_ format: EditableCellFormat?, at reference: String) throws
   public func format(_ reference: String) -> EditableCellFormat?
@@ -579,10 +649,18 @@ public enum EditableCellFormat: Hashable, Sendable {
 - `setValue(..., at: String)` throws for invalid A1.
 - `setStyle(..., at: CellAddress)` does not throw and ignores negative row/column indices.
 - `setStyle(..., at: String)` throws for invalid A1.
+- `registerStyle(named:style:)` throws `duplicateStyleName` when a style with the same normalized name already exists.
+- `applyStyle(id:..., at: ...)` throws `styleNotFound` when the style identifier is unknown.
+- `registerCustomFormat(named:formatID:)` throws `duplicateCustomFormatName` when a custom format with the same normalized name already exists.
+- `applyCustomFormat(id:..., at: ...)` throws `customFormatNotFound` when the format identifier is unknown.
 - `setFormat(..., at: CellAddress)` does not throw and ignores negative row/column indices.
 - `setFormat(..., at: String)` throws for invalid A1.
 - `setTableNameVisible(_:)` and `setCaptionVisible(_:)` throw when source metadata is unavailable for the current table.
 - `setCaptionText(_:)` throws when caption storage is unavailable for the current table.
+- `setHeaderRowCount(_:)` throws `invalidHeaderRowCount` when count is negative or exceeds current row count.
+- `setHeaderColumnCount(_:)` throws `invalidHeaderColumnCount` when count is negative or exceeds current column count.
+- `setRowHeight(_:at:)` throws `invalidRowIndex` for out-of-bounds row and `nativeWriteFailed` for negative/non-finite sizes.
+- `setColumnWidth(_:at:)` throws `invalidColumnIndex` for out-of-bounds column and `nativeWriteFailed` for negative/non-finite sizes.
 - `deleteRow(at:)` throws `invalidRowIndex` when index is out of bounds and shifts remaining rows deterministically.
 - `deleteColumn(at:)` throws `invalidColumnIndex` when index is out of bounds and shifts remaining columns deterministically.
 - `mergeCells(...)` / `unmergeCells(...)` throw for invalid range references and preserve deterministic sorted merge metadata.

@@ -37,6 +37,14 @@ enum IWASetCellWriter {
     case setTableNameVisibility(sheetName: String, tableName: String, isVisible: Bool)
     case setCaptionVisibility(sheetName: String, tableName: String, isVisible: Bool)
     case setCaptionText(sheetName: String, tableName: String, text: String)
+    case setHeaderCounts(
+      sheetName: String,
+      tableName: String,
+      headerRowCount: Int,
+      headerColumnCount: Int
+    )
+    case setRowHeight(sheetName: String, tableName: String, rowIndex: Int, height: Double)
+    case setColumnWidth(sheetName: String, tableName: String, columnIndex: Int, width: Double)
     case addTable(sheetName: String, tableName: String, rows: Int, columns: Int)
     case addSheet(name: String, defaultTableName: String, rows: Int, columns: Int)
   }
@@ -69,6 +77,9 @@ enum IWASetCellWriter {
     var rowHeaderBucketObjectIDs: [UInt64]
     var rowHeaderBucketsByObjectID: [UInt64: TST_HeaderStorageBucket]
     var dirtyRowHeaderBucketObjectIDs: Set<UInt64>
+    var columnHeaderBucketObjectID: UInt64?
+    var columnHeaderBucket: TST_HeaderStorageBucket?
+    var columnHeaderBucketDirty: Bool
     let stringTableObjectID: UInt64?
     var stringTable: TST_TableDataList?
     var stringLookup: [UInt32: String]
@@ -181,6 +192,36 @@ enum IWASetCellWriter {
             tableName: tableName,
             text: text
           ))
+      case
+        .setHeaderCounts(
+          let sheetName,
+          let tableName,
+          let headerRowCount,
+          let headerColumnCount
+        ):
+        converted.append(
+          .setHeaderCounts(
+            sheetName: sheetName,
+            tableName: tableName,
+            headerRowCount: headerRowCount,
+            headerColumnCount: headerColumnCount
+          ))
+      case .setRowHeight(let sheetName, let tableName, let rowIndex, let height):
+        converted.append(
+          .setRowHeight(
+            sheetName: sheetName,
+            tableName: tableName,
+            rowIndex: rowIndex,
+            height: height
+          ))
+      case .setColumnWidth(let sheetName, let tableName, let columnIndex, let width):
+        converted.append(
+          .setColumnWidth(
+            sheetName: sheetName,
+            tableName: tableName,
+            columnIndex: columnIndex,
+            width: width
+          ))
       case .addTable(let sheetName, let tableName, let rows, let columns):
         converted.append(
           .addTable(
@@ -211,11 +252,12 @@ enum IWASetCellWriter {
 
     switch operation {
     case .appendRow, .insertRow, .appendColumn, .deleteRow, .deleteColumn, .mergeCells,
-      .unmergeCells:
+      .unmergeCells, .setHeaderCounts:
       return true
     case .setCell(_, _, let row, let column, _):
       return row >= rowCount || column >= columnCount
-    case .setTableNameVisibility, .setCaptionVisibility, .setCaptionText, .addTable, .addSheet:
+    case .setTableNameVisibility, .setCaptionVisibility, .setCaptionText, .setRowHeight,
+      .setColumnWidth, .addTable, .addSheet:
       return false
     }
   }
@@ -231,9 +273,10 @@ enum IWASetCellWriter {
 
     switch operation {
     case .setCell, .appendRow, .insertRow, .appendColumn, .deleteRow, .deleteColumn, .mergeCells,
-      .unmergeCells:
+      .unmergeCells, .setHeaderCounts:
       return true
-    case .setTableNameVisibility, .setCaptionVisibility, .setCaptionText, .addTable, .addSheet:
+    case .setTableNameVisibility, .setCaptionVisibility, .setCaptionText, .setRowHeight,
+      .setColumnWidth, .addTable, .addSheet:
       return false
     }
   }
@@ -315,6 +358,9 @@ enum IWASetCellWriter {
         .deleteColumn,
         .mergeCells,
         .unmergeCells,
+        .setHeaderCounts,
+        .setRowHeight,
+        .setColumnWidth,
         .setTableNameVisibility,
         .setCaptionVisibility,
         .setCaptionText:
@@ -483,6 +529,16 @@ enum IWASetCellWriter {
         }
         payloadOverrides[RecordKey(objectID: bucketObjectID, typeID: TypeID.headerStorageBucket)] =
           try bucket.serializedData()
+      }
+
+      if
+        context.columnHeaderBucketDirty,
+        let columnHeaderBucketObjectID = context.columnHeaderBucketObjectID,
+        let columnHeaderBucket = context.columnHeaderBucket
+      {
+        payloadOverrides[
+          RecordKey(objectID: columnHeaderBucketObjectID, typeID: TypeID.headerStorageBucket)
+        ] = try columnHeaderBucket.serializedData()
       }
 
       if context.tableModelDirty {
@@ -702,6 +758,10 @@ enum IWASetCellWriter {
           headerStorage: dataStore.rowHeaders,
           recordsByObjectID: recordsByObjectID
         )
+        let columnHeaderContext = decodeColumnHeaderBucket(
+          reference: dataStore.columnHeaders,
+          recordsByObjectID: recordsByObjectID
+        )
         let stringTableContext = decodeStringTableContext(
           reference: dataStore.stringTable,
           recordsByObjectID: recordsByObjectID
@@ -732,6 +792,9 @@ enum IWASetCellWriter {
           rowHeaderBucketObjectIDs: headerBuckets.objectIDs,
           rowHeaderBucketsByObjectID: headerBuckets.bucketsByObjectID,
           dirtyRowHeaderBucketObjectIDs: [],
+          columnHeaderBucketObjectID: columnHeaderContext.objectID,
+          columnHeaderBucket: columnHeaderContext.bucket,
+          columnHeaderBucketDirty: false,
           stringTableObjectID: stringTableContext.objectID,
           stringTable: stringTableContext.tableDataList,
           stringLookup: stringTableContext.lookup,
@@ -1012,6 +1075,7 @@ enum IWASetCellWriter {
     let columnCount = max(columns, 0)
 
     let headerBucketObjectID = allocateObjectID()
+    let columnHeaderBucketObjectID = allocateObjectID()
     let tileObjectID = allocateObjectID()
     let stringTableObjectID = allocateObjectID()
     let captionStorageObjectID = allocateObjectID()
@@ -1037,6 +1101,19 @@ enum IWASetCellWriter {
       var header = makeRowHeader(for: rowIndex, template: headerTemplate)
       header.numberOfCells = UInt32(clamping: columnCount)
       headerBucket.headers.append(header)
+    }
+
+    var columnHeaderBucket = TST_HeaderStorageBucket()
+    if let templateColumnHeaderBucket = template?.columnHeaderBucket {
+      columnHeaderBucket.bucketHashFunction = templateColumnHeaderBucket.bucketHashFunction
+    } else if headerBucket.hasBucketHashFunction {
+      columnHeaderBucket.bucketHashFunction = headerBucket.bucketHashFunction
+    }
+    let columnHeaderTemplate = template?.columnHeaderBucket?.headers.first
+    for columnIndex in 0..<columnCount {
+      var header = makeColumnHeader(for: columnIndex, template: columnHeaderTemplate)
+      header.numberOfCells = UInt32(clamping: rowCount)
+      columnHeaderBucket.headers.append(header)
     }
 
     var headerStorage = TST_HeaderStorage()
@@ -1100,11 +1177,7 @@ enum IWASetCellWriter {
     dataStore.rowHeaders = headerStorage
     dataStore.tiles = tileStorage
     dataStore.stringTable = reference(stringTableObjectID)
-    if let templateColumnHeaders = template?.tableModel.baseDataStore.columnHeaders,
-      templateColumnHeaders.identifier > 0
-    {
-      dataStore.columnHeaders = templateColumnHeaders
-    }
+    dataStore.columnHeaders = reference(columnHeaderBucketObjectID)
 
     var tableModel = TST_TableModelArchive()
     tableModel.tableID = "table-\(tableModelObjectID)"
@@ -1157,6 +1230,9 @@ enum IWASetCellWriter {
       rowHeaderBucketObjectIDs: [headerBucketObjectID],
       rowHeaderBucketsByObjectID: [headerBucketObjectID: headerBucket],
       dirtyRowHeaderBucketObjectIDs: [],
+      columnHeaderBucketObjectID: columnHeaderBucketObjectID,
+      columnHeaderBucket: columnHeaderBucket,
+      columnHeaderBucketDirty: false,
       stringTableObjectID: stringTableObjectID,
       stringTable: stringTable,
       stringLookup: [:],
@@ -1184,8 +1260,8 @@ enum IWASetCellWriter {
     let tileRefs = dataStore.tiles.tiles.compactMap {
       $0.tile.identifier > 0 ? $0.tile.identifier : nil
     }
-    let columnHeaderRefs =
-      dataStore.columnHeaders.identifier > 0 ? [dataStore.columnHeaders.identifier] : []
+    let columnHeaderRefs = dataStore.columnHeaders.identifier > 0
+      ? [dataStore.columnHeaders.identifier] : []
     let stringTableDataStoreRefs =
       dataStore.stringTable.identifier > 0 ? [dataStore.stringTable.identifier] : []
     let mergeRegionRefs =
@@ -1240,6 +1316,13 @@ enum IWASetCellWriter {
         typeID: TypeID.headerStorageBucket,
         payloadSize: (try headerBucket.serializedData()).count,
         payloadData: try headerBucket.serializedData(),
+        sourceBlobPath: preferredBlobPathResolver(TypeID.headerStorageBucket)
+      ),
+      IWAObjectRecord(
+        objectID: columnHeaderBucketObjectID,
+        typeID: TypeID.headerStorageBucket,
+        payloadSize: (try columnHeaderBucket.serializedData()).count,
+        payloadData: try columnHeaderBucket.serializedData(),
         sourceBlobPath: preferredBlobPathResolver(TypeID.headerStorageBucket)
       ),
       IWAObjectRecord(
@@ -1643,6 +1726,26 @@ enum IWASetCellWriter {
     return (orderedObjectIDs, bucketsByObjectID)
   }
 
+  private static func decodeColumnHeaderBucket(
+    reference: TSP_Reference,
+    recordsByObjectID: [UInt64: [IWAObjectRecord]]
+  ) -> (objectID: UInt64?, bucket: TST_HeaderStorageBucket?) {
+    let objectID = reference.identifier
+    guard objectID > 0 else {
+      return (nil, nil)
+    }
+    guard
+      let bucket: TST_HeaderStorageBucket = decodeMessage(
+        objectID: objectID,
+        typeID: TypeID.headerStorageBucket,
+        recordsByObjectID: recordsByObjectID
+      )
+    else {
+      return (objectID, nil)
+    }
+    return (objectID, bucket)
+  }
+
   private static func decodeMessage<MessageType: SwiftProtobuf.Message>(
     objectID: UInt64,
     typeID: UInt32,
@@ -1746,6 +1849,12 @@ enum IWASetCellWriter {
       return (sheetName, tableName)
     case .setCaptionText(let sheetName, let tableName, _):
       return (sheetName, tableName)
+    case .setHeaderCounts(let sheetName, let tableName, _, _):
+      return (sheetName, tableName)
+    case .setRowHeight(let sheetName, let tableName, _, _):
+      return (sheetName, tableName)
+    case .setColumnWidth(let sheetName, let tableName, _, _):
+      return (sheetName, tableName)
     case .addTable(let sheetName, let tableName, _, _):
       return (sheetName, tableName)
     case .addSheet(let name, let defaultTableName, _, _):
@@ -1777,6 +1886,12 @@ enum IWASetCellWriter {
       return "setCaptionVisibility"
     case .setCaptionText:
       return "setCaptionText"
+    case .setHeaderCounts:
+      return "setHeaderCounts"
+    case .setRowHeight:
+      return "setRowHeight"
+    case .setColumnWidth:
+      return "setColumnWidth"
     case .addTable:
       return "addTable"
     case .addSheet:
@@ -1838,11 +1953,122 @@ enum IWASetCellWriter {
       captionStorage.text = [text]
       context.captionStorage = captionStorage
       context.captionStorageDirty = true
+    case .setHeaderCounts(_, _, let headerRowCount, let headerColumnCount):
+      guard headerRowCount >= 0, headerRowCount <= context.rowCount else {
+        throw EditableNumbersError.nativeWriteFailed(
+          "IWA writer: invalid header row count \(headerRowCount) for rowCount \(context.rowCount)"
+        )
+      }
+      guard headerColumnCount >= 0, headerColumnCount <= context.columnCount else {
+        throw EditableNumbersError.nativeWriteFailed(
+          "IWA writer: invalid header column count \(headerColumnCount) for columnCount \(context.columnCount)"
+        )
+      }
+      context.tableModel.numberOfHeaderRows = UInt32(clamping: headerRowCount)
+      context.tableModel.numberOfHeaderColumns = UInt32(clamping: headerColumnCount)
+      context.tableModelDirty = true
+    case .setRowHeight(_, _, let rowIndex, let height):
+      try setRowHeight(height, rowIndex: rowIndex, context: &context)
+    case .setColumnWidth(_, _, let columnIndex, let width):
+      try setColumnWidth(width, columnIndex: columnIndex, context: &context)
     case .addTable, .addSheet:
       throw EditableNumbersError.nativeWriteFailed(
         "IWA writer: addTable/addSheet are handled at document level and should not be applied to existing table context"
       )
     }
+  }
+
+  private static func setRowHeight(
+    _ height: Double,
+    rowIndex: Int,
+    context: inout TableContext
+  ) throws {
+    guard rowIndex >= 0, rowIndex < context.rowCount else {
+      throw EditableNumbersError.nativeWriteFailed(
+        "IWA writer: invalid row index \(rowIndex) for rowCount \(context.rowCount)"
+      )
+    }
+    guard height.isFinite, height >= 0 else {
+      throw EditableNumbersError.nativeWriteFailed("IWA writer: row height must be finite and >= 0")
+    }
+    let size = Float(height)
+    guard size.isFinite else {
+      throw EditableNumbersError.nativeWriteFailed("IWA writer: row height exceeds Float range")
+    }
+
+    var didUpdate = false
+    for bucketObjectID in context.rowHeaderBucketObjectIDs {
+      guard var bucket = context.rowHeaderBucketsByObjectID[bucketObjectID] else {
+        continue
+      }
+      var bucketChanged = false
+      for index in bucket.headers.indices where Int(bucket.headers[index].index) == rowIndex {
+        bucket.headers[index].size = size
+        bucketChanged = true
+      }
+      if bucketChanged {
+        context.rowHeaderBucketsByObjectID[bucketObjectID] = bucket
+        context.dirtyRowHeaderBucketObjectIDs.insert(bucketObjectID)
+        didUpdate = true
+      }
+    }
+
+    if !didUpdate, let primaryBucketObjectID = context.rowHeaderBucketObjectIDs.first,
+      var primaryBucket = context.rowHeaderBucketsByObjectID[primaryBucketObjectID]
+    {
+      var header = makeRowHeader(for: rowIndex, template: primaryBucket.headers.first)
+      header.size = size
+      header.numberOfCells = UInt32(clamping: context.columnCount)
+      primaryBucket.headers.append(header)
+      context.rowHeaderBucketsByObjectID[primaryBucketObjectID] = primaryBucket
+      context.dirtyRowHeaderBucketObjectIDs.insert(primaryBucketObjectID)
+      didUpdate = true
+    }
+
+    if !didUpdate {
+      throw EditableNumbersError.nativeWriteFailed(
+        "IWA writer: row header buckets are unavailable for row-height mutation"
+      )
+    }
+  }
+
+  private static func setColumnWidth(
+    _ width: Double,
+    columnIndex: Int,
+    context: inout TableContext
+  ) throws {
+    guard columnIndex >= 0, columnIndex < context.columnCount else {
+      throw EditableNumbersError.nativeWriteFailed(
+        "IWA writer: invalid column index \(columnIndex) for columnCount \(context.columnCount)"
+      )
+    }
+    guard width.isFinite, width >= 0 else {
+      throw EditableNumbersError.nativeWriteFailed(
+        "IWA writer: column width must be finite and >= 0"
+      )
+    }
+    let size = Float(width)
+    guard size.isFinite else {
+      throw EditableNumbersError.nativeWriteFailed("IWA writer: column width exceeds Float range")
+    }
+
+    guard var bucket = context.columnHeaderBucket else {
+      throw EditableNumbersError.nativeWriteFailed(
+        "IWA writer: column header bucket is unavailable for column-width mutation"
+      )
+    }
+
+    if let index = bucket.headers.firstIndex(where: { Int($0.index) == columnIndex }) {
+      bucket.headers[index].size = size
+    } else {
+      var header = makeColumnHeader(for: columnIndex, template: bucket.headers.first)
+      header.size = size
+      header.numberOfCells = UInt32(clamping: context.rowCount)
+      bucket.headers.append(header)
+    }
+
+    context.columnHeaderBucket = bucket
+    context.columnHeaderBucketDirty = true
   }
 
   private static func applySetCell(
@@ -2240,9 +2466,38 @@ enum IWASetCellWriter {
     return header
   }
 
+  private static func makeColumnHeader(
+    for columnIndex: Int,
+    template: TST_HeaderStorageBucket.Header?
+  ) -> TST_HeaderStorageBucket.Header {
+    var header = TST_HeaderStorageBucket.Header()
+    header.index = UInt32(clamping: columnIndex)
+
+    if let template {
+      if template.hasSize {
+        header.size = template.size
+      }
+      if template.hasHidingState {
+        header.hidingState = template.hidingState
+      }
+      if template.hasNumberOfCells {
+        header.numberOfCells = template.numberOfCells
+      }
+    }
+
+    return header
+  }
+
   private static func markTableModelDimensionsDirty(context: inout TableContext) {
     context.tableModel.numberOfRows = UInt32(clamping: max(context.rowCount, 0))
     context.tableModel.numberOfColumns = UInt32(clamping: max(context.columnCount, 0))
+    let clampedHeaderRows = min(max(Int(context.tableModel.numberOfHeaderRows), 0), context.rowCount)
+    let clampedHeaderColumns = min(
+      max(Int(context.tableModel.numberOfHeaderColumns), 0),
+      context.columnCount
+    )
+    context.tableModel.numberOfHeaderRows = UInt32(clamping: clampedHeaderRows)
+    context.tableModel.numberOfHeaderColumns = UInt32(clamping: clampedHeaderColumns)
     context.tableModelDirty = true
   }
 

@@ -88,7 +88,7 @@ Core internal modules:
   - `.empty`
   - `.date(Date)`
 - `MergeRange`
-- `TableMetadata` (`rowCount`, `columnCount`, `mergeRanges`, optional stable object IDs, optional pivot link metadata)
+- `TableMetadata` (`rowCount`, `columnCount`, `headerRowCount`, `headerColumnCount`, `rowHeights`, `columnWidths`, `mergeRanges`, optional stable object IDs, optional pivot link metadata)
 - `Table`
 - `Sheet`
 - `NumbersDocument`
@@ -162,9 +162,10 @@ This section gives operation-by-operation examples with:
 
 | Group | Operations |
 |---|---|
-| Read open/introspection | `open`, `sheets`, `firstSheet`, `sheet(named:)`, `sheet(at:)`, `tables`, `firstTable`, `table(named:)`, `table(at:)`, `metadata`, `cell(at:)`, `cell(row:column:)`, `cell("A1")`, `readCell(...)`, `readValue(...)`, `formula(...)`, `formulas()`, `formulaResult(...)`, `rows()/rows(valuesOnly:)/rows(lazy:)`, `readRows()/readRows(lazy:)`, `readValues()/readValues(lazy:)`, `column(named:)`, `values(in:)`, `decodeRows(as:)`, typed `value(_:at:)`, `formattedValue(...)`, `mergeRange(...)`, `isMergedCell(...)`, `dump`, `renderDump` |
+| Read open/introspection | `open`, `sheets`, `firstSheet`, `sheet(named:)`, `sheet(at:)`, `tables`, `firstTable`, `table(named:)`, `table(at:)`, `metadata`, `cell(at:)`, `cell(row:column:)`, `cell("A1")`, `readCell(...)`, `readValue(...)`, `formula(...)`, `formulas()`, `formulaResult(...)`, `rows()/rows(valuesOnly:)/rows(lazy:)`, `readRows()/readRows(lazy:)`, `readValues()/readValues(lazy:)`, `column(named:)`, `values(in:)`, `decodeRows(as:)`, typed `value(_:at:)`, `formattedValue(...)`, `rowHeight(...)`, `columnWidth(...)`, `cellGeometry(...)`, `mergeRange(...)`, `isMergedCell(...)`, `dump`, `renderDump` |
 | Editable open/navigation | `EditableNumbersDocument.open`, `sheet(named:)`, `table(named:)`, `cell(_:)`, `cell(at: CellReference)` |
-| Editable mutation | `setValue`, `setStyle`, `setFormat`, `appendRow`, `insertRow`, `appendColumn`, `deleteRow`, `deleteColumn`, `mergeCells`, `unmergeCells`, `addTable`, `addSheet` |
+| Editable registries | `registerStyle`, `registeredStyles`, `registeredStyle(id:)`, `registerCustomFormat`, `registeredCustomFormats`, `registeredCustomFormat(id:)` |
+| Editable mutation | `setValue`, `setStyle`, `applyStyle(id:at:)`, `setFormat`, `applyCustomFormat(id:at:)`, `setHeaderRowCount`, `setHeaderColumnCount`, `setRowHeight`, `setColumnWidth`, `appendRow`, `insertRow`, `appendColumn`, `deleteRow`, `deleteColumn`, `mergeCells`, `unmergeCells`, `addTable`, `addSheet` |
 | Save | `save(to:)`, `saveInPlace()` |
 | Runtime capability/state | `canSaveEditableDocuments`, `hasChanges`, `dirtyState`, `firstSheet`, `firstTable` |
 | CLI | `swiftnumbers list-sheets`, `swiftnumbers list-tables`, `swiftnumbers list-formulas`, `swiftnumbers read-column`, `swiftnumbers read-table`, `swiftnumbers read-cell`, `swiftnumbers read-range`, `swiftnumbers export-csv`, `swiftnumbers import-csv`, `swiftnumbers dump` |
@@ -197,7 +198,9 @@ This section gives operation-by-operation examples with:
 | Edit one value by A1 | `setValue(_:at: String)` | Throws on invalid A1 |
 | Edit one value by indices | `setValue(_:at: CellAddress)` | Zero-based row/column |
 | Apply style bundle | `setStyle(_:at:)` | Style writes currently persist via metadata-overlay path |
+| Apply registered style by identifier | `applyStyle(id:at:)` | Uses `registerStyle`/`registeredStyles` definitions and persists via metadata overlay |
 | Apply number/date/currency/custom format | `setFormat(_:at:)` | Persists via style number-format hints (`ReadCellStyle.numberFormat`) |
+| Apply registered custom format by identifier | `applyCustomFormat(id:at:)` | Uses `registerCustomFormat` definitions and applies `.custom(formatID:)` deterministically |
 | Add more records | `appendRow(_:)` | Grows row count |
 | Insert records at position | `insertRow(_:at:)` | Shifts rows below |
 | Add a derived column | `appendColumn(_:)` | Grows column count |
@@ -644,6 +647,78 @@ func setStyle(_ style: ReadCellStyle?, at reference: String) throws
 - marks document dirty
 - can grow table bounds if target is outside current size
 - style mutations currently use metadata-overlay persistence when saving
+
+---
+
+### 5.10a.1 Document style registry (`registerStyle`, `registeredStyles`, `applyStyle`)
+
+**Purpose**
+
+Create reusable named style definitions at document scope and apply them by stable identifier.
+
+**Signatures**
+
+```swift
+@discardableResult
+func registerStyle(named name: String, style: ReadCellStyle) throws -> String
+func registeredStyles() -> [RegisteredDocumentStyle]
+func registeredStyle(id styleID: String) -> RegisteredDocumentStyle?
+func applyStyle(id styleID: String, at address: CellAddress) throws
+func applyStyle(id styleID: String, at reference: String) throws
+```
+
+**Attributes**
+
+| Attribute | Type | Required | Notes |
+|---|---|---|---|
+| `name` | `String` | Yes | Empty/whitespace names are normalized to `Style N` |
+| `style` | `ReadCellStyle` | Yes | Style payload stored in document registry |
+| `styleID` | `String` | Yes | Stable identifier returned from `registerStyle` |
+| `address` | `CellAddress` | Yes | Zero-based coordinate |
+| `reference` | `String` | Yes | A1 coordinate (alt overload) |
+
+**Side Effects**
+
+- creating/applying a registered style marks the document dirty
+- style registry entries persist across save/reopen via metadata overlay
+- duplicate style names fail fast with `duplicateStyleName`
+- unknown style identifiers fail fast with `styleNotFound`
+
+---
+
+### 5.10a.2 Document custom-format registry (`registerCustomFormat`, `registeredCustomFormats`, `applyCustomFormat`)
+
+**Purpose**
+
+Create reusable named custom-number-format definitions at document scope and apply them by stable identifier.
+
+**Signatures**
+
+```swift
+@discardableResult
+func registerCustomFormat(named name: String, formatID: Int32) throws -> String
+func registeredCustomFormats() -> [RegisteredDocumentCustomFormat]
+func registeredCustomFormat(id customFormatID: String) -> RegisteredDocumentCustomFormat?
+func applyCustomFormat(id customFormatID: String, at address: CellAddress) throws
+func applyCustomFormat(id customFormatID: String, at reference: String) throws
+```
+
+**Attributes**
+
+| Attribute | Type | Required | Notes |
+|---|---|---|---|
+| `name` | `String` | Yes | Empty/whitespace names are normalized to `Custom Format N` |
+| `formatID` | `Int32` | Yes | Raw custom format identifier persisted in style number-format payload |
+| `customFormatID` | `String` | Yes | Stable identifier returned from `registerCustomFormat` |
+| `address` | `CellAddress` | Yes | Zero-based coordinate |
+| `reference` | `String` | Yes | A1 coordinate (alt overload) |
+
+**Side Effects**
+
+- creating a registered custom format marks document dirty
+- custom format registry entries persist across save/reopen via metadata overlay
+- duplicate custom format names fail fast with `duplicateCustomFormatName`
+- unknown custom format identifiers fail fast with `customFormatNotFound`
 
 ---
 
@@ -1597,6 +1672,10 @@ var populatedCellCount: Int { get }
 |---|---|---|
 | `metadata.rowCount` | `Int` | Current logical row count |
 | `metadata.columnCount` | `Int` | Current logical column count |
+| `metadata.headerRowCount` | `Int` | Current header-row count persisted in table metadata |
+| `metadata.headerColumnCount` | `Int` | Current header-column count persisted in table metadata |
+| `metadata.rowHeights` | `[Double?]` | Optional per-row height values when present in source |
+| `metadata.columnWidths` | `[Double?]` | Optional per-column width values when present in source |
 | `metadata.mergeRanges` | `[MergeRange]` | Current merge map |
 | `populatedCellCount` | `Int` | Non-empty cells currently stored |
 
@@ -1748,7 +1827,7 @@ Low-level path supports:
 - `appendColumn`
 - `addSheet`
 - `addTable`
-- `setStyle` and `setFormat` are currently handled by metadata-overlay fallback (not low-level patch path).
+- `setStyle`, `applyStyle(id:...)`, `setFormat`, and `applyCustomFormat(id:...)` are currently handled by metadata-overlay fallback (not low-level patch path).
 
 Safety net behavior:
 

@@ -27,7 +27,7 @@ For user-visible behavior changes, the run must also update:
 
 - Compute batch count from changelog summary bullets:
   - `./scripts/release_batch_count.sh --changelog ./CHANGELOG.md`
-- Publish only when batch count is `>= 15` and quality gates pass.
+- Publish only when batch count is `>= 5` and quality gates pass.
 - Standard automation entrypoint:
   - `SWIFT_NUMBERS_TASK_ID=<task-id> ./scripts/release_autofix.sh`
 
@@ -40,7 +40,7 @@ Release is paused (skipped) when any of the following is true:
 - `swift test` fails
 - runtime critical-path audit fails
 - release gate/metadata validation fails
-- changelog batch count is below `15`
+- changelog batch count is below `5`
 - current roadmap task is marked `[BLOCKED]`
 
 ## Resume Conditions

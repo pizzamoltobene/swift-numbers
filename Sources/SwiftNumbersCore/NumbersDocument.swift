@@ -316,6 +316,10 @@ public struct NumbersDocument: Sendable {
           metadata: TableMetadata(
             rowCount: table.rowCount,
             columnCount: table.columnCount,
+            headerRowCount: table.headerRowCount,
+            headerColumnCount: table.headerColumnCount,
+            rowHeights: table.rowHeights,
+            columnWidths: table.columnWidths,
             mergeRanges: merges,
             tableNameVisible: table.tableNameVisible,
             captionVisible: table.captionVisible,

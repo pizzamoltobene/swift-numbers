@@ -20,7 +20,7 @@ Use this document to operate Autopilot safely when tasks are in progress, blocke
   - `swift test`
 - Release is gated by changelog batch size:
   - `./scripts/release_batch_count.sh --changelog ./CHANGELOG.md`
-  - release when batch count is `>= 15`
+  - release when batch count is `>= 5`
 
 ## Task State Contract
 

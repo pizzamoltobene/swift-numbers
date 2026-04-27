@@ -543,6 +543,20 @@ public struct TableObjectIdentifiers: Hashable, Sendable {
   }
 }
 
+public struct TableCellGeometry: Hashable, Sendable {
+  public let originX: Double
+  public let originY: Double
+  public let width: Double
+  public let height: Double
+
+  public init(originX: Double, originY: Double, width: Double, height: Double) {
+    self.originX = originX
+    self.originY = originY
+    self.width = width
+    self.height = height
+  }
+}
+
 public struct PivotLinkMetadata: Hashable, Sendable {
   public let drawableObjectID: UInt64
   public let drawableTypeIDs: [UInt32]
@@ -565,6 +579,10 @@ public struct PivotLinkMetadata: Hashable, Sendable {
 public struct TableMetadata: Hashable, Sendable {
   public let rowCount: Int
   public let columnCount: Int
+  public let headerRowCount: Int
+  public let headerColumnCount: Int
+  public let rowHeights: [Double?]
+  public let columnWidths: [Double?]
   public let mergeRanges: [MergeRange]
   public let tableNameVisible: Bool?
   public let captionVisible: Bool?
@@ -576,6 +594,10 @@ public struct TableMetadata: Hashable, Sendable {
   public init(
     rowCount: Int,
     columnCount: Int,
+    headerRowCount: Int = 0,
+    headerColumnCount: Int = 0,
+    rowHeights: [Double?] = [],
+    columnWidths: [Double?] = [],
     mergeRanges: [MergeRange],
     tableNameVisible: Bool? = nil,
     captionVisible: Bool? = nil,
@@ -586,6 +608,10 @@ public struct TableMetadata: Hashable, Sendable {
   ) {
     self.rowCount = rowCount
     self.columnCount = columnCount
+    self.headerRowCount = headerRowCount
+    self.headerColumnCount = headerColumnCount
+    self.rowHeights = rowHeights
+    self.columnWidths = columnWidths
     self.mergeRanges = mergeRanges
     self.tableNameVisible = tableNameVisible
     self.captionVisible = captionVisible
@@ -672,6 +698,71 @@ public struct Table: Hashable, Sendable {
 
   public var columnCount: Int {
     metadata.columnCount
+  }
+
+  public func rowHeight(at rowIndex: Int) -> Double? {
+    guard rowIndex >= 0, rowIndex < metadata.rowCount else {
+      return nil
+    }
+    guard rowIndex < metadata.rowHeights.count else {
+      return nil
+    }
+    return metadata.rowHeights[rowIndex]
+  }
+
+  public func columnWidth(at columnIndex: Int) -> Double? {
+    guard columnIndex >= 0, columnIndex < metadata.columnCount else {
+      return nil
+    }
+    guard columnIndex < metadata.columnWidths.count else {
+      return nil
+    }
+    return metadata.columnWidths[columnIndex]
+  }
+
+  public func cellGeometry(
+    at address: CellAddress,
+    defaultRowHeight: Double = 20,
+    defaultColumnWidth: Double = 100
+  ) -> TableCellGeometry? {
+    guard contains(address: address) else {
+      return nil
+    }
+    let resolvedDefaultRowHeight = max(defaultRowHeight, 0)
+    let resolvedDefaultColumnWidth = max(defaultColumnWidth, 0)
+
+    var originY: Double = 0
+    if address.row > 0 {
+      for rowIndex in 0..<address.row {
+        originY += rowHeight(at: rowIndex) ?? resolvedDefaultRowHeight
+      }
+    }
+
+    var originX: Double = 0
+    if address.column > 0 {
+      for columnIndex in 0..<address.column {
+        originX += columnWidth(at: columnIndex) ?? resolvedDefaultColumnWidth
+      }
+    }
+
+    let height = rowHeight(at: address.row) ?? resolvedDefaultRowHeight
+    let width = columnWidth(at: address.column) ?? resolvedDefaultColumnWidth
+    return TableCellGeometry(originX: originX, originY: originY, width: width, height: height)
+  }
+
+  public func cellGeometry(
+    _ reference: String,
+    defaultRowHeight: Double = 20,
+    defaultColumnWidth: Double = 100
+  ) -> TableCellGeometry? {
+    guard let parsed = try? CellReference(reference) else {
+      return nil
+    }
+    return cellGeometry(
+      at: parsed.address,
+      defaultRowHeight: defaultRowHeight,
+      defaultColumnWidth: defaultColumnWidth
+    )
   }
 
   public var usedRange: CellRange? {

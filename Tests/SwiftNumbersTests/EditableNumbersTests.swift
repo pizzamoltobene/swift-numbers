@@ -322,6 +322,110 @@ final class EditableNumbersDocumentTests: XCTestCase {
     }
   }
 
+  func testDocumentStyleRegistryCreateApplyAndSaveReopenRoundTrip() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    let registeredStyle = ReadCellStyle(
+      horizontalAlignment: .center,
+      verticalAlignment: .middle,
+      backgroundColorHex: "#CCEEFF",
+      fontName: "Menlo",
+      fontSize: 12,
+      isBold: true,
+      isItalic: false,
+      textColorHex: "#112244",
+      hasTopBorder: true,
+      hasRightBorder: true,
+      hasBottomBorder: false,
+      hasLeftBorder: false,
+      numberFormat: ReadNumberFormat(kind: .currency, formatID: 88)
+    )
+    let styleID = try editable.registerStyle(named: "Accent Currency", style: registeredStyle)
+    try table.applyStyle(id: styleID, at: "A1")
+
+    let output = temporaryArchiveOutputURL("editable-style-registry-roundtrip.numbers")
+    try editable.save(to: output)
+
+    let reopened = try EditableNumbersDocument.open(at: output)
+    let definitions = reopened.registeredStyles()
+    XCTAssertEqual(definitions.count, 1)
+    XCTAssertEqual(definitions.first?.id, styleID)
+    XCTAssertEqual(definitions.first?.name, "Accent Currency")
+    XCTAssertEqual(definitions.first?.style, registeredStyle)
+
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    XCTAssertEqual(reopenedTable.style(at: CellAddress(row: 0, column: 0)), registeredStyle)
+  }
+
+  func testDocumentStyleRegistryRejectsDuplicateNames() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let style = ReadCellStyle(fontName: "HelveticaNeue")
+
+    _ = try editable.registerStyle(named: "Accent", style: style)
+    XCTAssertThrowsError(try editable.registerStyle(named: "Accent", style: style)) { error in
+      guard case .duplicateStyleName(let name) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(name, "Accent")
+    }
+  }
+
+  func testDocumentCustomFormatRegistryCreateApplyAndSaveReopenRoundTrip() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    try table.setValue(.number(42.5), at: "A1")
+    try table.setValue(.date(Date(timeIntervalSince1970: 1_714_764_800)), at: "B1")
+    try table.setValue(.string("hello"), at: "C1")
+
+    let numberFormatID = try editable.registerCustomFormat(named: "Number Compact", formatID: 4101)
+    let dateFormatID = try editable.registerCustomFormat(named: "Date Verbose", formatID: 4102)
+    let textFormatID = try editable.registerCustomFormat(named: "Text Decorated", formatID: 4103)
+
+    try table.applyCustomFormat(id: numberFormatID, at: "A1")
+    try table.applyCustomFormat(id: dateFormatID, at: "B1")
+    try table.applyCustomFormat(id: textFormatID, at: "C1")
+
+    let output = temporaryArchiveOutputURL("editable-custom-format-registry-roundtrip.numbers")
+    try editable.save(to: output)
+
+    let reopened = try EditableNumbersDocument.open(at: output)
+    let definitions = reopened.registeredCustomFormats()
+    XCTAssertEqual(definitions.count, 3)
+    XCTAssertEqual(definitions.map(\.name), ["Number Compact", "Date Verbose", "Text Decorated"])
+    XCTAssertEqual(definitions.map(\.formatID), [4101, 4102, 4103])
+
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    XCTAssertEqual(reopenedTable.format("A1"), .custom(formatID: 4101))
+    XCTAssertEqual(reopenedTable.format("B1"), .custom(formatID: 4102))
+    XCTAssertEqual(reopenedTable.format("C1"), .custom(formatID: 4103))
+  }
+
+  func testDocumentCustomFormatRegistryRejectsDuplicateNamesAndUnknownApply() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    _ = try editable.registerCustomFormat(named: "Finance", formatID: 5001)
+    XCTAssertThrowsError(try editable.registerCustomFormat(named: "Finance", formatID: 5002)) { error in
+      guard case .duplicateCustomFormatName(let name) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(name, "Finance")
+    }
+
+    XCTAssertThrowsError(try table.applyCustomFormat(id: "missing-custom-format", at: "A1")) { error in
+      guard case .customFormatNotFound(let identifier) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(identifier, "missing-custom-format")
+    }
+  }
+
   func testSaveOnSingleFileArchiveUsesLowLevelIWAWriterForDateCell() throws {
     let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
     let editable = try EditableNumbersDocument.open(at: fixture)
@@ -479,6 +583,149 @@ final class EditableNumbersDocumentTests: XCTestCase {
 
     XCTAssertFalse(editable.hasChanges)
     XCTAssertEqual(editable.dirtyState, .clean)
+  }
+
+  func testHeaderCountsMutationPersistsAndSupportsHeaderSelectionSemantics() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    try table.setValue(.string("Name"), at: "A1")
+    try table.setValue(.string("Score"), at: "B1")
+    try table.setValue(.string("Alice"), at: "A2")
+    try table.setValue(.number(42), at: "B2")
+
+    try table.setHeaderRowCount(1)
+    try table.setHeaderColumnCount(1)
+    XCTAssertEqual(table.metadata.headerRowCount, 1)
+    XCTAssertEqual(table.metadata.headerColumnCount, 1)
+
+    let output = temporaryArchiveOutputURL("editable-header-counts-roundtrip.numbers")
+    try editable.save(to: output)
+
+    let reopened = try NumbersDocument.open(at: output)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    XCTAssertEqual(reopenedTable.metadata.headerRowCount, 1)
+    XCTAssertEqual(reopenedTable.metadata.headerColumnCount, 1)
+
+    let headerRowIndex = reopenedTable.metadata.headerRowCount - 1
+    let headerCell = reopenedTable.cell(at: CellAddress(row: headerRowIndex, column: 0))
+    guard case .string(let firstHeader) = headerCell else {
+      return XCTFail("Expected string header at row \(headerRowIndex), column 0.")
+    }
+
+    let selectedColumn = try reopenedTable.column(
+      named: firstHeader,
+      headerRow: headerRowIndex,
+      includeHeader: true
+    )
+    XCTAssertGreaterThanOrEqual(selectedColumn.count, 1)
+    XCTAssertEqual(selectedColumn.first, .string(firstHeader))
+  }
+
+  func testHeaderCountsMutationRejectsOutOfBoundsCounts() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    XCTAssertThrowsError(try table.setHeaderRowCount(-1)) { error in
+      guard case .invalidHeaderRowCount(let count) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(count, -1)
+    }
+    XCTAssertThrowsError(try table.setHeaderRowCount(table.metadata.rowCount + 1)) { error in
+      guard case .invalidHeaderRowCount(let count) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(count, table.metadata.rowCount + 1)
+    }
+
+    XCTAssertThrowsError(try table.setHeaderColumnCount(-1)) { error in
+      guard case .invalidHeaderColumnCount(let count) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(count, -1)
+    }
+    XCTAssertThrowsError(try table.setHeaderColumnCount(table.metadata.columnCount + 1)) { error in
+      guard case .invalidHeaderColumnCount(let count) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(count, table.metadata.columnCount + 1)
+    }
+  }
+
+  func testTableGeometryMutationPersistsAndSupportsCoordinateReadAPI() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+    table.setValue(.string("seed"), at: CellAddress(row: 1, column: 1))
+
+    try table.setRowHeight(30, at: 0)
+    try table.setRowHeight(25, at: 1)
+    try table.setColumnWidth(120, at: 0)
+    try table.setColumnWidth(80, at: 1)
+
+    XCTAssertEqual(try XCTUnwrap(table.rowHeight(at: 0)), 30, accuracy: 0.001)
+    XCTAssertEqual(try XCTUnwrap(table.rowHeight(at: 1)), 25, accuracy: 0.001)
+    XCTAssertEqual(try XCTUnwrap(table.columnWidth(at: 0)), 120, accuracy: 0.001)
+    XCTAssertEqual(try XCTUnwrap(table.columnWidth(at: 1)), 80, accuracy: 0.001)
+
+    let output = temporaryArchiveOutputURL("editable-geometry-roundtrip.numbers")
+    try editable.save(to: output)
+
+    let reopened = try NumbersDocument.open(at: output)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    XCTAssertEqual(try XCTUnwrap(reopenedTable.rowHeight(at: 0)), 30, accuracy: 0.001)
+    XCTAssertEqual(try XCTUnwrap(reopenedTable.rowHeight(at: 1)), 25, accuracy: 0.001)
+    XCTAssertEqual(try XCTUnwrap(reopenedTable.columnWidth(at: 0)), 120, accuracy: 0.001)
+    XCTAssertEqual(try XCTUnwrap(reopenedTable.columnWidth(at: 1)), 80, accuracy: 0.001)
+
+    let geometry = try XCTUnwrap(
+      reopenedTable.cellGeometry(
+        "B2",
+        defaultRowHeight: 20,
+        defaultColumnWidth: 100
+      )
+    )
+    XCTAssertEqual(geometry.originX, 120, accuracy: 0.001)
+    XCTAssertEqual(geometry.originY, 30, accuracy: 0.001)
+    XCTAssertEqual(geometry.width, 80, accuracy: 0.001)
+    XCTAssertEqual(geometry.height, 25, accuracy: 0.001)
+  }
+
+  func testTableGeometryMutationRejectsInvalidIndicesAndSizes() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    XCTAssertThrowsError(try table.setRowHeight(-1, at: 0)) { error in
+      guard case .nativeWriteFailed(let message) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertTrue(message.contains("Row height must be >= 0"))
+    }
+
+    XCTAssertThrowsError(try table.setColumnWidth(-1, at: 0)) { error in
+      guard case .nativeWriteFailed(let message) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertTrue(message.contains("Column width must be >= 0"))
+    }
+
+    XCTAssertThrowsError(try table.setRowHeight(10, at: table.metadata.rowCount)) { error in
+      guard case .invalidRowIndex(let index) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(index, table.metadata.rowCount)
+    }
+
+    XCTAssertThrowsError(try table.setColumnWidth(10, at: table.metadata.columnCount)) { error in
+      guard case .invalidColumnIndex(let index) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(index, table.metadata.columnCount)
+    }
   }
 
   func testSaveOnSingleFileArchivePersistsMergeRanges() throws {
