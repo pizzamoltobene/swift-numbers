@@ -144,8 +144,8 @@ Categorized/grouped read surface	src/numbers_parser/document.py	def categorized_
 Table presentation metadata	src/numbers_parser/document.py	def (table_name_enabled|caption_enabled|caption)\(	Sources/SwiftNumbersCore/Models.swift	tableNameEnabled	SN-R81
 CLI parity toggles/listing surface	src/numbers_parser/_cat_numbers.py	add_argument\(	Sources/swiftnumbers/main.swift	struct (Dump|ListFormulas|ListTables)\b	SN-R82
 CLI CSV transform pipeline	src/numbers_parser/_csv2numbers.py	add_argument\(	Sources/swiftnumbers/main.swift	struct (ExportCSVCommand|ImportCSVCommand)\b	SN-R83
-CLI unpack/inspection surface	src/numbers_parser/_unpack_numbers.py	add_argument\(	Sources/swiftnumbers/main.swift	struct Dump\b	SN-R84
-Continuous parity scoring workflow	pyproject.toml	cat-numbers	scripts/refresh_numbers_parser_code_map.sh	capability_rows	SN-R70,SN-R85
+CLI unpack/inspection surface	src/numbers_parser/_unpack_numbers.py	add_argument\(	Sources/swiftnumbers/main.swift	struct (Dump|InspectCommand)\b	SN-R84
+Continuous parity scoring workflow	pyproject.toml	cat-numbers	scripts/parity_task_queue.sh	^Usage: ./scripts/parity_task_queue.sh	SN-R70,SN-R85
 ROWS
 
 {

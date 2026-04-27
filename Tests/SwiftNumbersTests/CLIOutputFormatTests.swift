@@ -798,6 +798,99 @@ final class CLIOutputFormatTests: XCTestCase {
     XCTAssertEqual(firstJSON?["captionText"] as? String, "CLI metadata caption")
   }
 
+  func testReadRangeSupportsParityFormulasModeInJSON() throws {
+    let fixture = try makeFixtureWithFormulaCell()
+    defer {
+      try? FileManager.default.removeItem(at: fixture)
+    }
+
+    let output = try runCLI(arguments: [
+      "read-range",
+      fixture.path,
+      "B3:B3",
+      "--sheet",
+      "Sheet 1",
+      "--table",
+      "Table 1",
+      "--formulas",
+      "--format",
+      "json",
+    ])
+    let decoded = try decodeJSONObject(output)
+    XCTAssertEqual(decoded["parityMode"] as? String, "formulas")
+
+    let rows = try XCTUnwrap(decoded["cells"] as? [[Any]])
+    let firstRow = try XCTUnwrap(rows.first)
+    let firstCell = try XCTUnwrap(firstRow.first as? [String: Any])
+    XCTAssertEqual(firstCell["cellReference"] as? String, "B3")
+    XCTAssertEqual(firstCell["output"] as? String, "=1+2")
+  }
+
+  func testReadTableSupportsParityFormattingModeInJSONLines() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let output = try runCLI(arguments: [
+      "read-table",
+      fixture.path,
+      "--sheet",
+      "Sheet 1",
+      "--table",
+      "Table 1",
+      "--from-row",
+      "2",
+      "--from-column",
+      "0",
+      "--max-rows",
+      "1",
+      "--max-columns",
+      "2",
+      "--formatting",
+      "--jsonl",
+    ])
+
+    let lines = output
+      .split(separator: "\n")
+      .map(String.init)
+      .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    let firstData = try XCTUnwrap(lines.first?.data(using: .utf8))
+    let firstJSON = try JSONSerialization.jsonObject(with: firstData) as? [String: Any]
+
+    XCTAssertEqual(firstJSON?["parityMode"] as? String, "formatting")
+    let cells = try XCTUnwrap(firstJSON?["cells"] as? [[String: Any]])
+    let firstCell = try XCTUnwrap(cells.first)
+    XCTAssertEqual(firstCell["cellReference"] as? String, "A3")
+    XCTAssertEqual(firstCell["output"] as? String, "Answer")
+  }
+
+  func testReadColumnParityFormulasTakesPrecedenceOverFormatting() throws {
+    let fixture = try makeFixtureWithFormulaCell()
+    defer {
+      try? FileManager.default.removeItem(at: fixture)
+    }
+
+    let output = try runCLI(arguments: [
+      "read-column",
+      fixture.path,
+      "1",
+      "--sheet",
+      "Sheet 1",
+      "--table",
+      "Table 1",
+      "--from-row",
+      "2",
+      "--formulas",
+      "--formatting",
+      "--format",
+      "json",
+    ])
+    let decoded = try decodeJSONObject(output)
+
+    XCTAssertEqual(decoded["parityMode"] as? String, "formulas")
+    let cells = try XCTUnwrap(decoded["cells"] as? [[String: Any]])
+    let firstCell = try XCTUnwrap(cells.first)
+    XCTAssertEqual(firstCell["cellReference"] as? String, "B3")
+    XCTAssertEqual(firstCell["output"] as? String, "=1+2")
+  }
+
   func testReadCellJSONSnapshotGolden() throws {
     let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
     try assertCLIJSONSnapshot(
@@ -1118,6 +1211,64 @@ final class CLIOutputFormatTests: XCTestCase {
     XCTAssertTrue(output.contains("--output"))
   }
 
+  func testInspectCommandHelpIncludesRedactAndCompactOptions() throws {
+    let output = try runCLI(arguments: ["inspect", "--help"])
+    XCTAssertTrue(output.contains("inspect"))
+    XCTAssertTrue(output.contains("--redact"))
+    XCTAssertTrue(output.contains("--compact"))
+    XCTAssertTrue(output.contains("--format"))
+  }
+
+  func testInspectCommandSupportsJSONSchema() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let output = try runCLI(arguments: ["inspect", fixture.path, "--format", "json"])
+    let decoded = try decodeJSONObject(output)
+    let container = try XCTUnwrap(decoded["container"] as? [String: Any])
+    let document = try XCTUnwrap(decoded["document"] as? [String: Any])
+    let tableNames = try XCTUnwrap(document["tableNames"] as? [String])
+
+    XCTAssertEqual(decoded["readPath"] as? String, "real")
+    XCTAssertEqual(decoded["redacted"] as? Bool, false)
+    XCTAssertEqual(document["sheetCount"] as? Int, 1)
+    XCTAssertEqual(document["tableCount"] as? Int, 1)
+    XCTAssertEqual(document["resolvedCellCount"] as? Int, 6)
+    XCTAssertEqual(tableNames, ["Sheet 1/Table 1"])
+    XCTAssertNotNil(container["blobCount"] as? Int)
+    XCTAssertNotNil(container["objectCount"] as? Int)
+    XCTAssertNotNil(container["objectReferenceEdgeCount"] as? Int)
+    XCTAssertNotNil(container["rootObjectCount"] as? Int)
+    XCTAssertNotNil(container["unparsedBlobCount"] as? Int)
+    XCTAssertNotNil(container["unparsedBlobPaths"] as? [String])
+    XCTAssertNotNil(decoded["typeHistogram"] as? [String: Any])
+    XCTAssertNotNil(decoded["structuredDiagnostics"] as? [[String: Any]])
+  }
+
+  func testInspectCommandSupportsRedactedCompactJSON() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let output = try runCLI(arguments: [
+      "inspect",
+      fixture.path,
+      "--format",
+      "json",
+      "--redact",
+      "--compact",
+    ])
+    let compactOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
+    XCTAssertFalse(compactOutput.contains("\n"))
+
+    let decoded = try decodeJSONObject(output)
+    XCTAssertEqual(decoded["redacted"] as? Bool, true)
+    XCTAssertEqual(decoded["sourcePath"] as? String, "<redacted>")
+
+    let container = try XCTUnwrap(decoded["container"] as? [String: Any])
+    let unparsedBlobPaths = try XCTUnwrap(container["unparsedBlobPaths"] as? [String])
+    XCTAssertTrue(unparsedBlobPaths.allSatisfy { $0 == "<redacted>" })
+
+    let structuredDiagnostics = try XCTUnwrap(decoded["structuredDiagnostics"] as? [[String: Any]])
+    let objectPaths = structuredDiagnostics.compactMap { $0["objectPath"] as? String }
+    XCTAssertTrue(objectPaths.allSatisfy { $0 == "<redacted>" })
+  }
+
   func testImportCSVWithHeaderAndDateParsingProducesTypedCells() throws {
     let sourceFixture = try copyFixtureToTemporaryPath(named: "simple-table.numbers")
     let outputFixture = FileManager.default.temporaryDirectory
@@ -1220,6 +1371,109 @@ final class CLIOutputFormatTests: XCTestCase {
     )
   }
 
+  func testImportCSVSupportsRenameDeleteAndTransformPipeline() throws {
+    let sourceFixture = try copyFixtureToTemporaryPath(named: "simple-table.numbers")
+    let outputFixture = FileManager.default.temporaryDirectory
+      .appendingPathComponent("swift-numbers-import-pipeline-\(UUID().uuidString).numbers")
+    let csv = try writeTemporaryCSV(
+      """
+      Name,Amount,Delta,Notes
+      alice,100,-5,  keep
+      bob,42,7,  drop
+      """
+    )
+
+    defer {
+      try? FileManager.default.removeItem(at: sourceFixture)
+      try? FileManager.default.removeItem(at: outputFixture)
+      try? FileManager.default.removeItem(at: csv)
+    }
+
+    let output = try runCLI(arguments: [
+      "import-csv",
+      sourceFixture.path,
+      csv.path,
+      "--sheet",
+      "Sheet 1",
+      "--table",
+      "Table 1",
+      "--rename",
+      "Amount:Total",
+      "--delete-column",
+      "Notes",
+      "--transform",
+      "Name=upper:Name",
+      "--transform",
+      "AbsDelta=neg:Delta",
+      "--output",
+      outputFixture.path,
+    ])
+    XCTAssertFalse(output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+    let document = try NumbersDocument.open(at: outputFixture)
+    let table = try XCTUnwrap(document.sheet(named: "Sheet 1")?.table(named: "Table 1"))
+
+    XCTAssertEqual(try table.value(String.self, at: "A1"), "Name")
+    XCTAssertEqual(try table.value(String.self, at: "B1"), "Total")
+    XCTAssertEqual(try table.value(String.self, at: "C1"), "Delta")
+    XCTAssertEqual(try table.value(String.self, at: "D1"), "AbsDelta")
+
+    XCTAssertEqual(try table.value(String.self, at: "A2"), "ALICE")
+    XCTAssertEqual(try table.value(Double.self, at: "B2"), 100)
+    XCTAssertEqual(try table.value(Double.self, at: "D2"), 5)
+    XCTAssertEqual(try table.value(String.self, at: "A3"), "BOB")
+    XCTAssertNil(try table.optionalValue(Double.self, at: "D3"))
+  }
+
+  func testImportCSVDateParsingCanBeScopedToSpecificColumns() throws {
+    let sourceFixture = try copyFixtureToTemporaryPath(named: "simple-table.numbers")
+    let outputFixture = FileManager.default.temporaryDirectory
+      .appendingPathComponent("swift-numbers-import-date-scope-\(UUID().uuidString).numbers")
+    let csv = try writeTemporaryCSV(
+      """
+      Label,When,Raw
+      Event,03/04/2026,03/04/2026
+      """
+    )
+
+    defer {
+      try? FileManager.default.removeItem(at: sourceFixture)
+      try? FileManager.default.removeItem(at: outputFixture)
+      try? FileManager.default.removeItem(at: csv)
+    }
+
+    let output = try runCLI(arguments: [
+      "import-csv",
+      sourceFixture.path,
+      csv.path,
+      "--sheet",
+      "Sheet 1",
+      "--table",
+      "Table 1",
+      "--parse-dates",
+      "--date-column",
+      "When",
+      "--day-first",
+      "--date-format",
+      "dd/MM/yyyy",
+      "--output",
+      outputFixture.path,
+    ])
+    XCTAssertFalse(output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+    let document = try NumbersDocument.open(at: outputFixture)
+    let table = try XCTUnwrap(document.sheet(named: "Sheet 1")?.table(named: "Table 1"))
+
+    let parsedDate = try table.value(Date.self, at: "B2")
+    let calendar = Calendar(identifier: .gregorian)
+    let components = calendar.dateComponents(in: TimeZone(secondsFromGMT: 0)!, from: parsedDate)
+    XCTAssertEqual(components.year, 2026)
+    XCTAssertEqual(components.month, 4)
+    XCTAssertEqual(components.day, 3)
+
+    XCTAssertEqual(try table.value(String.self, at: "C2"), "03/04/2026")
+  }
+
   private func csvLines(_ output: String) -> [String] {
     output.split(separator: "\n").map(String.init)
   }
@@ -1285,6 +1539,15 @@ final class CLIOutputFormatTests: XCTestCase {
     try table.setTableNameVisible(false)
     try table.setCaptionVisible(false)
     try table.setCaptionText("CLI metadata caption")
+    try editable.saveInPlace()
+    return fixture
+  }
+
+  private func makeFixtureWithFormulaCell() throws -> URL {
+    let fixture = try copyFixtureToTemporaryPath(named: "simple-table.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try editable.sheet(named: "Sheet 1").table(named: "Table 1")
+    try table.setValue(.formula("=1+2"), at: "B3")
     try editable.saveInPlace()
     return fixture
   }

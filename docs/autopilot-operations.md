@@ -15,6 +15,8 @@ Use this document to operate Autopilot safely when tasks are in progress, blocke
   - `./scripts/autopilot_backlog_synthesis.sh`
 - When M7 code-parity tasks are active, refresh parity baseline first:
   - `./scripts/refresh_numbers_parser_code_map.sh`
+- Compute parity queue ordering from roadmap + capability map before selecting new parity work:
+  - `./scripts/parity_task_queue.sh --roadmap ./docs/autopilot-roadmap.md --code-map ./docs/numbers-parser-code-capability-map.md`
 - Required validation gates per run:
   - `swift build`
   - `swift test`

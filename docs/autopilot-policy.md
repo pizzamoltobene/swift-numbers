@@ -71,6 +71,8 @@ Autopilot must collect and score signals from:
 - Keep `docs/numbers-parser-code-capability-map.md` regenerated from symbols before parity-gap planning:
   - `./scripts/refresh_numbers_parser_code_map.sh`
 - The map must include snapshot metadata (commit/date) and deterministic section ordering.
+- Compute deterministic parity queue candidates from roadmap + code map before renewal planning:
+  - `./scripts/parity_task_queue.sh --roadmap ./docs/autopilot-roadmap.md --code-map ./docs/numbers-parser-code-capability-map.md`
 
 ## Execution Safety Rules
 

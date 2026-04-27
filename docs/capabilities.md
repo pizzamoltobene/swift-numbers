@@ -60,7 +60,7 @@ Core internal modules:
 |---|---|---|
 | Open package `.numbers` | Supported | Reads `Index.zip` package form |
 | Open single-file archive `.numbers` | Supported | Reads embedded `Index`/`Index.zip` |
-| Read sheets/tables/cells | Supported | Real-read first, metadata fallback as needed |
+| Read sheets/tables/cells | Supported | Real-read first with deterministic merged table traversal across package/single-file archives; metadata fallback as needed |
 | Read merge ranges | Supported | Exposed via `Table.metadata.mergeRanges` |
 | CLI `dump`, `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, `read-range`, `export-csv`, and `import-csv` | Supported | Text/JSON modes for introspection commands (`read-column/read-table/read-range` also support `--jsonl`); CSV export/import via `export-csv` / `import-csv` |
 | Edit cell values | Supported | `string`, `formula`, `number`, `bool`, `empty`, `date` |

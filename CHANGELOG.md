@@ -16,6 +16,37 @@ All notable changes to this project are documented in this file.
 
 - Revert to the previous stable tag and redeploy package artifacts.
 
+## [0.3.11] - 2026-04-27
+
+### Summary
+
+- Added `cat-numbers`-style parity switches for CLI read output commands:
+  `read-column`, `read-table`, and `read-range` now accept `--formulas` and
+  `--formatting`, emit deterministic `parityMode`/`output` fields in JSON/JSONL,
+  and preserve selector-driven sheet/table scoping behavior.
+- Added `csv2numbers`-style import pipeline stages to `import-csv` with
+  deterministic `rename -> delete-column -> transform` ordering, plus scoped
+  date parsing controls (`--date-column`, `--day-first`, `--date-format`) and
+  integration coverage for pipeline/date behavior.
+- Added `inspect` CLI command for low-level diagnostics with stable JSON schema
+  (`container`/`document`/diagnostic counters), plus optional redaction
+  (`--redact`) and compact output mode (`--compact`).
+- Added deterministic parity queue gate script (`scripts/parity_task_queue.sh`)
+  that scores outstanding roadmap tasks from `docs/numbers-parser-code-capability-map.md`
+  and emits a stable next-task queue; added simulation coverage for expected order.
+- Hardened real-read merged table traversal for mixed archives: table resolution is now
+  deterministic across package/single-file inventory ordering, duplicate drawable/parent
+  traversal no longer re-resolves the same table, and duplicate object/type records now
+  fall back to the next decodable payload deterministically.
+
+### Breaking Changes
+
+- None.
+
+### Rollback Hint
+
+- Revert to the previous stable tag and redeploy package artifacts.
+
 ## [0.3.10] - 2026-04-27
 
 ### Summary

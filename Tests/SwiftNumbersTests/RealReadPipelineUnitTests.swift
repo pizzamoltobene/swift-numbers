@@ -484,6 +484,212 @@ final class RealReadPipelineUnitTests: XCTestCase {
     )
   }
 
+  func testResolverMergedTraversalOrderIsStableAndDeduplicatedAcrossInventoryOrder() throws {
+    var document = TN_DocumentArchive()
+    document.sheets = [reference(200)]
+
+    var sheet = TN_SheetArchive()
+    sheet.name = "Main"
+    // Deliberately unsorted + duplicate drawable refs.
+    sheet.drawableInfos = [reference(301), reference(300), reference(301)]
+
+    var tableInfo300 = TST_TableInfoArchive()
+    var drawable300 = TSD_DrawableArchive()
+    drawable300.parent = reference(200)
+    tableInfo300.super = drawable300
+    tableInfo300.tableModel = reference(400)
+
+    var tableInfo301 = TST_TableInfoArchive()
+    var drawable301 = TSD_DrawableArchive()
+    drawable301.parent = reference(200)
+    tableInfo301.super = drawable301
+    tableInfo301.tableModel = reference(401)
+
+    var tableInfo302 = TST_TableInfoArchive()
+    var drawable302 = TSD_DrawableArchive()
+    drawable302.parent = reference(200)
+    tableInfo302.super = drawable302
+    tableInfo302.tableModel = reference(402)
+
+    var tableModel400 = TST_TableModelArchive()
+    tableModel400.tableID = "table-400"
+    tableModel400.tableName = "Table A"
+    tableModel400.numberOfRows = 0
+    tableModel400.numberOfColumns = 0
+
+    var tableModel401 = TST_TableModelArchive()
+    tableModel401.tableID = "table-401"
+    tableModel401.tableName = "Table B"
+    tableModel401.numberOfRows = 0
+    tableModel401.numberOfColumns = 0
+
+    var tableModel402 = TST_TableModelArchive()
+    tableModel402.tableID = "table-402"
+    tableModel402.tableName = "Table C"
+    tableModel402.numberOfRows = 0
+    tableModel402.numberOfColumns = 0
+
+    let documentPayload = try document.serializedData()
+    let sheetPayload = try sheet.serializedData()
+    let tableInfo300Payload = try tableInfo300.serializedData()
+    let tableInfo301Payload = try tableInfo301.serializedData()
+    let tableInfo302Payload = try tableInfo302.serializedData()
+    let tableModel400Payload = try tableModel400.serializedData()
+    let tableModel401Payload = try tableModel401.serializedData()
+    let tableModel402Payload = try tableModel402.serializedData()
+
+    let orderedRecords = [
+      IWAObjectRecord(
+        objectID: 100,
+        typeID: 1,
+        payloadSize: documentPayload.count,
+        payloadData: documentPayload,
+        sourceBlobPath: "Doc.iwa",
+        objectReferences: [200]
+      ),
+      IWAObjectRecord(
+        objectID: 200,
+        typeID: 2,
+        payloadSize: sheetPayload.count,
+        payloadData: sheetPayload,
+        sourceBlobPath: "Sheet.iwa",
+        objectReferences: [301, 300, 301]
+      ),
+      IWAObjectRecord(
+        objectID: 301,
+        typeID: 6000,
+        payloadSize: tableInfo301Payload.count,
+        payloadData: tableInfo301Payload,
+        sourceBlobPath: "TableB.iwa",
+        objectReferences: [200, 401]
+      ),
+      IWAObjectRecord(
+        objectID: 401,
+        typeID: 6001,
+        payloadSize: tableModel401Payload.count,
+        payloadData: tableModel401Payload,
+        sourceBlobPath: "TableBModel.iwa"
+      ),
+      IWAObjectRecord(
+        objectID: 300,
+        typeID: 6000,
+        payloadSize: tableInfo300Payload.count,
+        payloadData: tableInfo300Payload,
+        sourceBlobPath: "TableA.iwa",
+        objectReferences: [200, 400]
+      ),
+      IWAObjectRecord(
+        objectID: 400,
+        typeID: 6001,
+        payloadSize: tableModel400Payload.count,
+        payloadData: tableModel400Payload,
+        sourceBlobPath: "TableAModel.iwa"
+      ),
+      // Parent traversal should merge this table even though it is not in drawableInfos.
+      IWAObjectRecord(
+        objectID: 302,
+        typeID: 6000,
+        payloadSize: tableInfo302Payload.count,
+        payloadData: tableInfo302Payload,
+        sourceBlobPath: "TableC.iwa",
+        objectReferences: [200, 402]
+      ),
+      IWAObjectRecord(
+        objectID: 402,
+        typeID: 6001,
+        payloadSize: tableModel402Payload.count,
+        payloadData: tableModel402Payload,
+        sourceBlobPath: "TableCModel.iwa"
+      ),
+    ]
+
+    for records in [orderedRecords, Array(orderedRecords.reversed())] {
+      let inventory = IWAInventory(records: records, unparsedBlobPaths: [])
+      let result = IWARealDocumentReader.read(from: inventory, documentVersion: nil)
+      let resolvedSheet = try XCTUnwrap(result.sheets.first)
+      XCTAssertEqual(resolvedSheet.tables.count, 3)
+      XCTAssertEqual(resolvedSheet.tables.map(\.tableInfoObjectID), [300, 301, 302])
+    }
+  }
+
+  func testResolverFallsBackToDecodableDuplicateRecordForSameObjectAndType() throws {
+    var document = TN_DocumentArchive()
+    document.sheets = [reference(200)]
+
+    var sheet = TN_SheetArchive()
+    sheet.name = "Main"
+    sheet.drawableInfos = [reference(300)]
+
+    var tableInfo = TST_TableInfoArchive()
+    var drawable = TSD_DrawableArchive()
+    drawable.parent = reference(200)
+    tableInfo.super = drawable
+    tableInfo.tableModel = reference(400)
+
+    var tableModel = TST_TableModelArchive()
+    tableModel.tableID = "table-400"
+    tableModel.tableName = "Stable Table"
+    tableModel.numberOfRows = 0
+    tableModel.numberOfColumns = 0
+
+    let documentPayload = try document.serializedData()
+    let sheetPayload = try sheet.serializedData()
+    let tableInfoPayload = try tableInfo.serializedData()
+    let tableModelPayload = try tableModel.serializedData()
+    let corruptPayload = Data(repeating: 0x80, count: tableInfoPayload.count + 8)
+
+    let records = [
+      IWAObjectRecord(
+        objectID: 100,
+        typeID: 1,
+        payloadSize: documentPayload.count,
+        payloadData: documentPayload,
+        sourceBlobPath: "Doc.iwa",
+        objectReferences: [200]
+      ),
+      IWAObjectRecord(
+        objectID: 200,
+        typeID: 2,
+        payloadSize: sheetPayload.count,
+        payloadData: sheetPayload,
+        sourceBlobPath: "Sheet.iwa",
+        objectReferences: [300]
+      ),
+      // Corrupt duplicate record for the same object/type.
+      IWAObjectRecord(
+        objectID: 300,
+        typeID: 6000,
+        payloadSize: corruptPayload.count,
+        payloadData: corruptPayload,
+        sourceBlobPath: "CorruptTableInfo.iwa",
+        objectReferences: [200, 400]
+      ),
+      IWAObjectRecord(
+        objectID: 300,
+        typeID: 6000,
+        payloadSize: tableInfoPayload.count,
+        payloadData: tableInfoPayload,
+        sourceBlobPath: "ValidTableInfo.iwa",
+        objectReferences: [200, 400]
+      ),
+      IWAObjectRecord(
+        objectID: 400,
+        typeID: 6001,
+        payloadSize: tableModelPayload.count,
+        payloadData: tableModelPayload,
+        sourceBlobPath: "TableModel.iwa"
+      ),
+    ]
+
+    let inventory = IWAInventory(records: records, unparsedBlobPaths: [])
+    let result = IWARealDocumentReader.read(from: inventory, documentVersion: nil)
+
+    let resolvedSheet = try XCTUnwrap(result.sheets.first)
+    XCTAssertEqual(resolvedSheet.tables.count, 1)
+    XCTAssertEqual(resolvedSheet.tables.first?.tableInfoObjectID, 300)
+    XCTAssertEqual(resolvedSheet.tables.first?.name, "Stable Table")
+  }
+
   func testSplitRowStorageBuffersReturnsNilCellsWhenOffsetsMissing() {
     let row = IWARealDocumentReader.splitRowStorageBuffers(
       storageBuffer: Data("AAAA".utf8),

@@ -528,7 +528,34 @@ public enum IWARealDocumentReader {
       for record in inventory.records {
         grouped[record.objectID, default: []].append(record)
       }
+      for (objectID, records) in grouped {
+        grouped[objectID] = records.sorted(by: Self.preferredRecordOrder(_:_:))
+      }
       self.recordsByObjectID = grouped
+    }
+
+    private static func preferredRecordOrder(_ lhs: IWAObjectRecord, _ rhs: IWAObjectRecord)
+      -> Bool
+    {
+      if lhs.typeID != rhs.typeID {
+        return lhs.typeID < rhs.typeID
+      }
+      if lhs.payloadSize != rhs.payloadSize {
+        return lhs.payloadSize > rhs.payloadSize
+      }
+      if lhs.payloadData != rhs.payloadData {
+        return lhs.payloadData.lexicographicallyPrecedes(rhs.payloadData)
+      }
+      if lhs.sourceBlobPath != rhs.sourceBlobPath {
+        return lhs.sourceBlobPath < rhs.sourceBlobPath
+      }
+      if lhs.objectReferences != rhs.objectReferences {
+        return lhs.objectReferences.lexicographicallyPrecedes(rhs.objectReferences)
+      }
+      if lhs.dataReferences != rhs.dataReferences {
+        return lhs.dataReferences.lexicographicallyPrecedes(rhs.dataReferences)
+      }
+      return false
     }
 
     mutating func resolve() -> IWARealReadResult {
@@ -600,9 +627,7 @@ public enum IWARealDocumentReader {
           decodedSheet?.name.isEmpty == false ? decodedSheet!.name : "Sheet \(sheetIndex + 1)"
         let drawableRefs = decodedSheet?.drawableInfos ?? []
 
-        var tables = resolveTables(fromDrawableRefs: drawableRefs)
-        let parentTables = resolveTablesByParent(sheetObjectID: sheetObjectID)
-        tables = mergeTables(primary: tables, additional: parentTables)
+        let tables = resolveMergedTables(sheetObjectID: sheetObjectID, drawableRefs: drawableRefs)
 
         sheets.append(
           IWAResolvedSheet(
@@ -671,53 +696,84 @@ public enum IWARealDocumentReader {
       return selected
     }
 
-    private mutating func resolveTables(
-      fromDrawableRefs refs: [TSP_Reference]
+    private mutating func resolveMergedTables(
+      sheetObjectID: UInt64,
+      drawableRefs refs: [TSP_Reference]
     ) -> [IWAResolvedTable] {
+      let (orderedTableInfoObjectIDs, drawableTableInfoObjectIDs) = mergedTableInfoObjectIDs(
+        sheetObjectID: sheetObjectID,
+        drawableRefs: refs
+      )
+
       var tables: [IWAResolvedTable] = []
-      var seenTableIDs = Set<String>()
+      tables.reserveCapacity(orderedTableInfoObjectIDs.count)
 
-      // Pre-scan non-table drawables so table resolution can include pivot linkage metadata
-      // regardless of drawable ordering in sheet references.
-      for ref in refs {
-        let drawableObjectID = ref.identifier
-        guard drawableObjectID > 0 else {
-          continue
-        }
-        guard !hasRecord(objectID: drawableObjectID, typeID: TypeID.tableInfoArchive) else {
-          continue
-        }
-        emitPivotCandidateDiagnosticIfNeeded(drawableObjectID: drawableObjectID)
-      }
-
-      for ref in refs {
-        let tableInfoObjectID = ref.identifier
-        guard tableInfoObjectID > 0 else {
-          continue
-        }
-        // Sheets can reference non-table drawables (charts, shapes, etc.); only resolve
-        // records that expose TableInfo archives.
-        guard hasRecord(objectID: tableInfoObjectID, typeID: TypeID.tableInfoArchive) else {
-          continue
-        }
+      for tableInfoObjectID in orderedTableInfoObjectIDs {
         guard let table = resolveTable(tableInfoObjectID: tableInfoObjectID) else {
-          addDiagnostic(
-            .tableResolveFailed,
-            severity: .warning,
-            message: "Could not resolve table from sheet drawable reference.",
-            context: ["tableInfoObjectID": String(tableInfoObjectID)]
-          )
+          if drawableTableInfoObjectIDs.contains(tableInfoObjectID) {
+            addDiagnostic(
+              .tableResolveFailed,
+              severity: .warning,
+              message: "Could not resolve table from sheet drawable reference.",
+              context: ["tableInfoObjectID": String(tableInfoObjectID)]
+            )
+          } else {
+            addDiagnostic(
+              .tableResolveFailed,
+              severity: .warning,
+              message: "Could not resolve table during sheet-parent traversal.",
+              context: [
+                "sheetObjectID": String(sheetObjectID),
+                "tableInfoObjectID": String(tableInfoObjectID),
+              ]
+            )
+          }
           continue
         }
 
-        if seenTableIDs.contains(table.id) {
-          continue
-        }
-        seenTableIDs.insert(table.id)
         tables.append(table)
       }
 
       return tables
+    }
+
+    private mutating func mergedTableInfoObjectIDs(
+      sheetObjectID: UInt64,
+      drawableRefs refs: [TSP_Reference]
+    ) -> (ordered: [UInt64], drawable: Set<UInt64>) {
+      let drawableTableInfoObjectIDs = tableInfoObjectIDsFromDrawableRefs(refs)
+      let parentTableInfoObjectIDs = tableInfoObjectIDsByParent(sheetObjectID: sheetObjectID)
+
+      var ordered: [UInt64] = []
+      ordered.reserveCapacity(drawableTableInfoObjectIDs.count + parentTableInfoObjectIDs.count)
+
+      var seenTableInfoObjectIDs = Set<UInt64>()
+      for tableInfoObjectID in drawableTableInfoObjectIDs
+      where seenTableInfoObjectIDs.insert(tableInfoObjectID).inserted {
+        ordered.append(tableInfoObjectID)
+      }
+
+      for tableInfoObjectID in parentTableInfoObjectIDs
+      where seenTableInfoObjectIDs.insert(tableInfoObjectID).inserted {
+        ordered.append(tableInfoObjectID)
+      }
+
+      return (ordered, Set(drawableTableInfoObjectIDs))
+    }
+
+    private mutating func tableInfoObjectIDsFromDrawableRefs(_ refs: [TSP_Reference]) -> [UInt64] {
+      let drawableObjectIDs = Set(refs.map(\.identifier).filter { $0 > 0 }).sorted()
+
+      // Pre-scan non-table drawables so table resolution can include pivot linkage metadata
+      // regardless of drawable ordering in sheet references.
+      for drawableObjectID in drawableObjectIDs
+      where !hasRecord(objectID: drawableObjectID, typeID: TypeID.tableInfoArchive) {
+        emitPivotCandidateDiagnosticIfNeeded(drawableObjectID: drawableObjectID)
+      }
+
+      return drawableObjectIDs.filter {
+        hasRecord(objectID: $0, typeID: TypeID.tableInfoArchive)
+      }
     }
 
     private mutating func emitPivotCandidateDiagnosticIfNeeded(drawableObjectID: UInt64) {
@@ -786,29 +842,12 @@ public enum IWARealDocumentReader {
       recordsByObjectID[objectID]?.contains(where: { $0.typeID == typeID }) == true
     }
 
-    private func mergeTables(
-      primary: [IWAResolvedTable],
-      additional: [IWAResolvedTable]
-    ) -> [IWAResolvedTable] {
-      guard !additional.isEmpty else {
-        return primary
-      }
+    private mutating func tableInfoObjectIDsByParent(sheetObjectID: UInt64) -> [UInt64] {
+      var tableInfoObjectIDs: [UInt64] = []
 
-      var merged = primary
-      var seenIDs = Set(primary.map(\.id))
-      for table in additional where !seenIDs.contains(table.id) {
-        merged.append(table)
-        seenIDs.insert(table.id)
-      }
-      return merged
-    }
-
-    private mutating func resolveTablesByParent(sheetObjectID: UInt64) -> [IWAResolvedTable] {
-      var tables: [IWAResolvedTable] = []
-
-      let tableInfoObjectIDs = Set(
+      let candidateTableInfoObjectIDs = Set(
         inventory.records.filter { $0.typeID == TypeID.tableInfoArchive }.map(\.objectID))
-      for tableInfoObjectID in tableInfoObjectIDs.sorted() {
+      for tableInfoObjectID in candidateTableInfoObjectIDs.sorted() {
         guard
           let tableInfo: TST_TableInfoArchive = decode(
             objectID: tableInfoObjectID,
@@ -826,23 +865,10 @@ public enum IWARealDocumentReader {
           continue
         }
 
-        guard let table = resolveTable(tableInfoObjectID: tableInfoObjectID) else {
-          addDiagnostic(
-            .tableResolveFailed,
-            severity: .warning,
-            message: "Could not resolve table during sheet-parent traversal.",
-            context: [
-              "sheetObjectID": String(sheetObjectID),
-              "tableInfoObjectID": String(tableInfoObjectID),
-            ]
-          )
-          continue
-        }
-
-        tables.append(table)
+        tableInfoObjectIDs.append(tableInfoObjectID)
       }
 
-      return tables
+      return tableInfoObjectIDs
     }
 
     private mutating func resolveTable(tableInfoObjectID: UInt64) -> IWAResolvedTable? {
@@ -2163,15 +2189,12 @@ public enum IWARealDocumentReader {
         return nil
       }
 
-      guard let record = candidates.first(where: { $0.typeID == typeID }) else {
-        return nil
+      for record in candidates where record.typeID == typeID {
+        if let decoded = try? MessageType(serializedBytes: record.payloadData) {
+          return decoded
+        }
       }
-
-      do {
-        return try MessageType(serializedBytes: record.payloadData)
-      } catch {
-        return nil
-      }
+      return nil
     }
 
     private func decodeAnyType<MessageType: SwiftProtobuf.Message>(

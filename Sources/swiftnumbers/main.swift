@@ -18,6 +18,21 @@ enum ImportCSVHeaderMode: String, ExpressibleByArgument {
   case noHeader = "no-header"
 }
 
+private enum ParityOutputMode: String {
+  case formulas
+  case formatting
+}
+
+private func parityOutputMode(formulas: Bool, formatting: Bool) -> ParityOutputMode? {
+  if formulas {
+    return .formulas
+  }
+  if formatting {
+    return .formatting
+  }
+  return nil
+}
+
 @main
 struct SwiftNumbersCLI: ParsableCommand {
   static let configuration = CommandConfiguration(
@@ -25,6 +40,7 @@ struct SwiftNumbersCLI: ParsableCommand {
     abstract: "Swift-native reader and tooling for .numbers containers.",
     subcommands: [
       Dump.self,
+      InspectCommand.self,
       ListSheets.self,
       ListTables.self,
       ListFormulas.self,
@@ -118,6 +134,42 @@ struct Dump: ParsableCommand {
         formatting: formatting ? formattingEntries : nil
       )
       print(try renderJSON(payload))
+    }
+  }
+}
+
+struct InspectCommand: ParsableCommand {
+  static let configuration = CommandConfiguration(
+    commandName: "inspect",
+    abstract: "Print low-level container/object diagnostics for a .numbers document."
+  )
+
+  @Argument(help: "Path to a .numbers package")
+  var file: String
+
+  @Option(name: .long, help: "Output format: text or json")
+  var format: OutputFormat = .json
+
+  @Flag(name: .long, help: "Redact path-like fields in output")
+  var redact: Bool = false
+
+  @Flag(name: .long, help: "Emit compact output (minified JSON or single-line text)")
+  var compact: Bool = false
+
+  mutating func run() throws {
+    let url = URL(fileURLWithPath: file)
+    let document = try NumbersDocument.open(at: url)
+    let payload = InspectJSONPayload(
+      dump: document.dump(),
+      sheets: document.sheets,
+      redact: redact
+    )
+
+    switch format {
+    case .text:
+      print(renderInspectText(payload: payload, compact: compact))
+    case .json:
+      print(try renderJSON(payload, pretty: !compact))
     }
   }
 }
@@ -379,6 +431,19 @@ struct ReadColumnCommand: ParsableCommand {
   @Flag(name: .long, help: "Emit newline-delimited JSON (one cell per line)")
   var jsonl: Bool = false
 
+  @Flag(
+    name: .long,
+    help:
+      "Parity switch: prefer formula literals when available (same precedence behavior as cat-numbers --formulas)."
+  )
+  var formulas: Bool = false
+
+  @Flag(
+    name: .long,
+    help: "Parity switch: prefer formatted display values (like cat-numbers --formatting)."
+  )
+  var formatting: Bool = false
+
   mutating func run() throws {
     let url = URL(fileURLWithPath: file)
     let document = try NumbersDocument.open(at: url)
@@ -453,7 +518,8 @@ struct ReadColumnCommand: ParsableCommand {
       includeHeader: header == nil ? nil : includeHeader,
       columnIndex: resolvedColumnIndex,
       fromRow: resolvedFromRow,
-      values: values
+      values: values,
+      parityMode: parityOutputMode(formulas: formulas, formatting: formatting)
     )
 
     if jsonl {
@@ -509,6 +575,19 @@ struct ReadTableCommand: ParsableCommand {
   @Flag(name: .long, help: "Emit newline-delimited JSON (one row per line)")
   var jsonl: Bool = false
 
+  @Flag(
+    name: .long,
+    help:
+      "Parity switch: prefer formula literals when available (same precedence behavior as cat-numbers --formulas)."
+  )
+  var formulas: Bool = false
+
+  @Flag(
+    name: .long,
+    help: "Parity switch: prefer formatted display values (like cat-numbers --formatting)."
+  )
+  var formatting: Bool = false
+
   mutating func run() throws {
     let url = URL(fileURLWithPath: file)
     let document = try NumbersDocument.open(at: url)
@@ -546,7 +625,8 @@ struct ReadTableCommand: ParsableCommand {
       resolvedRowCount: resolvedRowCount,
       resolvedColumnCount: resolvedColumnCount,
       truncatedRows: truncatedRows,
-      truncatedColumns: truncatedColumns
+      truncatedColumns: truncatedColumns,
+      parityMode: parityOutputMode(formulas: formulas, formatting: formatting)
     )
 
     if jsonl {
@@ -593,6 +673,19 @@ struct ReadRangeCommand: ParsableCommand {
   @Flag(name: .long, help: "Emit newline-delimited JSON (one row per line)")
   var jsonl: Bool = false
 
+  @Flag(
+    name: .long,
+    help:
+      "Parity switch: prefer formula literals when available (same precedence behavior as cat-numbers --formulas)."
+  )
+  var formulas: Bool = false
+
+  @Flag(
+    name: .long,
+    help: "Parity switch: prefer formatted display values (like cat-numbers --formatting)."
+  )
+  var formatting: Bool = false
+
   mutating func run() throws {
     let url = URL(fileURLWithPath: file)
     let document = try NumbersDocument.open(at: url)
@@ -622,7 +715,8 @@ struct ReadRangeCommand: ParsableCommand {
       table: tableModel,
       requestedRange: range,
       resolvedRange: parsedRange,
-      rows: rows
+      rows: rows,
+      parityMode: parityOutputMode(formulas: formulas, formatting: formatting)
     )
 
     if jsonl {
@@ -717,8 +811,47 @@ struct ImportCSVCommand: ParsableCommand {
   @Option(name: .long, help: "Header handling: with-header or no-header")
   var header: ImportCSVHeaderMode = .withHeader
 
+  @Option(
+    name: .long,
+    help: "Rename stage mapping OLD:NEW (repeatable). OLD accepts exact column name or zero-based index."
+  )
+  var rename: [String] = []
+
+  @Option(
+    name: .long,
+    help: "Delete stage selector (repeatable). Accepts exact column name or zero-based index."
+  )
+  var deleteColumn: [String] = []
+
+  @Option(
+    name: .long,
+    help:
+      "Transform stage rule DEST=FUNC:SRC1;SRC2 (repeatable). FUNC: merge, pos, neg, upper, lower, trim."
+  )
+  var transform: [String] = []
+
   @Flag(name: .long, help: "Parse date-like values into typed date cells")
   var parseDates: Bool = false
+
+  @Option(
+    name: .long,
+    help:
+      "Date parsing column selector (repeatable). Accepts exact column name or zero-based index. Requires --parse-dates."
+  )
+  var dateColumn: [String] = []
+
+  @Flag(
+    name: .long,
+    help: "When parsing dates, treat ambiguous slash/hyphen dates as day-first."
+  )
+  var dayFirst: Bool = false
+
+  @Option(
+    name: .long,
+    help:
+      "Additional DateFormatter pattern for --parse-dates (repeatable, tried before defaults; for example dd/MM/yyyy)."
+  )
+  var dateFormat: [String] = []
 
   @Option(name: .long, help: "Write updated .numbers document to this path instead of saving in place")
   var output: String?
@@ -728,7 +861,13 @@ struct ImportCSVCommand: ParsableCommand {
     let csvURL = URL(fileURLWithPath: csvFile)
     let csvContent = try String(contentsOf: csvURL, encoding: .utf8)
     let parsedRows = try parseCSVRows(csvContent)
-    let importRows = normalizeImportRows(parsedRows, headerMode: header)
+    let normalizedRows = normalizeImportRows(parsedRows, headerMode: header)
+    let importRows = try applyImportPipeline(
+      to: normalizedRows,
+      renameMappings: rename,
+      deleteSelectors: deleteColumn,
+      transformRules: transform
+    )
 
     guard !importRows.isEmpty else {
       throw ValidationError("CSV file '\(csvURL.path)' is empty.")
@@ -750,6 +889,13 @@ struct ImportCSVCommand: ParsableCommand {
     let editableDocument = try EditableNumbersDocument.open(at: sourceURL)
     let editableSheet = try editableDocument.sheet(named: selectedSheet.name)
     let editableTable = try editableSheet.table(named: selectedTable.name)
+    let dateParsingOptions = try resolveImportDateParsingOptions(
+      parseDates: parseDates,
+      dateColumns: dateColumn,
+      dayFirst: dayFirst,
+      customFormats: dateFormat,
+      headerRow: importRows.first ?? []
+    )
 
     for rowIndex in 0..<importRows.count {
       let row = importRows[rowIndex]
@@ -758,7 +904,8 @@ struct ImportCSVCommand: ParsableCommand {
         let isHeaderRow = header == .withHeader && rowIndex == 0
         let value = importedCellValue(
           raw: raw,
-          parseDates: parseDates,
+          dateParsing: dateParsingOptions,
+          columnIndex: columnIndex,
           forceString: isHeaderRow
         )
         editableTable.setValue(value, at: CellAddress(row: rowIndex, column: columnIndex))
@@ -1013,6 +1160,123 @@ private struct DumpJSONPayload: Encodable {
   }
 }
 
+private struct InspectJSONPayload: Encodable {
+  struct Container: Encodable {
+    let blobCount: Int
+    let objectCount: Int
+    let objectReferenceEdgeCount: Int
+    let rootObjectCount: Int
+    let unparsedBlobCount: Int
+    let unparsedBlobPaths: [String]
+  }
+
+  struct DocumentContent: Encodable {
+    let sheetCount: Int
+    let tableCount: Int
+    let resolvedCellCount: Int
+    let sheetNames: [String]
+    let tableNames: [String]
+  }
+
+  struct StructuredDiagnostic: Encodable {
+    let code: String
+    let severity: String
+    let message: String
+    let objectPath: String?
+    let suggestion: String?
+    let context: [String: String]
+    let rendered: String
+  }
+
+  let sourcePath: String
+  let documentVersion: String?
+  let readPath: String
+  let fallbackReason: String?
+  let redacted: Bool
+  let container: Container
+  let document: DocumentContent
+  let typeHistogram: [String: Int]
+  let diagnosticCount: Int
+  let diagnostics: [String]
+  let structuredDiagnosticCount: Int
+  let structuredDiagnostics: [StructuredDiagnostic]
+
+  init(dump: DocumentDump, sheets: [SwiftNumbersCore.Sheet], redact: Bool) {
+    self.sourcePath = redact ? "<redacted>" : dump.sourcePath
+    self.documentVersion = dump.documentVersion
+    self.readPath = dump.readPath.rawValue
+    self.fallbackReason = dump.fallbackReason
+    self.redacted = redact
+
+    let tableNames = sheets.flatMap { sheet in
+      sheet.tables.map { "\(sheet.name)/\($0.name)" }
+    }
+    let unparsedBlobPaths: [String]
+    if redact {
+      unparsedBlobPaths = dump.unparsedBlobPaths.map { _ in "<redacted>" }
+    } else {
+      unparsedBlobPaths = dump.unparsedBlobPaths
+    }
+
+    self.container = Container(
+      blobCount: dump.blobCount,
+      objectCount: dump.objectCount,
+      objectReferenceEdgeCount: dump.objectReferenceEdgeCount,
+      rootObjectCount: dump.rootObjectCount,
+      unparsedBlobCount: dump.unparsedBlobPaths.count,
+      unparsedBlobPaths: unparsedBlobPaths
+    )
+    self.document = DocumentContent(
+      sheetCount: sheets.count,
+      tableCount: tableNames.count,
+      resolvedCellCount: dump.resolvedCellCount,
+      sheetNames: sheets.map(\.name),
+      tableNames: tableNames
+    )
+    self.typeHistogram = Dictionary(
+      uniqueKeysWithValues: dump.typeHistogram.map { (String($0.key), $0.value) }
+    )
+    self.diagnosticCount = dump.diagnostics.count
+    self.diagnostics = dump.diagnostics
+    self.structuredDiagnostics = dump.structuredDiagnostics.map { diagnostic in
+      StructuredDiagnostic(
+        code: diagnostic.code,
+        severity: diagnostic.severity.rawValue,
+        message: diagnostic.message,
+        objectPath: redact ? Self.redactedPathString(diagnostic.objectPath) : diagnostic.objectPath,
+        suggestion: diagnostic.suggestion,
+        context: redact ? Self.redactedContext(diagnostic.context) : diagnostic.context,
+        rendered: diagnostic.rendered
+      )
+    }
+    self.structuredDiagnosticCount = self.structuredDiagnostics.count
+  }
+
+  private static func redactedPathString(_ value: String?) -> String? {
+    guard let value else {
+      return nil
+    }
+    if value.isEmpty {
+      return value
+    }
+    return "<redacted>"
+  }
+
+  private static func redactedContext(_ context: [String: String]) -> [String: String] {
+    var redacted = [String: String]()
+    redacted.reserveCapacity(context.count)
+    for (key, value) in context {
+      let normalizedKey = key.lowercased()
+      if normalizedKey.contains("path") || normalizedKey.contains("file") || normalizedKey.contains("url") {
+        redacted[key] = "<redacted>"
+      } else {
+        redacted[key] = value
+      }
+    }
+    return redacted
+  }
+}
+
 private struct ListSheetsJSONPayload: Encodable {
   struct Sheet: Encodable {
     let index: Int
@@ -1241,6 +1505,7 @@ private struct ReadRangeJSONPayload: Encodable {
     let richText: RichTextPayload?
     let style: StylePayload?
     let formula: FormulaPayload?
+    let output: String?
     let isMerged: Bool
     let mergeRole: String
     let mergeRange: String?
@@ -1260,6 +1525,7 @@ private struct ReadRangeJSONPayload: Encodable {
   let tableColumnCount: Int
   let requestedRange: String
   let resolvedRange: String
+  let parityMode: String?
   let rowCount: Int
   let columnCount: Int
   let cells: [[Cell]]
@@ -1270,7 +1536,8 @@ private struct ReadRangeJSONPayload: Encodable {
     table: SwiftNumbersCore.Table,
     requestedRange: String,
     resolvedRange: CLIParsedRange,
-    rows: [[SwiftNumbersCore.ReadCell]]
+    rows: [[SwiftNumbersCore.ReadCell]],
+    parityMode: ParityOutputMode?
   ) {
     self.sourcePath = sourcePath
     self.sheetID = sheet.id
@@ -1281,6 +1548,7 @@ private struct ReadRangeJSONPayload: Encodable {
     self.tableColumnCount = table.columnCount
     self.requestedRange = requestedRange
     self.resolvedRange = resolvedRange.a1
+    self.parityMode = parityMode?.rawValue
     self.rowCount = rows.count
     self.columnCount = rows.first?.count ?? 0
     self.cells = rows.enumerated().map { rowOffset, row in
@@ -1301,6 +1569,7 @@ private struct ReadRangeJSONPayload: Encodable {
           richText: richTextPayload(from: readCell.richText),
           style: stylePayload(from: readCell.style),
           formula: formulaPayload(from: formula, readCell: readCell),
+          output: parityOutputValue(readCell: readCell, formula: formula, mode: parityMode),
           isMerged: readCell.isMerged,
           mergeRole: mergeRoleString(readCell.mergeRole),
           mergeRange: readCell.mergeRange.map(mergeRangeA1),
@@ -1327,6 +1596,7 @@ private struct ReadColumnJSONPayload: Encodable {
     let richText: RichTextPayload?
     let style: StylePayload?
     let formula: FormulaPayload?
+    let output: String?
     let isMerged: Bool
     let mergeRole: String
     let mergeRange: String?
@@ -1349,6 +1619,7 @@ private struct ReadColumnJSONPayload: Encodable {
   let requestedHeader: String?
   let headerRow: Int?
   let includeHeader: Bool?
+  let parityMode: String?
   let columnIndex: Int
   let fromRow: Int
   let cellCount: Int
@@ -1365,7 +1636,8 @@ private struct ReadColumnJSONPayload: Encodable {
     includeHeader: Bool?,
     columnIndex: Int,
     fromRow: Int,
-    values: [CellValue]
+    values: [CellValue],
+    parityMode: ParityOutputMode?
   ) {
     self.sourcePath = sourcePath
     self.sheetID = sheet.id
@@ -1379,6 +1651,7 @@ private struct ReadColumnJSONPayload: Encodable {
     self.requestedHeader = requestedHeader
     self.headerRow = headerRow
     self.includeHeader = includeHeader
+    self.parityMode = parityMode?.rawValue
     self.columnIndex = columnIndex
     self.fromRow = fromRow
     self.cellCount = values.count
@@ -1400,6 +1673,7 @@ private struct ReadColumnJSONPayload: Encodable {
         richText: richTextPayload(from: readCell.richText),
         style: stylePayload(from: readCell.style),
         formula: formulaPayload(from: formula, readCell: readCell),
+        output: parityOutputValue(readCell: readCell, formula: formula, mode: parityMode),
         isMerged: readCell.isMerged,
         mergeRole: mergeRoleString(readCell.mergeRole),
         mergeRange: readCell.mergeRange.map(mergeRangeA1),
@@ -1425,6 +1699,7 @@ private struct ReadTableJSONPayload: Encodable {
     let richText: RichTextPayload?
     let style: StylePayload?
     let formula: FormulaPayload?
+    let output: String?
     let isMerged: Bool
     let mergeRole: String
     let mergeRange: String?
@@ -1446,6 +1721,7 @@ private struct ReadTableJSONPayload: Encodable {
   let captionVisible: Bool?
   let captionText: String?
   let captionTextSupported: Bool
+  let parityMode: String?
   let fromRow: Int
   let fromColumn: Int
   let maxRows: Int
@@ -1467,7 +1743,8 @@ private struct ReadTableJSONPayload: Encodable {
     resolvedRowCount: Int,
     resolvedColumnCount: Int,
     truncatedRows: Bool,
-    truncatedColumns: Bool
+    truncatedColumns: Bool,
+    parityMode: ParityOutputMode?
   ) {
     self.sourcePath = sourcePath
     self.sheetID = sheet.id
@@ -1480,6 +1757,7 @@ private struct ReadTableJSONPayload: Encodable {
     self.captionVisible = table.metadata.captionVisible
     self.captionText = table.metadata.captionText
     self.captionTextSupported = table.metadata.captionTextSupported
+    self.parityMode = parityMode?.rawValue
     self.fromRow = fromRow
     self.fromColumn = fromColumn
     self.maxRows = maxRows
@@ -1507,6 +1785,7 @@ private struct ReadTableJSONPayload: Encodable {
           richText: richTextPayload(from: readCell.richText),
           style: stylePayload(from: readCell.style),
           formula: formulaPayload(from: formula, readCell: readCell),
+          output: parityOutputValue(readCell: readCell, formula: formula, mode: parityMode),
           isMerged: readCell.isMerged,
           mergeRole: mergeRoleString(readCell.mergeRole),
           mergeRange: readCell.mergeRange.map(mergeRangeA1),
@@ -1518,6 +1797,26 @@ private struct ReadTableJSONPayload: Encodable {
         )
       }
     }
+  }
+}
+
+private func parityOutputValue(
+  readCell: ReadCell,
+  formula: FormulaRead?,
+  mode: ParityOutputMode?
+) -> String? {
+  guard let mode else {
+    return nil
+  }
+
+  switch mode {
+  case .formulas:
+    if let raw = formula?.rawFormula, !raw.isEmpty {
+      return raw
+    }
+    return csvCellString(from: readCell.readValue)
+  case .formatting:
+    return readCell.formatted
   }
 }
 
@@ -2253,13 +2552,16 @@ private func renderReadRangeText(_ payload: ReadRangeJSONPayload) -> String {
   lines.append(
     "Range: requested=\(payload.requestedRange) resolved=\(payload.resolvedRange) rows=\(payload.rowCount) cols=\(payload.columnCount)"
   )
+  if let parityMode = payload.parityMode {
+    lines.append("Output mode: \(parityMode)")
+  }
   lines.append("Cells:")
   if payload.cells.isEmpty {
     lines.append("  <none>")
   } else {
     for row in payload.cells {
       let parts = row.map { cell in
-        "\(cell.cellReference)=\(cell.formatted)"
+        "\(cell.cellReference)=\(cell.output ?? cell.formatted)"
       }
       lines.append("  " + parts.joined(separator: " | "))
     }
@@ -2285,13 +2587,16 @@ private func renderReadColumnText(_ payload: ReadColumnJSONPayload) -> String {
   if let includeHeader = payload.includeHeader {
     selectorLine += " includeHeader=\(includeHeader)"
   }
+  if let parityMode = payload.parityMode {
+    selectorLine += " outputMode=\(parityMode)"
+  }
   lines.append(selectorLine)
   lines.append("Cells:")
   if payload.cells.isEmpty {
     lines.append("  <none>")
   } else {
     for cell in payload.cells {
-      lines.append("  \(cell.cellReference)=\(cell.formatted)")
+      lines.append("  \(cell.cellReference)=\(cell.output ?? cell.formatted)")
     }
   }
   return lines.joined(separator: "\n")
@@ -2304,6 +2609,7 @@ private struct ReadColumnJSONLinePayload: Encodable {
   let tableID: String
   let tableName: String
   let selectionMode: String
+  let parityMode: String?
   let columnIndex: Int
   let fromRow: Int
   let cell: ReadColumnJSONPayload.Cell
@@ -2323,6 +2629,7 @@ private func renderReadColumnJSONLines(_ payload: ReadColumnJSONPayload) throws 
           tableID: payload.tableID,
           tableName: payload.tableName,
           selectionMode: payload.selectionMode,
+          parityMode: payload.parityMode,
           columnIndex: payload.columnIndex,
           fromRow: payload.fromRow,
           cell: cell
@@ -2344,13 +2651,16 @@ private func renderReadTableText(_ payload: ReadTableJSONPayload) -> String {
   lines.append(
     "Window: fromRow=\(payload.fromRow) fromColumn=\(payload.fromColumn) maxRows=\(payload.maxRows) maxColumns=\(payload.maxColumns) resolvedRows=\(payload.resolvedRowCount) resolvedColumns=\(payload.resolvedColumnCount) truncatedRows=\(payload.truncatedRows) truncatedColumns=\(payload.truncatedColumns)"
   )
+  if let parityMode = payload.parityMode {
+    lines.append("Output mode: \(parityMode)")
+  }
   lines.append("Cells:")
   if payload.cells.isEmpty {
     lines.append("  <none>")
   } else {
     for row in payload.cells {
       let parts = row.map { cell in
-        "\(cell.cellReference)=\(cell.formatted)"
+        "\(cell.cellReference)=\(cell.output ?? cell.formatted)"
       }
       lines.append("  " + parts.joined(separator: " | "))
     }
@@ -2368,6 +2678,7 @@ private struct ReadTableJSONLinePayload: Encodable {
   let captionVisible: Bool?
   let captionText: String?
   let captionTextSupported: Bool
+  let parityMode: String?
   let fromRow: Int
   let fromColumn: Int
   let row: Int
@@ -2393,6 +2704,7 @@ private func renderReadTableJSONLines(_ payload: ReadTableJSONPayload) throws ->
           captionVisible: payload.captionVisible,
           captionText: payload.captionText,
           captionTextSupported: payload.captionTextSupported,
+          parityMode: payload.parityMode,
           fromRow: payload.fromRow,
           fromColumn: payload.fromColumn,
           row: payload.fromRow + rowOffset,
@@ -2413,6 +2725,7 @@ private struct ReadRangeJSONLinePayload: Encodable {
   let sheetName: String
   let tableID: String
   let tableName: String
+  let parityMode: String?
   let requestedRange: String
   let resolvedRange: String
   let row: Int
@@ -2435,6 +2748,7 @@ private func renderReadRangeJSONLines(_ payload: ReadRangeJSONPayload) throws ->
           sheetName: payload.sheetName,
           tableID: payload.tableID,
           tableName: payload.tableName,
+          parityMode: payload.parityMode,
           requestedRange: payload.requestedRange,
           resolvedRange: payload.resolvedRange,
           row: row,
@@ -2652,9 +2966,369 @@ private func normalizeImportRows(
   }
 }
 
+private struct ImportDateParsingOptions {
+  let enabled: Bool
+  let allowedColumns: Set<Int>?
+  let dayFirst: Bool
+  let customFormats: [String]
+
+  func shouldParse(columnIndex: Int) -> Bool {
+    guard enabled else {
+      return false
+    }
+    if let allowedColumns {
+      return allowedColumns.contains(columnIndex)
+    }
+    return true
+  }
+}
+
+private enum ImportColumnSelector {
+  case index(Int)
+  case name(String)
+}
+
+private struct ImportRenameMapping {
+  let source: ImportColumnSelector
+  let destination: String
+}
+
+private enum ImportTransformFunction: String {
+  case merge
+  case pos
+  case neg
+  case upper
+  case lower
+  case trim
+}
+
+private struct ImportTransformRule {
+  let destination: String
+  let function: ImportTransformFunction
+  let sources: [ImportColumnSelector]
+}
+
+private func parseImportColumnSelector(
+  _ raw: String,
+  optionName: String
+) throws -> ImportColumnSelector {
+  let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+  guard !trimmed.isEmpty else {
+    throw ValidationError("\(optionName) selector cannot be empty.")
+  }
+
+  if let index = Int(trimmed) {
+    guard index >= 0 else {
+      throw ValidationError("\(optionName) column index must be >= 0 (received \(index)).")
+    }
+    return .index(index)
+  }
+
+  return .name(trimmed)
+}
+
+private func parseImportRenameMapping(_ raw: String) throws -> ImportRenameMapping {
+  let parts = raw.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+  guard parts.count == 2 else {
+    throw ValidationError(
+      "Invalid --rename mapping '\(raw)'. Expected OLD:NEW (OLD=name or zero-based index)."
+    )
+  }
+
+  let source = try parseImportColumnSelector(String(parts[0]), optionName: "--rename")
+  let destination = String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+  guard !destination.isEmpty else {
+    throw ValidationError("Invalid --rename mapping '\(raw)'. Destination name cannot be empty.")
+  }
+
+  return ImportRenameMapping(source: source, destination: destination)
+}
+
+private func parseImportTransformRule(_ raw: String) throws -> ImportTransformRule {
+  let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+  let assignmentParts = trimmed.split(
+    separator: "=",
+    maxSplits: 1,
+    omittingEmptySubsequences: false
+  )
+  guard assignmentParts.count == 2 else {
+    throw ValidationError(
+      "Invalid --transform rule '\(raw)'. Expected DEST=FUNC:SRC1;SRC2."
+    )
+  }
+
+  let destination = String(assignmentParts[0]).trimmingCharacters(in: .whitespacesAndNewlines)
+  guard !destination.isEmpty else {
+    throw ValidationError("Invalid --transform rule '\(raw)'. Destination cannot be empty.")
+  }
+
+  let functionSourceParts = String(assignmentParts[1]).split(
+    separator: ":",
+    maxSplits: 1,
+    omittingEmptySubsequences: false
+  )
+  guard functionSourceParts.count == 2 else {
+    throw ValidationError(
+      "Invalid --transform rule '\(raw)'. Expected DEST=FUNC:SRC1;SRC2."
+    )
+  }
+
+  let functionName = String(functionSourceParts[0]).trimmingCharacters(in: .whitespacesAndNewlines)
+    .lowercased()
+  guard let function = ImportTransformFunction(rawValue: functionName) else {
+    throw ValidationError(
+      "Invalid --transform function '\(functionName)'. Supported: merge, pos, neg, upper, lower, trim."
+    )
+  }
+
+  let sourceTokens = String(functionSourceParts[1]).split(
+    separator: ";",
+    omittingEmptySubsequences: false
+  ).map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+
+  guard !sourceTokens.isEmpty, sourceTokens.allSatisfy({ !$0.isEmpty }) else {
+    throw ValidationError("Invalid --transform rule '\(raw)'. Source list cannot be empty.")
+  }
+
+  let selectors = try sourceTokens.map { token in
+    try parseImportColumnSelector(token, optionName: "--transform")
+  }
+
+  return ImportTransformRule(destination: destination, function: function, sources: selectors)
+}
+
+private func resolveImportColumnIndex(
+  in header: [String],
+  selector: ImportColumnSelector,
+  stage: String
+) throws -> Int {
+  switch selector {
+  case .index(let index):
+    guard index >= 0, index < header.count else {
+      throw ValidationError(
+        "\(stage) stage column index \(index) is out of bounds for header width \(header.count)."
+      )
+    }
+    return index
+
+  case .name(let name):
+    let matches = header.enumerated().compactMap { offset, value -> Int? in
+      value == name ? offset : nil
+    }
+    guard !matches.isEmpty else {
+      throw ValidationError(
+        "\(stage) stage column '\(name)' does not exist in CSV header."
+      )
+    }
+    guard matches.count == 1 else {
+      throw ValidationError(
+        "\(stage) stage column '\(name)' is ambiguous (\(matches.count) matches). Rename duplicates first."
+      )
+    }
+    return matches[0]
+  }
+}
+
+private func resolveImportDateParsingOptions(
+  parseDates: Bool,
+  dateColumns: [String],
+  dayFirst: Bool,
+  customFormats: [String],
+  headerRow: [String]
+) throws -> ImportDateParsingOptions {
+  if !parseDates {
+    if !dateColumns.isEmpty || !customFormats.isEmpty || dayFirst {
+      throw ValidationError("--date-column, --date-format, and --day-first require --parse-dates.")
+    }
+    return ImportDateParsingOptions(
+      enabled: false,
+      allowedColumns: nil,
+      dayFirst: false,
+      customFormats: []
+    )
+  }
+
+  let normalizedFormats = customFormats.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+  if normalizedFormats.contains(where: \.isEmpty) {
+    throw ValidationError("--date-format values cannot be empty.")
+  }
+
+  let allowedColumns: Set<Int>?
+  if dateColumns.isEmpty {
+    allowedColumns = nil
+  } else {
+    var indexes = Set<Int>()
+    for rawSelector in dateColumns {
+      let selector = try parseImportColumnSelector(rawSelector, optionName: "--date-column")
+      let index = try resolveImportColumnIndex(in: headerRow, selector: selector, stage: "date-parse")
+      indexes.insert(index)
+    }
+    allowedColumns = indexes
+  }
+
+  return ImportDateParsingOptions(
+    enabled: true,
+    allowedColumns: allowedColumns,
+    dayFirst: dayFirst,
+    customFormats: normalizedFormats
+  )
+}
+
+private func applyImportPipeline(
+  to rows: [[String]],
+  renameMappings: [String],
+  deleteSelectors: [String],
+  transformRules: [String]
+) throws -> [[String]] {
+  guard !rows.isEmpty else {
+    return []
+  }
+
+  var headerRow = rows[0]
+  var dataRows = Array(rows.dropFirst())
+  let maxColumnCount = max(headerRow.count, dataRows.map(\.count).max() ?? 0)
+
+  if headerRow.count < maxColumnCount {
+    headerRow.append(contentsOf: Array(repeating: "", count: maxColumnCount - headerRow.count))
+  }
+  if maxColumnCount > 0 {
+    for index in dataRows.indices where dataRows[index].count < maxColumnCount {
+      dataRows[index].append(
+        contentsOf: Array(repeating: "", count: maxColumnCount - dataRows[index].count)
+      )
+    }
+  }
+
+  for rawMapping in renameMappings {
+    let mapping = try parseImportRenameMapping(rawMapping)
+    let index = try resolveImportColumnIndex(in: headerRow, selector: mapping.source, stage: "rename")
+    headerRow[index] = mapping.destination
+  }
+
+  if !deleteSelectors.isEmpty {
+    var indexesToDelete = Set<Int>()
+    for rawSelector in deleteSelectors {
+      let selector = try parseImportColumnSelector(rawSelector, optionName: "--delete-column")
+      let index = try resolveImportColumnIndex(in: headerRow, selector: selector, stage: "delete")
+      indexesToDelete.insert(index)
+    }
+
+    for index in indexesToDelete.sorted(by: >) {
+      headerRow.remove(at: index)
+      for rowIndex in dataRows.indices where index < dataRows[rowIndex].count {
+        dataRows[rowIndex].remove(at: index)
+      }
+    }
+  }
+
+  for rawRule in transformRules {
+    let rule = try parseImportTransformRule(rawRule)
+    let sourceIndexes = try rule.sources.map { selector in
+      try resolveImportColumnIndex(in: headerRow, selector: selector, stage: "transform")
+    }
+
+    if [.upper, .lower, .trim].contains(rule.function), sourceIndexes.count != 1 {
+      throw ValidationError(
+        "Transform '\(rawRule)' requires exactly one source column for \(rule.function.rawValue)."
+      )
+    }
+
+    let destinationIndex = try resolveImportTransformDestinationIndex(
+      destination: rule.destination,
+      headerRow: &headerRow,
+      dataRows: &dataRows
+    )
+
+    for rowIndex in dataRows.indices {
+      let output = applyImportTransform(
+        function: rule.function,
+        sourceIndexes: sourceIndexes,
+        row: dataRows[rowIndex]
+      )
+      dataRows[rowIndex][destinationIndex] = output
+    }
+  }
+
+  return [headerRow] + dataRows
+}
+
+private func resolveImportTransformDestinationIndex(
+  destination: String,
+  headerRow: inout [String],
+  dataRows: inout [[String]]
+) throws -> Int {
+  let matches = headerRow.enumerated().compactMap { offset, value -> Int? in
+    value == destination ? offset : nil
+  }
+
+  if matches.count > 1 {
+    throw ValidationError(
+      "Transform destination '\(destination)' is ambiguous (\(matches.count) header matches). Rename columns first."
+    )
+  }
+
+  if let existing = matches.first {
+    return existing
+  }
+
+  headerRow.append(destination)
+  let newIndex = headerRow.count - 1
+  for rowIndex in dataRows.indices {
+    if dataRows[rowIndex].count < headerRow.count {
+      dataRows[rowIndex].append("")
+    } else {
+      dataRows[rowIndex][newIndex] = ""
+    }
+  }
+  return newIndex
+}
+
+private func applyImportTransform(
+  function: ImportTransformFunction,
+  sourceIndexes: [Int],
+  row: [String]
+) -> String {
+  let values = sourceIndexes.map { index in
+    index < row.count ? row[index] : ""
+  }
+
+  switch function {
+  case .merge:
+    return values.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ?? ""
+
+  case .pos:
+    for value in values {
+      let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+      if let number = parseCSVNumber(trimmed), number > 0 {
+        return csvNumberString(number)
+      }
+    }
+    return ""
+
+  case .neg:
+    for value in values {
+      let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+      if let number = parseCSVNumber(trimmed), number < 0 {
+        return csvNumberString(abs(number))
+      }
+    }
+    return ""
+
+  case .upper:
+    return values[0].uppercased()
+
+  case .lower:
+    return values[0].lowercased()
+
+  case .trim:
+    return values[0].trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+}
+
 private func importedCellValue(
   raw: String,
-  parseDates: Bool,
+  dateParsing: ImportDateParsingOptions,
+  columnIndex: Int,
   forceString: Bool
 ) -> CellValue {
   if forceString {
@@ -2666,7 +3340,9 @@ private func importedCellValue(
     return .empty
   }
 
-  if parseDates, let date = parseCSVDate(trimmed) {
+  if dateParsing.shouldParse(columnIndex: columnIndex),
+    let date = parseCSVDate(trimmed, options: dateParsing)
+  {
     return .date(date)
   }
 
@@ -2685,7 +3361,10 @@ private func importedCellValue(
   return .string(raw)
 }
 
-private func parseCSVDate(_ raw: String) -> Date? {
+private func parseCSVDate(
+  _ raw: String,
+  options: ImportDateParsingOptions
+) -> Date? {
   let iso8601 = ISO8601DateFormatter()
   iso8601.timeZone = TimeZone(secondsFromGMT: 0)
 
@@ -2700,11 +3379,34 @@ private func parseCSVDate(_ raw: String) -> Date? {
     return value
   }
 
+  if !options.customFormats.isEmpty {
+    let customFormatter = DateFormatter()
+    customFormatter.locale = Locale(identifier: "en_US_POSIX")
+    customFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+    for format in options.customFormats {
+      customFormatter.dateFormat = format
+      if let value = customFormatter.date(from: raw) {
+        return value
+      }
+    }
+  }
+
   let formatter = DateFormatter()
   formatter.locale = Locale(identifier: "en_US_POSIX")
   formatter.timeZone = TimeZone(secondsFromGMT: 0)
-  formatter.dateFormat = "yyyy-MM-dd"
-  return formatter.date(from: raw)
+  let defaultFormats =
+    options.dayFirst
+    ? ["dd/MM/yyyy", "dd-MM-yyyy", "dd/MM/yyyy HH:mm:ss", "dd/MM/yyyy HH:mm", "yyyy-MM-dd"]
+    : ["MM/dd/yyyy", "MM-dd-yyyy", "MM/dd/yyyy HH:mm:ss", "MM/dd/yyyy HH:mm", "yyyy-MM-dd"]
+
+  for format in defaultFormats {
+    formatter.dateFormat = format
+    if let value = formatter.date(from: raw) {
+      return value
+    }
+  }
+
+  return nil
 }
 
 private func parseCSVNumber(_ raw: String) -> Double? {
@@ -2847,9 +3549,59 @@ private func parseCLIRangeReference(_ raw: String) throws -> CLIParsedRange {
   )
 }
 
-private func renderJSON<T: Encodable>(_ payload: T) throws -> String {
+private func renderInspectText(payload: InspectJSONPayload, compact: Bool) -> String {
+  if compact {
+    return [
+      "readPath=\(payload.readPath)",
+      "version=\(payload.documentVersion ?? "-")",
+      "sheets=\(payload.document.sheetCount)",
+      "tables=\(payload.document.tableCount)",
+      "cells=\(payload.document.resolvedCellCount)",
+      "blobs=\(payload.container.blobCount)",
+      "objects=\(payload.container.objectCount)",
+      "edges=\(payload.container.objectReferenceEdgeCount)",
+      "roots=\(payload.container.rootObjectCount)",
+      "diagnostics=\(payload.diagnosticCount)",
+      "structuredDiagnostics=\(payload.structuredDiagnosticCount)",
+      "redacted=\(payload.redacted)",
+    ].joined(separator: " ")
+  }
+
+  var lines: [String] = []
+  lines.append("Source: \(payload.sourcePath)")
+  lines.append("Read path: \(payload.readPath)")
+  lines.append("Document version: \(payload.documentVersion ?? "<unknown>")")
+  if let fallbackReason = payload.fallbackReason {
+    lines.append("Fallback reason: \(fallbackReason)")
+  }
+  lines.append("Container diagnostics:")
+  lines.append("  blobs: \(payload.container.blobCount)")
+  lines.append("  objects: \(payload.container.objectCount)")
+  lines.append("  object reference edges: \(payload.container.objectReferenceEdgeCount)")
+  lines.append("  root objects: \(payload.container.rootObjectCount)")
+  lines.append("  unparsed blobs: \(payload.container.unparsedBlobCount)")
+  if payload.container.unparsedBlobPaths.isEmpty {
+    lines.append("  unparsed blob paths: <none>")
+  } else {
+    lines.append("  unparsed blob paths:")
+    for path in payload.container.unparsedBlobPaths {
+      lines.append("    - \(path)")
+    }
+  }
+  lines.append("Document summary:")
+  lines.append("  sheets: \(payload.document.sheetCount)")
+  lines.append("  tables: \(payload.document.tableCount)")
+  lines.append("  resolved cells: \(payload.document.resolvedCellCount)")
+  lines.append("Diagnostics: \(payload.diagnosticCount)")
+  lines.append("Structured diagnostics: \(payload.structuredDiagnosticCount)")
+  lines.append("Redacted output: \(payload.redacted)")
+
+  return lines.joined(separator: "\n")
+}
+
+private func renderJSON<T: Encodable>(_ payload: T, pretty: Bool = true) throws -> String {
   let encoder = JSONEncoder()
-  encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+  encoder.outputFormatting = pretty ? [.prettyPrinted, .sortedKeys] : [.sortedKeys]
   let data = try encoder.encode(payload)
   guard let string = String(data: data, encoding: .utf8) else {
     throw ValidationError("Failed to render JSON output.")

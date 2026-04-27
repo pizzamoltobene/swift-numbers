@@ -38,7 +38,7 @@ Supported:
 - Real `.numbers` read path (with diagnostics and fallback safety path)
 - Read sheets/tables/cells/formulas/rich read model
 - Editable tabular mutations + save (`save(to:)`, `saveInPlace()`)
-- CLI: `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, `read-range`, `export-csv`, `import-csv`, `dump`, `--format text|json`, `--formulas`, `--cells`, `--formatting`
+- CLI: `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, `read-range`, `export-csv`, `import-csv`, `dump`, `inspect`, `--format text|json`, `--jsonl` (column/table/range), parity switches `--formulas`/`--formatting` (column/table/range), import pipeline stages (`--rename`, `--delete-column`, `--transform`), `dump --cells --formatting`, low-level inspection switches (`inspect --redact --compact`)
 
 Out of scope:
 - Full formula-engine parity (beyond deterministic formula literal persistence)
