@@ -85,6 +85,7 @@ try table.setStyle(
   at: "D4"
 )
 try table.setFormat(.currency(formatID: 202), at: "D4")
+try table.setBorder(true, side: .bottom, at: "D4")
 try table.mergeCells("D4:E4")
 try table.unmergeCells("D4:E4")
 try editable.save(to: outputURL)
@@ -116,6 +117,7 @@ Start here: [Docs Hub](docs/index.md)
 - Header metadata mutation API is now available in editable workflows (`setHeaderRowCount(_:)` / `setHeaderColumnCount(_:)`) with native save/reopen persistence.
 - Table geometry mutation/read API is now available (`setRowHeight(_:at:)` / `setColumnWidth(_:at:)`, plus read-side `rowHeight`, `columnWidth`, and `cellGeometry` helpers).
 - Writable merge/unmerge API is available in editable workflows (`mergeCells` / `unmergeCells`) with low-level native persistence; `unmergeCells` now requires an exact merged-range match.
+- Editable border mutation API is available (`setBorder(_:side:at:)`) with deterministic merged-range edge handling and save/reopen persistence via style overlay.
 - Table presentation metadata API is now available for editable workflows: table-name visibility, caption visibility, and caption text roundtrip where caption storage is present.
 - Grouped-table safety: structural mutations that are unsafe for grouped row headers fail fast with deterministic guidance.
 - Pivot-candidate observability: `dump` structured diagnostics now surface non-table drawables linked to table objects (`resolver.pivot.candidateDetected`) for safer troubleshooting.

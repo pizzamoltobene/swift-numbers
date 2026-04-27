@@ -97,6 +97,13 @@ public enum EditableCellFormat: Hashable, Sendable {
   case custom(formatID: Int32)
 }
 
+public enum EditableBorderSide: String, CaseIterable, Hashable, Sendable {
+  case top
+  case right
+  case bottom
+  case left
+}
+
 public struct CellReference: Hashable, Sendable, CustomStringConvertible {
   public let address: CellAddress
   public let a1: String
@@ -571,6 +578,30 @@ public final class EditableNumbersDocument {
       }
     }
     return nil
+  }
+
+  fileprivate func ensureStyleRegisteredForAssignment(
+    _ style: ReadCellStyle,
+    preferredNamePrefix: String = "Auto Style"
+  ) {
+    if styleIdentifier(for: style) != nil {
+      return
+    }
+
+    let styleID = allocateStyleID()
+    let baseName = normalizedStyleName("\(preferredNamePrefix) \(styleID)")
+    var candidateName = baseName
+    var duplicateOrdinal = 2
+    while styleIDsByName[candidateName] != nil {
+      candidateName = normalizedStyleName("\(baseName) \(duplicateOrdinal)")
+      duplicateOrdinal += 1
+    }
+
+    let definition = RegisteredDocumentStyle(id: styleID, name: candidateName, style: style)
+    registeredStylesByID[styleID] = definition
+    styleIDsByName[candidateName] = styleID
+    styleOrder.append(styleID)
+    markStyleRegistryDirty()
   }
 
   fileprivate func registeredCustomFormatValue(for customFormatID: String) -> Int32? {
@@ -1586,6 +1617,59 @@ public final class EditableTable {
     setStyle(style, at: parsed.address)
   }
 
+  public func setBorder(_ isVisible: Bool, side: EditableBorderSide, at address: CellAddress) {
+    guard address.row >= 0, address.column >= 0 else {
+      return
+    }
+
+    let targetAddresses = borderTargetAddresses(for: side, at: address)
+    guard !targetAddresses.isEmpty else {
+      return
+    }
+
+    var changedAddresses: [CellAddress] = []
+    changedAddresses.reserveCapacity(targetAddresses.count)
+    var structureChanged = false
+
+    for target in targetAddresses {
+      structureChanged = ensureCapacity(for: target) || structureChanged
+      let currentStyle = cellStyles[target]
+      let baselineStyle = currentStyle ?? ReadCellStyle()
+      let updatedStyle = Self.styleByUpdatingBorder(
+        baselineStyle,
+        side: side,
+        isVisible: isVisible
+      )
+      let nextStyle: ReadCellStyle? = Self.styleHasVisibleFields(updatedStyle) ? updatedStyle : nil
+      guard currentStyle != nextStyle else {
+        continue
+      }
+
+      if let nextStyle {
+        cellStyles[target] = nextStyle
+        ownerDocument.ensureStyleRegisteredForAssignment(
+          nextStyle,
+          preferredNamePrefix: "Auto Border Style"
+        )
+      } else {
+        cellStyles.removeValue(forKey: target)
+      }
+      changedAddresses.append(target)
+    }
+
+    guard !changedAddresses.isEmpty else {
+      return
+    }
+    dirtyCells.formUnion(changedAddresses)
+    markDirty(structureChanged: structureChanged)
+    ownerDocument.markStyleRegistryDirty()
+  }
+
+  public func setBorder(_ isVisible: Bool, side: EditableBorderSide, at reference: String) throws {
+    let parsed = try CellReference(reference)
+    setBorder(isVisible, side: side, at: parsed.address)
+  }
+
   public func applyStyle(id styleID: String, at address: CellAddress) throws {
     guard let style = ownerDocument.registeredStyleValue(for: styleID) else {
       throw EditableNumbersError.styleNotFound(styleID)
@@ -2092,6 +2176,70 @@ public final class EditableTable {
     )
   }
 
+  private static func styleByUpdatingBorder(
+    _ style: ReadCellStyle,
+    side: EditableBorderSide,
+    isVisible: Bool
+  ) -> ReadCellStyle {
+    ReadCellStyle(
+      horizontalAlignment: style.horizontalAlignment,
+      verticalAlignment: style.verticalAlignment,
+      backgroundColorHex: style.backgroundColorHex,
+      fontName: style.fontName,
+      fontSize: style.fontSize,
+      isBold: style.isBold,
+      isItalic: style.isItalic,
+      textColorHex: style.textColorHex,
+      hasTopBorder: side == .top ? isVisible : style.hasTopBorder,
+      hasRightBorder: side == .right ? isVisible : style.hasRightBorder,
+      hasBottomBorder: side == .bottom ? isVisible : style.hasBottomBorder,
+      hasLeftBorder: side == .left ? isVisible : style.hasLeftBorder,
+      numberFormat: style.numberFormat
+    )
+  }
+
+  private func borderTargetAddresses(for side: EditableBorderSide, at address: CellAddress)
+    -> [CellAddress]
+  {
+    guard let mergeRange = mergeRange(containing: address) else {
+      return [address]
+    }
+
+    var addresses: [CellAddress] = []
+    switch side {
+    case .top:
+      addresses.reserveCapacity(mergeRange.endColumn - mergeRange.startColumn + 1)
+      for column in mergeRange.startColumn...mergeRange.endColumn {
+        addresses.append(CellAddress(row: mergeRange.startRow, column: column))
+      }
+    case .right:
+      addresses.reserveCapacity(mergeRange.endRow - mergeRange.startRow + 1)
+      for row in mergeRange.startRow...mergeRange.endRow {
+        addresses.append(CellAddress(row: row, column: mergeRange.endColumn))
+      }
+    case .bottom:
+      addresses.reserveCapacity(mergeRange.endColumn - mergeRange.startColumn + 1)
+      for column in mergeRange.startColumn...mergeRange.endColumn {
+        addresses.append(CellAddress(row: mergeRange.endRow, column: column))
+      }
+    case .left:
+      addresses.reserveCapacity(mergeRange.endRow - mergeRange.startRow + 1)
+      for row in mergeRange.startRow...mergeRange.endRow {
+        addresses.append(CellAddress(row: row, column: mergeRange.startColumn))
+      }
+    }
+    return addresses
+  }
+
+  private func mergeRange(containing address: CellAddress) -> MergeRange? {
+    mergeRanges.first { range in
+      range.startRow <= address.row
+        && address.row <= range.endRow
+        && range.startColumn <= address.column
+        && address.column <= range.endColumn
+    }
+  }
+
   private static func styleHasVisibleFields(_ style: ReadCellStyle) -> Bool {
     style.horizontalAlignment != nil
       || style.verticalAlignment != nil
@@ -2197,6 +2345,10 @@ public final class EditableCell {
   public var format: EditableCellFormat? {
     get { table.format(for: address) }
     set { table.setFormat(newValue, at: address) }
+  }
+
+  public func setBorder(_ isVisible: Bool, side: EditableBorderSide) {
+    table.setBorder(isVisible, side: side, at: address)
   }
 }
 

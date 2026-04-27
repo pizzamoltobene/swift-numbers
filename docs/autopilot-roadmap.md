@@ -232,7 +232,7 @@ Code baseline source for this milestone:
   - Definition of done: editable document API can create/list named custom formats and apply them to cells.
   - Validation: custom format tests cover datetime/number/text variants and persistence.
 
-- [TODO] `SN-R77` Add border mutation API for editable cells.
+- [DONE] `SN-R77` Add border mutation API for editable cells. (2026-04-27)
   - Definition of done: editable API can set cell borders by side with deterministic conflict handling for merged ranges.
   - Validation: border roundtrip tests verify side-specific persistence and merged-edge behavior.
 

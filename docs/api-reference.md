@@ -596,6 +596,8 @@ public final class EditableTable {
   public func setValue(_ value: CellValue, at reference: String) throws
   public func setStyle(_ style: ReadCellStyle?, at address: CellAddress)
   public func setStyle(_ style: ReadCellStyle?, at reference: String) throws
+  public func setBorder(_ isVisible: Bool, side: EditableBorderSide, at address: CellAddress)
+  public func setBorder(_ isVisible: Bool, side: EditableBorderSide, at reference: String) throws
   public func applyStyle(id styleID: String, at address: CellAddress) throws
   public func applyStyle(id styleID: String, at reference: String) throws
   public func applyCustomFormat(id customFormatID: String, at address: CellAddress) throws
@@ -627,6 +629,7 @@ public final class EditableCell {
   public var value: CellValue? { get set }
   public var style: ReadCellStyle? { get set }
   public var format: EditableCellFormat? { get set }
+  public func setBorder(_ isVisible: Bool, side: EditableBorderSide)
 }
 ```
 
@@ -641,6 +644,17 @@ public enum EditableCellFormat: Hashable, Sendable {
 }
 ```
 
+### `EditableBorderSide`
+
+```swift
+public enum EditableBorderSide: String, CaseIterable, Hashable, Sendable {
+  case top
+  case right
+  case bottom
+  case left
+}
+```
+
 ## Behavior Notes
 
 - `CellAddress` is zero-based.
@@ -649,6 +663,9 @@ public enum EditableCellFormat: Hashable, Sendable {
 - `setValue(..., at: String)` throws for invalid A1.
 - `setStyle(..., at: CellAddress)` does not throw and ignores negative row/column indices.
 - `setStyle(..., at: String)` throws for invalid A1.
+- `setBorder(..., at: CellAddress)` does not throw and ignores negative row/column indices.
+- `setBorder(..., at: String)` throws for invalid A1.
+- For merged ranges, `setBorder` deterministically applies the requested side to the full merged edge even when targeting a non-anchor/member cell.
 - `registerStyle(named:style:)` throws `duplicateStyleName` when a style with the same normalized name already exists.
 - `applyStyle(id:..., at: ...)` throws `styleNotFound` when the style identifier is unknown.
 - `registerCustomFormat(named:formatID:)` throws `duplicateCustomFormatName` when a custom format with the same normalized name already exists.

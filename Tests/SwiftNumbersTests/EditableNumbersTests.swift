@@ -1005,6 +1005,58 @@ final class EditableNumbersDocumentTests: XCTestCase {
     XCTAssertEqual(merge.endColumn, 1)
   }
 
+  func testSetBorderRoundTripPersistsSingleCellSideSpecificFlags() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    try table.setBorder(true, side: .top, at: "A1")
+    try table.setBorder(true, side: .right, at: "A1")
+    try table.setBorder(false, side: .top, at: "A1")
+
+    let output = temporaryArchiveOutputURL("editable-border-single-cell-roundtrip.numbers")
+    try editable.save(to: output)
+
+    let reopened = try EditableNumbersDocument.open(at: output)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    let style = reopenedTable.style(at: CellAddress(row: 0, column: 0))
+    XCTAssertEqual(style?.hasTopBorder ?? false, false)
+    XCTAssertEqual(style?.hasRightBorder ?? false, true)
+    XCTAssertEqual(style?.hasBottomBorder ?? false, false)
+    XCTAssertEqual(style?.hasLeftBorder ?? false, false)
+  }
+
+  func testSetBorderOnMergedMemberAppliesMergedEdgeDeterministically() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    try table.mergeCells("A1:B2")
+    try table.setBorder(true, side: .top, at: "B2")
+    try table.setBorder(true, side: .left, at: "B2")
+
+    let output = temporaryArchiveOutputURL("editable-border-merged-edge-roundtrip.numbers")
+    try editable.save(to: output)
+
+    let reopened = try EditableNumbersDocument.open(at: output)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+
+    let a1 = reopenedTable.style(at: CellAddress(row: 0, column: 0))
+    let b1 = reopenedTable.style(at: CellAddress(row: 0, column: 1))
+    let a2 = reopenedTable.style(at: CellAddress(row: 1, column: 0))
+    let b2 = reopenedTable.style(at: CellAddress(row: 1, column: 1))
+
+    XCTAssertEqual(a1?.hasTopBorder ?? false, true)
+    XCTAssertEqual(b1?.hasTopBorder ?? false, true)
+    XCTAssertEqual(a2?.hasTopBorder ?? false, false)
+    XCTAssertEqual(b2?.hasTopBorder ?? false, false)
+
+    XCTAssertEqual(a1?.hasLeftBorder ?? false, true)
+    XCTAssertEqual(a2?.hasLeftBorder ?? false, true)
+    XCTAssertEqual(b1?.hasLeftBorder ?? false, false)
+    XCTAssertEqual(b2?.hasLeftBorder ?? false, false)
+  }
+
   func testSaveOnSingleFileArchivePersistsTablePresentationMetadataForAddedTable() throws {
     let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
     let bootstrapEditable = try EditableNumbersDocument.open(at: fixture)
