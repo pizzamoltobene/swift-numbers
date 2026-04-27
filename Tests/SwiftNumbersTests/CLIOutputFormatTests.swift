@@ -21,6 +21,25 @@ final class CLIOutputFormatTests: XCTestCase {
     XCTAssertNotNil(structured)
   }
 
+  func testDumpJSONIncludesPresentationMetadataInTableSummaries() throws {
+    let fixture = try makeFixtureWithPresentationMetadata()
+    defer {
+      try? FileManager.default.removeItem(at: fixture)
+    }
+
+    let output = try runCLI(arguments: ["dump", fixture.path, "--format", "json"])
+    let decoded = try decodeJSONObject(output)
+    let sheets = try XCTUnwrap(decoded["sheets"] as? [[String: Any]])
+    let firstSheet = try XCTUnwrap(sheets.first)
+    let tables = try XCTUnwrap(firstSheet["tables"] as? [[String: Any]])
+    let firstTable = try XCTUnwrap(tables.first)
+
+    XCTAssertEqual(firstTable["tableNameVisible"] as? Bool, false)
+    XCTAssertEqual(firstTable["captionVisible"] as? Bool, false)
+    XCTAssertEqual(firstTable["captionTextSupported"] as? Bool, true)
+    XCTAssertEqual(firstTable["captionText"] as? String, "CLI metadata caption")
+  }
+
   func testDumpSupportsJSONFormatWithFormulasFlag() throws {
     let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
     let output = try runCLI(arguments: ["dump", fixture.path, "--format", "json", "--formulas"])
@@ -130,6 +149,30 @@ final class CLIOutputFormatTests: XCTestCase {
     XCTAssertEqual(tables.count, 2)
     XCTAssertEqual(Set(tables.compactMap { $0["sheetName"] as? String }), Set(["Sheet B"]))
     XCTAssertEqual(Set(tables.compactMap { $0["tableName"] as? String }), Set(["Table 1", "Table B2"]))
+  }
+
+  func testListTablesJSONIncludesPresentationMetadata() throws {
+    let fixture = try makeFixtureWithPresentationMetadata()
+    defer {
+      try? FileManager.default.removeItem(at: fixture)
+    }
+
+    let output = try runCLI(arguments: [
+      "list-tables",
+      fixture.path,
+      "--sheet",
+      "Sheet 1",
+      "--format",
+      "json",
+    ])
+    let decoded = try decodeJSONObject(output)
+    let tables = try XCTUnwrap(decoded["tables"] as? [[String: Any]])
+    let firstTable = try XCTUnwrap(tables.first)
+
+    XCTAssertEqual(firstTable["tableNameVisible"] as? Bool, false)
+    XCTAssertEqual(firstTable["captionVisible"] as? Bool, false)
+    XCTAssertEqual(firstTable["captionTextSupported"] as? Bool, true)
+    XCTAssertEqual(firstTable["captionText"] as? String, "CLI metadata caption")
   }
 
   func testListFormulasSupportsJSONFormat() throws {
@@ -612,6 +655,38 @@ final class CLIOutputFormatTests: XCTestCase {
     XCTAssertEqual(firstReadValue["string"] as? String, "Answer")
   }
 
+  func testReadTableJSONIncludesPresentationMetadata() throws {
+    let fixture = try makeFixtureWithPresentationMetadata()
+    defer {
+      try? FileManager.default.removeItem(at: fixture)
+    }
+
+    let output = try runCLI(arguments: [
+      "read-table",
+      fixture.path,
+      "--sheet",
+      "Sheet 1",
+      "--table",
+      "Table 1",
+      "--from-row",
+      "0",
+      "--from-column",
+      "0",
+      "--max-rows",
+      "1",
+      "--max-columns",
+      "1",
+      "--format",
+      "json",
+    ])
+    let decoded = try decodeJSONObject(output)
+
+    XCTAssertEqual(decoded["tableNameVisible"] as? Bool, false)
+    XCTAssertEqual(decoded["captionVisible"] as? Bool, false)
+    XCTAssertEqual(decoded["captionTextSupported"] as? Bool, true)
+    XCTAssertEqual(decoded["captionText"] as? String, "CLI metadata caption")
+  }
+
   func testReadTableSupportsIndexSelectionJSONFormat() throws {
     let fixture = StrictFixtureFactory.fixtureURL(named: "multi-sheet.numbers")
     let output = try runCLI(arguments: [
@@ -684,6 +759,43 @@ final class CLIOutputFormatTests: XCTestCase {
     XCTAssertEqual(firstCell["cellReference"] as? String, "A3")
     XCTAssertEqual(firstReadValue["kind"] as? String, "string")
     XCTAssertEqual(firstReadValue["string"] as? String, "Answer")
+  }
+
+  func testReadTableJSONLinesIncludePresentationMetadata() throws {
+    let fixture = try makeFixtureWithPresentationMetadata()
+    defer {
+      try? FileManager.default.removeItem(at: fixture)
+    }
+
+    let output = try runCLI(arguments: [
+      "read-table",
+      fixture.path,
+      "--sheet",
+      "Sheet 1",
+      "--table",
+      "Table 1",
+      "--from-row",
+      "0",
+      "--from-column",
+      "0",
+      "--max-rows",
+      "1",
+      "--max-columns",
+      "1",
+      "--jsonl",
+    ])
+
+    let lines = output
+      .split(separator: "\n")
+      .map(String.init)
+      .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    let firstData = try XCTUnwrap(lines.first?.data(using: .utf8))
+    let firstJSON = try JSONSerialization.jsonObject(with: firstData) as? [String: Any]
+
+    XCTAssertEqual(firstJSON?["tableNameVisible"] as? Bool, false)
+    XCTAssertEqual(firstJSON?["captionVisible"] as? Bool, false)
+    XCTAssertEqual(firstJSON?["captionTextSupported"] as? Bool, true)
+    XCTAssertEqual(firstJSON?["captionText"] as? String, "CLI metadata caption")
   }
 
   func testReadCellJSONSnapshotGolden() throws {
@@ -1164,6 +1276,17 @@ final class CLIOutputFormatTests: XCTestCase {
       .appendingPathComponent("swift-numbers-import-\(UUID().uuidString).csv")
     try content.write(to: destination, atomically: true, encoding: .utf8)
     return destination
+  }
+
+  private func makeFixtureWithPresentationMetadata() throws -> URL {
+    let fixture = try copyFixtureToTemporaryPath(named: "simple-table.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try editable.sheet(named: "Sheet 1").table(named: "Table 1")
+    try table.setTableNameVisible(false)
+    try table.setCaptionVisible(false)
+    try table.setCaptionText("CLI metadata caption")
+    try editable.saveInPlace()
+    return fixture
   }
 
   private func runCLI(arguments: [String]) throws -> String {

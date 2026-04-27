@@ -1,6 +1,6 @@
-# SwiftNumbers Capabilities (v0.3.1)
+# SwiftNumbers Capabilities
 
-This document is the full capability reference for `SwiftNumbers` `v0.3.1`.
+This document is the full capability reference for the current `SwiftNumbers` release line.
 
 ## 0) How to Read This Document
 
@@ -56,7 +56,7 @@ Core internal modules:
 
 ## 3) Capability Matrix
 
-| Area | Status in v0.3.1 | Notes |
+| Area | Status | Notes |
 |---|---|---|
 | Open package `.numbers` | Supported | Reads `Index.zip` package form |
 | Open single-file archive `.numbers` | Supported | Reads embedded `Index`/`Index.zip` |
@@ -162,7 +162,7 @@ This section gives operation-by-operation examples with:
 
 | Group | Operations |
 |---|---|
-| Read open/introspection | `open`, `sheets`, `firstSheet`, `sheet(named:)`, `sheet(at:)`, `tables`, `firstTable`, `table(named:)`, `table(at:)`, `metadata`, `cell(at:)`, `cell(row:column:)`, `cell("A1")`, `readCell(...)`, `readValue(...)`, `formula(...)`, `formulas()`, `formulaResult(...)`, `rows()/rows(valuesOnly:)/rows(lazy:)`, `readRows()/readRows(lazy:)`, `readValues()/readValues(lazy:)`, `column(named:)`, `values(in:)`, `decodeRows(as:)`, typed `value(_:at:)`, `formattedValue(...)`, `rowHeight(...)`, `columnWidth(...)`, `cellGeometry(...)`, `mergeRange(...)`, `isMergedCell(...)`, `dump`, `renderDump` |
+| Read open/introspection | `open`, `sheets`, `firstSheet`, `sheet(named:)`, `sheet(at:)`, `tables`, `firstTable`, `table(named:)`, `table(at:)`, `metadata`, `cell(at:)`, `cell(row:column:)`, `cell("A1")`, `readCell(...)`, `readValue(...)`, `formula(...)`, `formulas()`, `formulaResult(...)`, `rows()/rows(valuesOnly:)/rows(lazy:)`, `readRows()/readRows(lazy:)`, `readValues()/readValues(lazy:)`, `categorizedRows(by:)`, `categorizedValues(by:)`, `column(named:)`, `values(in:)`, `decodeRows(as:)`, typed `value(_:at:)`, `formattedValue(...)`, `rowHeight(...)`, `columnWidth(...)`, `cellGeometry(...)`, `mergeRange(...)`, `isMergedCell(...)`, `dump`, `renderDump` |
 | Editable open/navigation | `EditableNumbersDocument.open`, `sheet(named:)`, `table(named:)`, `cell(_:)`, `cell(at: CellReference)` |
 | Editable registries | `registerStyle`, `registeredStyles`, `registeredStyle(id:)`, `registerCustomFormat`, `registeredCustomFormats`, `registeredCustomFormat(id:)` |
 | Editable mutation | `setValue`, `setStyle`, `setBorder`, `applyStyle(id:at:)`, `setFormat`, `applyCustomFormat(id:at:)`, `setHeaderRowCount`, `setHeaderColumnCount`, `setRowHeight`, `setColumnWidth`, `appendRow`, `insertRow`, `appendColumn`, `deleteRow`, `deleteColumn`, `mergeCells`, `unmergeCells`, `addTable`, `addSheet` |
@@ -188,6 +188,7 @@ This section gives operation-by-operation examples with:
 | Read rich cell object | `readCell(...)` | Includes `kind`, `readValue`, `formulaResult`, `formatted`, merge role, IDs, plus `richText` runs and read-only `style` snapshot when available |
 | Read formulas | `formula(...)`, `formulas()`, `formulaResult(...)` | Exposes `formulaID`, raw formula, parsed tokens, AST summary, computed value/result formatting |
 | Read all table rows | `rows()`, `readRows()`, `readValues()` | `rows()` returns `CellValue`; read variants return richer read model values |
+| Read categorized/grouped rows | `categorizedRows(by:)`, `categorizedValues(by:)` | Deterministic group key-path output by selected category columns (read-only surface) |
 | Read a column by header | `column(named:)` | Header lookup on selected header row |
 | Read A1 range | `values(in:)`, `readCells(in:)` | Supports `A1:D5000` style extraction |
 | Typed reads | `value(_:at:)`, `optionalValue(_:at:)` | Supports `CellValue`, `ReadCell`, `ReadCellValue`, `FormulaResultRead`, and scalar types with explicit errors |
@@ -200,7 +201,7 @@ This section gives operation-by-operation examples with:
 | Apply style bundle | `setStyle(_:at:)` | Style writes currently persist via metadata-overlay path |
 | Set one border side | `setBorder(_:side:at:)` | Side-specific border mutation; merged ranges apply deterministically to the full merged edge |
 | Apply registered style by identifier | `applyStyle(id:at:)` | Uses `registerStyle`/`registeredStyles` definitions and persists via metadata overlay |
-| Apply number/date/currency/custom/base/fraction/percentage/scientific format | `setFormat(_:at:)` | Persists via style number-format hints (`ReadCellStyle.numberFormat`) |
+| Apply number/date/currency/custom/base/fraction/percentage/scientific/tickbox/rating/slider/stepper/popup format | `setFormat(_:at:)` | Persists via style number-format hints (`ReadCellStyle.numberFormat`) |
 | Apply registered custom format by identifier | `applyCustomFormat(id:at:)` | Uses `registerCustomFormat` definitions and applies `.custom(formatID:)` deterministically |
 | Add more records | `appendRow(_:)` | Grows row count |
 | Insert records at position | `insertRow(_:at:)` | Shifts rows below |
@@ -727,7 +728,7 @@ func applyCustomFormat(id customFormatID: String, at reference: String) throws
 
 **Purpose**
 
-Apply or clear number/date/currency/custom format hints, including extended numeric families (`base`, `fraction`, `percentage`, `scientific`), at coordinate or A1 reference.
+Apply or clear number/date/currency/custom format hints, including extended numeric families (`base`, `fraction`, `percentage`, `scientific`) and control families (`tickbox`, `rating`, `slider`, `stepper`, `popup`), at coordinate or A1 reference.
 
 **Signatures**
 
@@ -1164,7 +1165,11 @@ swiftnumbers list-tables <file.numbers> [--sheet "<Sheet Name>"] [--format text|
       "columnCount": 2,
       "populatedCellCount": 4,
       "formulaCount": 0,
-      "usedRange": "A1:B2"
+      "usedRange": "A1:B2",
+      "tableNameVisible": true,
+      "captionVisible": false,
+      "captionText": "",
+      "captionTextSupported": true
     }
   ]
 }
@@ -1291,6 +1296,10 @@ swiftnumbers read-table <file.numbers> (--sheet "<Sheet Name>" | --sheet-index <
 
 ```json
 {
+  "tableNameVisible": true,
+  "captionVisible": false,
+  "captionText": "",
+  "captionTextSupported": true,
   "fromRow": 1,
   "fromColumn": 0,
   "resolvedRowCount": 2,
@@ -1309,6 +1318,9 @@ swiftnumbers read-table <file.numbers> (--sheet "<Sheet Name>" | --sheet-index <
   ]
 }
 ```
+
+For `--jsonl`, each emitted row object includes the same table presentation metadata fields:
+`tableNameVisible`, `captionVisible`, `captionText`, and `captionTextSupported`.
 
 ---
 
@@ -1518,6 +1530,20 @@ Diagnostics: 0
   "readPath": "real",
   "sheetCount": 2,
   "tableCount": 3,
+  "sheets": [
+    {
+      "name": "Sheet 1",
+      "tables": [
+        {
+          "name": "Table 1",
+          "tableNameVisible": true,
+          "captionVisible": false,
+          "captionText": "",
+          "captionTextSupported": true
+        }
+      ]
+    }
+  ],
   "resolvedCellCount": 420,
   "diagnostics": []
 }
@@ -1883,7 +1909,7 @@ Release helper:
 - `./scripts/release_publish.sh --tag vX.Y.Z` executes tag push + GitHub release publish (requires clean working tree and authenticated `gh`)
 - `./scripts/release_autofix.sh` performs changelog promotion + commit + official release publish for each completed fix cycle
 
-## 10) Out of Scope for v0.3.1
+## 10) Out of Scope
 
 - advanced formula engine behavior (beyond deterministic formula literal persistence)
 - pivot-linked table mutation support (fail-fast safety guard currently enforced)

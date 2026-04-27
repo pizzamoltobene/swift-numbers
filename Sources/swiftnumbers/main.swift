@@ -208,7 +208,11 @@ struct ListTables: ParsableCommand {
             mergeRangeCount: entry.mergeRangeCount,
             populatedCellCount: entry.populatedCellCount,
             formulaCount: entry.formulaCount,
-            usedRange: entry.usedRange
+            usedRange: entry.usedRange,
+            tableNameVisible: entry.tableNameVisible,
+            captionVisible: entry.captionVisible,
+            captionText: entry.captionText,
+            captionTextSupported: entry.captionTextSupported
           )
         }
       )
@@ -843,6 +847,10 @@ private struct DumpJSONPayload: Encodable {
       let mergeRangeCount: Int
       let populatedCellCount: Int
       let usedRange: String?
+      let tableNameVisible: Bool?
+      let captionVisible: Bool?
+      let captionText: String?
+      let captionTextSupported: Bool
     }
 
     let id: String
@@ -993,7 +1001,11 @@ private struct DumpJSONPayload: Encodable {
             columnCount: table.metadata.columnCount,
             mergeRangeCount: table.metadata.mergeRanges.count,
             populatedCellCount: table.populatedCellCount,
-            usedRange: table.usedRange?.a1
+            usedRange: table.usedRange?.a1,
+            tableNameVisible: table.metadata.tableNameVisible,
+            captionVisible: table.metadata.captionVisible,
+            captionText: table.metadata.captionText,
+            captionTextSupported: table.metadata.captionTextSupported
           )
         }
       )
@@ -1027,6 +1039,10 @@ private struct ListTablesJSONPayload: Encodable {
     let populatedCellCount: Int
     let formulaCount: Int
     let usedRange: String?
+    let tableNameVisible: Bool?
+    let captionVisible: Bool?
+    let captionText: String?
+    let captionTextSupported: Bool
   }
 
   let sheetFilter: String?
@@ -1426,6 +1442,10 @@ private struct ReadTableJSONPayload: Encodable {
   let tableName: String
   let tableRowCount: Int
   let tableColumnCount: Int
+  let tableNameVisible: Bool?
+  let captionVisible: Bool?
+  let captionText: String?
+  let captionTextSupported: Bool
   let fromRow: Int
   let fromColumn: Int
   let maxRows: Int
@@ -1456,6 +1476,10 @@ private struct ReadTableJSONPayload: Encodable {
     self.tableName = table.name
     self.tableRowCount = table.rowCount
     self.tableColumnCount = table.columnCount
+    self.tableNameVisible = table.metadata.tableNameVisible
+    self.captionVisible = table.metadata.captionVisible
+    self.captionText = table.metadata.captionText
+    self.captionTextSupported = table.metadata.captionTextSupported
     self.fromRow = fromRow
     self.fromColumn = fromColumn
     self.maxRows = maxRows
@@ -1556,6 +1580,10 @@ private struct TableEntry {
   let populatedCellCount: Int
   let formulaCount: Int
   let usedRange: String?
+  let tableNameVisible: Bool?
+  let captionVisible: Bool?
+  let captionText: String?
+  let captionTextSupported: Bool
 }
 
 private func collectFormulaEntries(
@@ -1801,7 +1829,11 @@ private func collectTableEntries(
           mergeRangeCount: tableModel.metadata.mergeRanges.count,
           populatedCellCount: tableModel.populatedCellCount,
           formulaCount: tableModel.formulas().count,
-          usedRange: tableModel.usedRange?.a1
+          usedRange: tableModel.usedRange?.a1,
+          tableNameVisible: tableModel.metadata.tableNameVisible,
+          captionVisible: tableModel.metadata.captionVisible,
+          captionText: tableModel.metadata.captionText,
+          captionTextSupported: tableModel.metadata.captionTextSupported
         )
       )
     }
@@ -2332,6 +2364,10 @@ private struct ReadTableJSONLinePayload: Encodable {
   let sheetName: String
   let tableID: String
   let tableName: String
+  let tableNameVisible: Bool?
+  let captionVisible: Bool?
+  let captionText: String?
+  let captionTextSupported: Bool
   let fromRow: Int
   let fromColumn: Int
   let row: Int
@@ -2353,6 +2389,10 @@ private func renderReadTableJSONLines(_ payload: ReadTableJSONPayload) throws ->
           sheetName: payload.sheetName,
           tableID: payload.tableID,
           tableName: payload.tableName,
+          tableNameVisible: payload.tableNameVisible,
+          captionVisible: payload.captionVisible,
+          captionText: payload.captionText,
+          captionTextSupported: payload.captionTextSupported,
           fromRow: payload.fromRow,
           fromColumn: payload.fromColumn,
           row: payload.fromRow + rowOffset,

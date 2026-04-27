@@ -192,6 +192,16 @@ final class EditableNumbersDocumentTests: XCTestCase {
       return "percentage#\(formatID)"
     case .scientific(let formatID):
       return "scientific#\(formatID)"
+    case .tickbox(let formatID):
+      return "tickbox#\(formatID)"
+    case .rating(let formatID):
+      return "rating#\(formatID)"
+    case .slider(let formatID):
+      return "slider#\(formatID)"
+    case .stepper(let formatID):
+      return "stepper#\(formatID)"
+    case .popup(let formatID):
+      return "popup#\(formatID)"
     case .custom(let formatID):
       return "custom#\(formatID)"
     }
@@ -618,6 +628,66 @@ final class EditableNumbersDocumentTests: XCTestCase {
       B1=2 3/4
       C1=12.5%
       D1=1E+003
+      """
+    )
+  }
+
+  func testSetFormatInteractiveControlFamiliesRoundTripSnapshot() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    try table.setValue(.bool(true), at: "A1")
+    try table.setFormat(.tickbox(formatID: 1), at: "A1")
+    try table.setValue(.number(4), at: "B1")
+    try table.setFormat(.rating(formatID: 5), at: "B1")
+    try table.setValue(.number(0.35), at: "C1")
+    try table.setFormat(.slider(formatID: 2), at: "C1")
+    try table.setValue(.number(2), at: "D1")
+    try table.setFormat(.stepper(formatID: 3), at: "D1")
+    try table.setValue(.string("Approved"), at: "E1")
+    try table.setFormat(.popup(formatID: 9), at: "E1")
+
+    let output = temporaryArchiveOutputURL("editable-format-controls-snapshot.numbers")
+    try editable.save(to: output)
+
+    let reopenedEditable = try EditableNumbersDocument.open(at: output)
+    let reopenedEditableTable = try XCTUnwrap(reopenedEditable.firstSheet?.firstTable)
+    let typedSnapshot = [
+      "A1=\(typedFormatSnapshot(reopenedEditableTable.format("A1")))",
+      "B1=\(typedFormatSnapshot(reopenedEditableTable.format("B1")))",
+      "C1=\(typedFormatSnapshot(reopenedEditableTable.format("C1")))",
+      "D1=\(typedFormatSnapshot(reopenedEditableTable.format("D1")))",
+      "E1=\(typedFormatSnapshot(reopenedEditableTable.format("E1")))",
+    ].joined(separator: "\n")
+    XCTAssertEqual(
+      typedSnapshot,
+      """
+      A1=tickbox#1
+      B1=rating#5
+      C1=slider#2
+      D1=stepper#3
+      E1=popup#9
+      """
+    )
+
+    let reopenedRead = try NumbersDocument.open(at: output)
+    let reopenedReadTable = try XCTUnwrap(reopenedRead.firstSheet?.firstTable)
+    let readKindSnapshot = [
+      "A1=\(reopenedReadTable.readCell("A1")?.style?.numberFormat?.kind.rawValue ?? "nil")",
+      "B1=\(reopenedReadTable.readCell("B1")?.style?.numberFormat?.kind.rawValue ?? "nil")",
+      "C1=\(reopenedReadTable.readCell("C1")?.style?.numberFormat?.kind.rawValue ?? "nil")",
+      "D1=\(reopenedReadTable.readCell("D1")?.style?.numberFormat?.kind.rawValue ?? "nil")",
+      "E1=\(reopenedReadTable.readCell("E1")?.style?.numberFormat?.kind.rawValue ?? "nil")",
+    ].joined(separator: "\n")
+    XCTAssertEqual(
+      readKindSnapshot,
+      """
+      A1=tickbox
+      B1=rating
+      C1=slider
+      D1=stepper
+      E1=popup
       """
     )
   }

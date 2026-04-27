@@ -4,7 +4,7 @@ This file tracks successful autonomous release cycles.
 
 ## Consecutive Successful Cycles
 
-- Current streak: `2` consecutive successful official releases (`v0.3.5`, `v0.3.6`).
+- Current streak: `5` consecutive successful official releases (`v0.3.5` ... `v0.3.9`).
 
 ## Cycle Log
 

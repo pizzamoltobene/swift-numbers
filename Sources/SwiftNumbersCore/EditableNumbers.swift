@@ -98,6 +98,11 @@ public enum EditableCellFormat: Hashable, Sendable {
   case fraction(formatID: Int32 = 16)
   case percentage(formatID: Int32 = 0)
   case scientific(formatID: Int32 = 0)
+  case tickbox(formatID: Int32 = 0)
+  case rating(formatID: Int32 = 0)
+  case slider(formatID: Int32 = 0)
+  case stepper(formatID: Int32 = 0)
+  case popup(formatID: Int32 = 0)
   case custom(formatID: Int32)
 }
 
@@ -2385,6 +2390,16 @@ private extension EditableCellFormat {
       return ReadNumberFormat(kind: .percentage, formatID: formatID)
     case .scientific(let formatID):
       return ReadNumberFormat(kind: .scientific, formatID: formatID)
+    case .tickbox(let formatID):
+      return ReadNumberFormat(kind: .tickbox, formatID: formatID)
+    case .rating(let formatID):
+      return ReadNumberFormat(kind: .rating, formatID: formatID)
+    case .slider(let formatID):
+      return ReadNumberFormat(kind: .slider, formatID: formatID)
+    case .stepper(let formatID):
+      return ReadNumberFormat(kind: .stepper, formatID: formatID)
+    case .popup(let formatID):
+      return ReadNumberFormat(kind: .popup, formatID: formatID)
     case .custom(let formatID):
       return ReadNumberFormat(kind: .custom, formatID: formatID)
     }
@@ -2406,6 +2421,16 @@ private extension EditableCellFormat {
       self = .percentage(formatID: numberFormat.formatID)
     case .scientific:
       self = .scientific(formatID: numberFormat.formatID)
+    case .tickbox:
+      self = .tickbox(formatID: numberFormat.formatID)
+    case .rating:
+      self = .rating(formatID: numberFormat.formatID)
+    case .slider:
+      self = .slider(formatID: numberFormat.formatID)
+    case .stepper:
+      self = .stepper(formatID: numberFormat.formatID)
+    case .popup:
+      self = .popup(formatID: numberFormat.formatID)
     case .custom, .duration, .text, .bool:
       self = .custom(formatID: numberFormat.formatID)
     }

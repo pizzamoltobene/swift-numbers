@@ -1,7 +1,7 @@
 # SwiftNumbers Autopilot Roadmap
 
-Last updated: 2026-04-26
-Scope baseline: `v0.3.2`
+Last updated: 2026-04-27
+Scope baseline: current release line (`v0.3.9` baseline, next patch pending)
 
 ## Goal
 
@@ -240,15 +240,15 @@ Code baseline source for this milestone:
   - Definition of done: format API supports base, fraction, percentage, and scientific modes in addition to existing core formats.
   - Validation: formatting snapshot tests verify rendered and typed outputs for each new mode.
 
-- [TODO] `SN-R79` Add interactive control format support.
+- [DONE] `SN-R79` Add interactive control format support. (2026-04-27)
   - Definition of done: editable API supports tickbox, rating, slider, stepper, and popup formatting modes where supported.
   - Validation: regression fixtures verify serialization and readback behavior for control-formatted cells.
 
-- [TODO] `SN-R80` Add categorized/grouped data read surface.
+- [DONE] `SN-R80` Add categorized/grouped data read surface. (2026-04-27)
   - Definition of done: read API exposes grouped/categorized table data without enabling unsafe structural writes.
   - Validation: grouped fixtures return deterministic categorized payloads and existing safety guards remain active.
 
-- [TODO] `SN-R81` Expose table presentation metadata in read/CLI surfaces.
+- [DONE] `SN-R81` Expose table presentation metadata in read/CLI surfaces. (2026-04-27)
   - Definition of done: caption and table-name visibility metadata are exposed in read models and CLI JSON output.
   - Validation: `dump`/`list-tables`/`read-table` JSON tests include stable presentation fields.
 

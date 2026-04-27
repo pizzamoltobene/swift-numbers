@@ -1,4 +1,7 @@
 {
+  "captionText" : "",
+  "captionTextSupported" : true,
+  "captionVisible" : false,
   "cells" : [
     [
       {
@@ -123,6 +126,7 @@
   "tableColumnCount" : 3,
   "tableID" : "68B384C7-9E7F-4B90-A1F5-067B81524A6A",
   "tableName" : "Table 1",
+  "tableNameVisible" : true,
   "tableRowCount" : 4,
   "truncatedColumns" : true,
   "truncatedRows" : false

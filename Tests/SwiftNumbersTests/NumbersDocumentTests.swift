@@ -127,6 +127,91 @@ final class NumbersDocumentTests: XCTestCase {
     )
   }
 
+  func testCategorizedRowsGroupsDeterministicallyByMultipleColumns() throws {
+    let table = Table(
+      id: "categorized-table",
+      name: "Categorized",
+      metadata: TableMetadata(rowCount: 6, columnCount: 4, mergeRanges: []),
+      cells: [
+        CellAddress(row: 0, column: 0): .string("Type"),
+        CellAddress(row: 0, column: 1): .string("Mode"),
+        CellAddress(row: 0, column: 2): .string("Item"),
+        CellAddress(row: 0, column: 3): .string("Count"),
+        CellAddress(row: 1, column: 0): .string("Fruit"),
+        CellAddress(row: 1, column: 1): .string("Fresh"),
+        CellAddress(row: 1, column: 2): .string("Apple"),
+        CellAddress(row: 1, column: 3): .number(7),
+        CellAddress(row: 2, column: 0): .string("Fruit"),
+        CellAddress(row: 2, column: 1): .string("Fresh"),
+        CellAddress(row: 2, column: 2): .string("Banana"),
+        CellAddress(row: 2, column: 3): .number(3),
+        CellAddress(row: 3, column: 0): .string("Fruit"),
+        CellAddress(row: 3, column: 1): .string("Dried"),
+        CellAddress(row: 3, column: 2): .string("Raisins"),
+        CellAddress(row: 3, column: 3): .number(5),
+        CellAddress(row: 4, column: 0): .string("Transport"),
+        CellAddress(row: 4, column: 1): .string("Air"),
+        CellAddress(row: 4, column: 2): .string("Plane"),
+        CellAddress(row: 4, column: 3): .number(2),
+        CellAddress(row: 5, column: 0): .string("Transport"),
+        CellAddress(row: 5, column: 1): .string("Road"),
+        CellAddress(row: 5, column: 2): .string("Bus"),
+        CellAddress(row: 5, column: 3): .number(9),
+      ]
+    )
+
+    let groups = try table.categorizedRows(by: [0, 1], headerRow: 0)
+    XCTAssertEqual(groups.map(\.keyPath), [
+      ["Fruit", "Dried"],
+      ["Fruit", "Fresh"],
+      ["Transport", "Air"],
+      ["Transport", "Road"],
+    ])
+    XCTAssertEqual(groups[0].rows.count, 1)
+    XCTAssertEqual(groups[1].rows.count, 2)
+    XCTAssertEqual(groups[2].rows.count, 1)
+    XCTAssertEqual(groups[3].rows.count, 1)
+    XCTAssertEqual(groups[1].rows[0][2].value, .string("Apple"))
+    XCTAssertEqual(groups[1].rows[1][2].value, .string("Banana"))
+  }
+
+  func testCategorizedValuesSupportsEmptyCategoryAndValidation() throws {
+    let table = Table(
+      id: "categorized-values",
+      name: "CategorizedValues",
+      metadata: TableMetadata(rowCount: 3, columnCount: 3, mergeRanges: []),
+      cells: [
+        CellAddress(row: 0, column: 0): .string("Category"),
+        CellAddress(row: 0, column: 1): .string("Name"),
+        CellAddress(row: 1, column: 0): .empty,
+        CellAddress(row: 1, column: 1): .string("Unknown"),
+        CellAddress(row: 2, column: 0): .string("Known"),
+        CellAddress(row: 2, column: 1): .string("Alice"),
+      ]
+    )
+
+    let groups = try table.categorizedValues(by: [0, 0], headerRow: 0)
+    XCTAssertEqual(groups.map(\.keyPath), [["<empty>"], ["Known"]])
+    XCTAssertEqual(groups[0].rows.count, 1)
+    XCTAssertEqual(groups[1].rows.count, 1)
+    XCTAssertEqual(groups[0].rows[0][1], .string("Unknown"))
+    XCTAssertEqual(groups[1].rows[0][1], .string("Alice"))
+
+    XCTAssertThrowsError(try table.categorizedValues(by: [], headerRow: 0)) { error in
+      guard case .invalidCategoryColumns = error as? TableReadError else {
+        return XCTFail("Expected invalidCategoryColumns, got \(error)")
+      }
+    }
+
+    XCTAssertThrowsError(try table.categorizedRows(by: [9], headerRow: 0)) { error in
+      guard case .outOfBounds(let address) = error as? TableReadError else {
+        return XCTFail("Expected outOfBounds, got \(error)")
+      }
+      XCTAssertEqual(address.row, 0)
+      XCTAssertEqual(address.column, 9)
+    }
+  }
+
   func testFormulaReadAPI() throws {
     let formulaAddress = CellAddress(row: 1, column: 1)
     let formulaResult = FormulaResultRead(

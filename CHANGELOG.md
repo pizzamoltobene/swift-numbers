@@ -16,6 +16,22 @@ All notable changes to this project are documented in this file.
 
 - Revert to the previous stable tag and redeploy package artifacts.
 
+## [0.3.10] - 2026-04-27
+
+### Summary
+
+- Added interactive control format support in editable `setFormat` (`tickbox`, `rating`, `slider`, `stepper`, `popup`) with save/reopen regression coverage for typed format and read-style roundtrip snapshots.
+- Added grouped/categorized read surface on `Table` via `categorizedRows(by:)` and `categorizedValues(by:)`, with deterministic key-path grouping and regression coverage.
+- Exposed table presentation metadata in CLI JSON surfaces: `list-tables`, `read-table` (including `--jsonl`), and `dump` per-table summaries now include `tableNameVisible`, `captionVisible`, `captionText`, and `captionTextSupported`.
+
+### Breaking Changes
+
+- None.
+
+### Rollback Hint
+
+- Revert to the previous stable tag and redeploy package artifacts.
+
 ## [0.3.9] - 2026-04-27
 
 ### Summary

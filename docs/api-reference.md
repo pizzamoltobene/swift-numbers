@@ -1,6 +1,6 @@
 # API Reference
 
-Exact public API reference for `SwiftNumbersCore` in `v0.3.1`.
+Exact public API reference for `SwiftNumbersCore` in the current release line.
 
 ## Import
 
@@ -189,6 +189,16 @@ public struct Table: Hashable, Sendable {
   public func readRows(lazy: Bool) -> AnySequence<[ReadCell]>
   public func readValues() -> [[ReadCellValue]]
   public func readValues(lazy: Bool) -> AnySequence<[ReadCellValue]>
+  public func categorizedRows(
+    by categoryColumns: [Int],
+    headerRow: Int = 0,
+    includeHeader: Bool = false
+  ) throws -> [CategorizedReadRowGroup]
+  public func categorizedValues(
+    by categoryColumns: [Int],
+    headerRow: Int = 0,
+    includeHeader: Bool = false
+  ) throws -> [CategorizedValueRowGroup]
   public func column(named name: String, headerRow: Int = 0, includeHeader: Bool = false) throws -> [CellValue]
   public func column(at index: Int, from startRow: Int = 0) throws -> [CellValue]
   public func readColumn(at index: Int, from startRow: Int = 0) throws -> [ReadCell]
@@ -644,6 +654,11 @@ public enum EditableCellFormat: Hashable, Sendable {
   case fraction(formatID: Int32 = 16)
   case percentage(formatID: Int32 = 0)
   case scientific(formatID: Int32 = 0)
+  case tickbox(formatID: Int32 = 0)
+  case rating(formatID: Int32 = 0)
+  case slider(formatID: Int32 = 0)
+  case stepper(formatID: Int32 = 0)
+  case popup(formatID: Int32 = 0)
   case custom(formatID: Int32)
 }
 ```

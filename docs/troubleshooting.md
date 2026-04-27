@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Quick runbook for `SwiftNumbers v0.3.1.1`.
+Quick runbook for the current `SwiftNumbers` release line.
 
 ## Fast Triage
 

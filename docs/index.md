@@ -1,6 +1,6 @@
 # SwiftNumbers Docs
 
-Documentation hub for `SwiftNumbers v0.3.2`.
+Documentation hub for the current `SwiftNumbers` release line.
 
 ## Start Here
 
@@ -24,15 +24,15 @@ Documentation hub for `SwiftNumbers v0.3.2`.
 | Test-only autonomous growth policy | [Testing Autopilot Policy](testing-autopilot-policy.md) |
 | Test-only autonomous queue and milestones | [Testing Autopilot Roadmap](testing-autopilot-roadmap.md) |
 | Test-only autonomous runbook | [Testing Autopilot Operations](testing-autopilot-operations.md) |
-| Capability-gap baseline and priorities | [Capability Gap Baseline](capability-gap-baseline.md) |
-| Code-verified `numbers-parser` capability inventory | [numbers-parser Code Capability Map](numbers-parser-code-capability-map.md) |
+| Internal capability-gap baseline and priorities | [Capability Gap Baseline](capability-gap-baseline.md) |
+| Internal code capability inventory map | [Code Capability Map](numbers-parser-code-capability-map.md) |
 | Pause/resume + unblock runbook for Autopilot | [Autopilot Operations](autopilot-operations.md) |
 | Official release gate and publish checklist | [Release Checklist](release-checklist.md) |
 | Autonomous release cadence, gates, and pause rules | [Autonomous Release Policy](autonomous-release-policy.md) |
 | Consecutive autonomous release cycle log | [Release Cycles](release-cycles.md) |
 | Public autonomous delivery model | [Autonomous Development](autonomous-development.md) |
 
-## Scope (v0.3.2)
+## Scope
 
 Supported:
 - Real `.numbers` read path (with diagnostics and fallback safety path)
@@ -41,8 +41,8 @@ Supported:
 - CLI: `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, `read-range`, `export-csv`, `import-csv`, `dump`, `--format text|json`, `--formulas`, `--cells`, `--formatting`
 
 Out of scope:
-- Formula write engine
-- Pivots/grouped tables/charts/comments
+- Full formula-engine parity (beyond deterministic formula literal persistence)
+- Pivot-linked table mutation support, charts, comments
 - Full layout/styling fidelity
 - Encrypted `.numbers` files
 

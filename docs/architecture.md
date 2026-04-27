@@ -1,6 +1,6 @@
 # Architecture
 
-High-level architecture for `SwiftNumbers v0.3.1`.
+High-level architecture for the current `SwiftNumbers` release line.
 
 ## Module Layout
 
@@ -39,7 +39,7 @@ flowchart TD
 
 ## Writer Strategy
 
-Primary strategy in `v0.3.1`:
+Primary strategy in the current release line:
 
 - native Swift low-level IWA write path
 
@@ -102,7 +102,7 @@ Typical diagnostic classes:
 - resolver selection/fallback events
 - decode anomalies and patching notes
 
-## Non-goals (v0.3.1)
+## Non-goals
 
 - formula semantics
 - pivots/charts/comments/advanced formatting fidelity

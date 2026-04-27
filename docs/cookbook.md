@@ -1,6 +1,6 @@
 # Cookbook
 
-Practical, copy-paste workflows for `SwiftNumbers v0.3.1`.
+Practical, copy-paste workflows for the current `SwiftNumbers` release line.
 
 All examples use `SwiftNumbersCore`.
 

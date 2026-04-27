@@ -119,7 +119,11 @@ swiftnumbers list-tables <file.numbers> [--sheet "<Sheet Name>"] [--format text|
       "mergeRangeCount": 0,
       "populatedCellCount": 4,
       "formulaCount": 0,
-      "usedRange": "A1:B2"
+      "usedRange": "A1:B2",
+      "tableNameVisible": true,
+      "captionVisible": false,
+      "captionText": "",
+      "captionTextSupported": true
     }
   ]
 }
@@ -234,6 +238,10 @@ swiftnumbers read-table <file.numbers> (--sheet "<Sheet Name>" | --sheet-index <
 
 ```json
 {
+  "tableNameVisible": true,
+  "captionVisible": false,
+  "captionText": "",
+  "captionTextSupported": true,
   "fromRow": 1,
   "fromColumn": 0,
   "resolvedRowCount": 2,
@@ -252,6 +260,9 @@ swiftnumbers read-table <file.numbers> (--sheet "<Sheet Name>" | --sheet-index <
   ]
 }
 ```
+
+For `--jsonl`, each emitted row object includes the same table presentation metadata fields:
+`tableNameVisible`, `captionVisible`, `captionText`, and `captionTextSupported`.
 
 ## 6) `read-cell`
 
@@ -465,6 +476,10 @@ Diagnostics: 0
 | `unparsedBlobPaths` | `[String]` | Any skipped/failed blobs |
 | `diagnostics` | `[String]` | Human-readable diagnostics |
 | `structuredDiagnostics` | array | Structured diagnostics (`code`, `severity`, `message`, `objectPath`, `suggestion`, `context`, `rendered`) |
+| `sheets[].tables[].tableNameVisible` | `Bool?` | Table-name visibility flag when available |
+| `sheets[].tables[].captionVisible` | `Bool?` | Caption visibility flag when available |
+| `sheets[].tables[].captionText` | `String?` | Caption text when available |
+| `sheets[].tables[].captionTextSupported` | `Bool` | Whether native caption text storage is available for that table |
 | `formulaCount` | `Int?` | Present only with `--formulas`; number of formula cells found |
 | `formulas` | array? | Present only with `--formulas`; per-formula details |
 | `cellCount` | `Int?` | Present only with `--cells`; number of populated cells emitted |

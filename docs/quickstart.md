@@ -91,7 +91,7 @@ Template: `scripts/release-notes-template.md`
 ## 9) Dry-run release pipeline
 
 ```bash
-SWIFT_NUMBERS_NUMBERS_APP_OK=1 ./scripts/release_publish.sh --tag v0.3.2 --dry-run
+SWIFT_NUMBERS_NUMBERS_APP_OK=1 ./scripts/release_publish.sh --tag vX.Y.Z --dry-run
 ```
 
 ## 10) Autorelease one completed fix

@@ -12,6 +12,7 @@ It is also an open experiment in automated library development with a recurring 
 - Edit tabular data and save valid `.numbers` output
 - CLI for inspection and automation (`list-sheets`, `list-tables`, `read-cell`, `read-range`, `export-csv`, `import-csv`, `dump`)
 - Structured diagnostics for safer debugging
+- Table presentation metadata surfaced in CLI JSON (`tableNameVisible`, `captionVisible`, `captionText`, `captionTextSupported`)
 
 ## Autonomous Release Experiment
 
@@ -27,9 +28,9 @@ Each cycle is intended to:
 The goal is transparent, high-frequency, high-quality iteration with readable release notes and docs.
 Release cadence, gates, and pause rules are defined in [Autonomous Release Policy](docs/autonomous-release-policy.md).
 Dedicated test-growth loop policy and queue are tracked in [Testing Autopilot Policy](docs/testing-autopilot-policy.md) and [Testing Autopilot Roadmap](docs/testing-autopilot-roadmap.md).
-Code-parity baseline refresh is deterministic and code-only:
+Code capability-map refresh is deterministic and code-only:
 - `./scripts/refresh_numbers_parser_code_map.sh`
-- output: [numbers-parser Code Capability Map](docs/numbers-parser-code-capability-map.md)
+- output: [Code Capability Map](docs/numbers-parser-code-capability-map.md)
 
 Primary long-horizon areas:
 
@@ -41,7 +42,7 @@ Primary long-horizon areas:
 ## Install (SwiftPM)
 
 ```swift
-.package(url: "https://github.com/pizzamoltobene/swift-numbers.git", from: "0.3.2")
+.package(url: "https://github.com/pizzamoltobene/swift-numbers.git", from: "0.3.10")
 ```
 
 ```swift
@@ -108,10 +109,10 @@ Start here: [Docs Hub](docs/index.md)
 
 ## Scope Snapshot
 
-- Supported in `v0.3.2`: core read/edit/save workflows for tabular data.
+- Supported in the current release line: core read/edit/save workflows for tabular data.
 - Writable cell-style bundles are available in editable API (`setStyle`) with deterministic save/reopen roundtrip via metadata overlay.
 - Reusable document style registry API is now available (`registerStyle`, `registeredStyles`, `applyStyle(id:at:)`) with deterministic save/reopen persistence.
-- Writable cell-format API (`setFormat`) now supports number/date/currency/custom plus extended numeric families (`base`, `fraction`, `percentage`, `scientific`) with deterministic save/reopen roundtrip.
+- Writable cell-format API (`setFormat`) now supports number/date/currency/custom plus extended numeric families (`base`, `fraction`, `percentage`, `scientific`) and control families (`tickbox`, `rating`, `slider`, `stepper`, `popup`) with deterministic save/reopen roundtrip.
 - Reusable custom-format registry API is now available (`registerCustomFormat`, `registeredCustomFormats`, `applyCustomFormat(id:at:)`) for deterministic named custom-format application.
 - Row/column deletion mutations are now available in editable workflows (`deleteRow(at:)` / `deleteColumn(at:)`) with deterministic index shifting and bounds validation.
 - Header metadata mutation API is now available in editable workflows (`setHeaderRowCount(_:)` / `setHeaderColumnCount(_:)`) with native save/reopen persistence.
@@ -123,6 +124,8 @@ Start here: [Docs Hub](docs/index.md)
 - Pivot-candidate observability: `dump` structured diagnostics now surface non-table drawables linked to table objects (`resolver.pivot.candidateDetected`) for safer troubleshooting.
 - Pivot-linked read surface: `Table.metadata.objectIdentifiers` and `Table.metadata.pivotLinks` now expose stable object IDs for resolver-linked pivot structures on real-read path.
 - Pivot-linked write safety: native write operations on tables linked to pivot-like drawables now fail fast with deterministic guidance.
+- Grouped/categorized read surface is available via `categorizedRows(by:)` / `categorizedValues(by:)`, producing deterministic read-only grouped payloads by selected category columns.
+- CLI JSON surfaces for `list-tables`, `read-table` (including `--jsonl`), and `dump` sheet-table summaries now include table presentation metadata (`tableNameVisible`, `captionVisible`, `captionText`, `captionTextSupported`).
 - Out of scope: advanced formula engine behavior, pivots, charts, comments, full layout/styling parity, encrypted files.
 
 For the exact matrix, use [Capabilities](docs/capabilities.md).

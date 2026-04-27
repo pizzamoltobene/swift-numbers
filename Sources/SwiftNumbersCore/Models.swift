@@ -106,6 +106,11 @@ public enum ReadNumberFormatKind: String, Hashable, Sendable {
   case fraction
   case percentage
   case scientific
+  case tickbox
+  case rating
+  case slider
+  case stepper
+  case popup
   case custom
 }
 
@@ -463,6 +468,7 @@ public struct ReadDiagnostic: Hashable, Sendable {
 public enum TableReadError: LocalizedError {
   case invalidCellReference(String)
   case invalidRangeReference(String)
+  case invalidCategoryColumns
   case outOfBounds(CellAddress)
   case missingValue(CellAddress)
   case typeMismatch(expected: String, actual: CellValue)
@@ -475,6 +481,8 @@ public enum TableReadError: LocalizedError {
       return "Invalid cell reference: \(raw)"
     case .invalidRangeReference(let raw):
       return "Invalid range reference: \(raw)"
+    case .invalidCategoryColumns:
+      return "At least one category column must be specified."
     case .outOfBounds(let address):
       let ref = CellReference(address: address).a1
       return "Cell out of table bounds: \(ref)"
@@ -488,6 +496,26 @@ public enum TableReadError: LocalizedError {
     case .decodingFailed(let message):
       return "Row decoding failed: \(message)"
     }
+  }
+}
+
+public struct CategorizedReadRowGroup: Hashable, Sendable {
+  public let keyPath: [String]
+  public let rows: [[ReadCell]]
+
+  public init(keyPath: [String], rows: [[ReadCell]]) {
+    self.keyPath = keyPath
+    self.rows = rows
+  }
+}
+
+public struct CategorizedValueRowGroup: Hashable, Sendable {
+  public let keyPath: [String]
+  public let rows: [[ReadCellValue]]
+
+  public init(keyPath: [String], rows: [[ReadCellValue]]) {
+    self.keyPath = keyPath
+    self.rows = rows
   }
 }
 
@@ -1009,6 +1037,70 @@ public struct Table: Hashable, Sendable {
     return AnySequence(sequence)
   }
 
+  public func categorizedRows(
+    by categoryColumns: [Int],
+    headerRow: Int = 0,
+    includeHeader: Bool = false
+  ) throws -> [CategorizedReadRowGroup] {
+    guard headerRow >= 0, headerRow < metadata.rowCount else {
+      throw TableReadError.outOfBounds(CellAddress(row: headerRow, column: 0))
+    }
+
+    guard !categoryColumns.isEmpty else {
+      throw TableReadError.invalidCategoryColumns
+    }
+
+    let resolvedCategoryColumns = Self.uniqueCategoryColumns(from: categoryColumns)
+    for column in resolvedCategoryColumns {
+      guard column >= 0, column < metadata.columnCount else {
+        throw TableReadError.outOfBounds(CellAddress(row: headerRow, column: column))
+      }
+    }
+
+    let startRow = includeHeader ? headerRow : headerRow + 1
+    guard startRow < metadata.rowCount else {
+      return []
+    }
+
+    var groupedRows: [[String]: [[ReadCell]]] = [:]
+    groupedRows.reserveCapacity(max(metadata.rowCount - startRow, 0))
+
+    for rowIndex in startRow..<metadata.rowCount {
+      var rowCells: [ReadCell] = []
+      rowCells.reserveCapacity(metadata.columnCount)
+
+      for columnIndex in 0..<metadata.columnCount {
+        let address = CellAddress(row: rowIndex, column: columnIndex)
+        rowCells.append(readCellForCategorizedOutput(at: address))
+      }
+
+      let keyPath = resolvedCategoryColumns.map { columnIndex in
+        Self.categoryKey(for: rowCells[columnIndex])
+      }
+      groupedRows[keyPath, default: []].append(rowCells)
+    }
+
+    return groupedRows.keys
+      .sorted(by: Self.isCategoryKeyPathAscending)
+      .map { keyPath in
+        CategorizedReadRowGroup(keyPath: keyPath, rows: groupedRows[keyPath, default: []])
+      }
+  }
+
+  public func categorizedValues(
+    by categoryColumns: [Int],
+    headerRow: Int = 0,
+    includeHeader: Bool = false
+  ) throws -> [CategorizedValueRowGroup] {
+    try categorizedRows(by: categoryColumns, headerRow: headerRow, includeHeader: includeHeader)
+      .map { group in
+        CategorizedValueRowGroup(
+          keyPath: group.keyPath,
+          rows: group.rows.map { row in row.map(\.readValue) }
+        )
+      }
+  }
+
   public func column(named name: String, headerRow: Int = 0, includeHeader: Bool = false) throws
     -> [CellValue]
   {
@@ -1259,6 +1351,74 @@ public struct Table: Hashable, Sendable {
       .lowercased()
   }
 
+  private func readCellForCategorizedOutput(at address: CellAddress) -> ReadCell {
+    if let existing = readCellsByAddress[address] {
+      return applyingMergeMetadata(to: existing, address: address)
+    }
+
+    let value = cells[address] ?? .empty
+    return ReadCell(
+      address: address,
+      value: value,
+      kind: Self.kindForSyntheticCategorizedReadCellValue(value),
+      formatted: Self.formattedValueString(for: value, options: .default),
+      rawCellType: 0
+    )
+  }
+
+  private static func kindForSyntheticCategorizedReadCellValue(_ value: CellValue) -> ReadCellKind {
+    switch value {
+    case .empty:
+      return .empty
+    case .string:
+      return .text
+    case .formula:
+      return .formula
+    case .number:
+      return .number
+    case .bool:
+      return .bool
+    case .date:
+      return .date
+    }
+  }
+
+  private static func uniqueCategoryColumns(from columns: [Int]) -> [Int] {
+    var seen: Set<Int> = []
+    var unique: [Int] = []
+    unique.reserveCapacity(columns.count)
+
+    for column in columns where seen.insert(column).inserted {
+      unique.append(column)
+    }
+
+    return unique
+  }
+
+  private static func categoryKey(for cell: ReadCell) -> String {
+    let trimmed = cell.formatted.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+      return "<empty>"
+    }
+    return trimmed
+  }
+
+  private static func isCategoryKeyPathAscending(_ lhs: [String], _ rhs: [String]) -> Bool {
+    let minCount = min(lhs.count, rhs.count)
+    guard minCount > 0 else {
+      return lhs.count < rhs.count
+    }
+
+    for index in 0..<minCount {
+      if lhs[index] == rhs[index] {
+        continue
+      }
+      return lhs[index] < rhs[index]
+    }
+
+    return lhs.count < rhs.count
+  }
+
   private static func formattedValueString(for readCell: ReadCell, options: ReadFormattingOptions)
     -> String
   {
@@ -1328,7 +1488,7 @@ public struct Table: Hashable, Sendable {
       return .fraction(maxDenominator: normalizedMaxDenominator(from: numberFormat.formatID))
     case .base:
       return .base(radix: normalizedRadix(from: numberFormat.formatID), uppercase: true)
-    case .date, .duration, .text, .bool, .custom:
+    case .date, .duration, .text, .bool, .tickbox, .rating, .slider, .stepper, .popup, .custom:
       return nil
     }
   }
