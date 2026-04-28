@@ -16,6 +16,28 @@ All notable changes to this project are documented in this file.
 
 - Revert to the previous stable tag and redeploy package artifacts.
 
+## [0.3.12] - 2026-04-28
+
+### Summary
+
+- Hardened grouped-table structural delete guard diagnostics: blocked `deleteRow`/`deleteColumn`
+  writes now include deterministic operation index context (for example `deleteRow(rowIndex: N)`),
+  with regression coverage for grouped and non-grouped delete paths.
+- Hardened formula write safety validation in strict native-write mode: sheet-qualified references
+  and self-referential single-cell/range references are now rejected with deterministic
+  `nativeWriteFailed` messages.
+- Hardened pivot-linked mutation guard diagnostics: blocked structural writes now preserve
+  deterministic operation context (for example `deleteRow(rowIndex: N)`) in user-facing errors,
+  with regression coverage for linked-table guard messaging.
+
+### Breaking Changes
+
+- None.
+
+### Rollback Hint
+
+- Revert to the previous stable tag and redeploy package artifacts.
+
 ## [0.3.11] - 2026-04-27
 
 ### Summary
@@ -138,6 +160,9 @@ All notable changes to this project are documented in this file.
 - Added pivot-candidate diagnostics in real-read dump path (`resolver.pivot.candidateDetected`) when non-table sheet drawables are linked to table objects, with deterministic resolver coverage.
 - Added stable pivot-linked read metadata on real-read path: `Table.metadata.objectIdentifiers` now surfaces tableInfo/tableModel object IDs, and `Table.metadata.pivotLinks` exposes linked pivot-candidate drawable IDs/type IDs/table-link IDs.
 - Added pivot-linked write safety guard: native write mutations now fail fast with deterministic `pivotLinkedTableMutationUnsupported` guidance when a target table is linked to a non-table pivot-like drawable.
+- Hardened pivot-linked write guard messaging: `pivotLinkedTableMutationUnsupported` now includes deterministic linked object identifier payloads for operator triage.
+- Improved real-read unsupported decode diagnostics: warnings are now deduplicated deterministically by object path and node type while preserving stable first-seen order.
+- Added pivot-link cardinality summaries in read diagnostics/metadata: pivot candidate diagnostics now emit stable count fields and pivot-link metadata now exposes deterministic linked ID counts.
 
 ### Breaking Changes
 

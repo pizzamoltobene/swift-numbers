@@ -8,6 +8,12 @@ enum IWASetCellWriter {
   private static let editableDateMarkerPrefix = "__SWIFTNUMBERS_DATE__:"
   private static let editableFormulaMarkerPrefix = "__SWIFTNUMBERS_FORMULA__:"
   private static let editableStringEscapePrefix = "__SWIFTNUMBERS_STRING__:"
+  private static let formulaReferencePattern =
+    #"\$?[A-Za-z]+\$?[1-9][0-9]*(?:\s*:\s*\$?[A-Za-z]+\$?[1-9][0-9]*)?"#
+  private static let formulaReferenceRegex = try! NSRegularExpression(
+    pattern: formulaReferencePattern,
+    options: []
+  )
 
   private enum TypeID {
     static let documentArchive: UInt32 = 1
@@ -133,6 +139,15 @@ enum IWASetCellWriter {
     for operation in operations {
       switch operation {
       case .setCell(let sheetName, let tableName, let row, let column, let value):
+        if case .formula(let formula) = value {
+          try validateFormulaWriteSafety(
+            formula,
+            targetRow: row,
+            targetColumn: column,
+            sheetName: sheetName,
+            tableName: tableName
+          )
+        }
         converted.append(
           .setCell(
             sheetName: sheetName,
@@ -383,7 +398,8 @@ enum IWASetCellWriter {
           throw EditableNumbersError.pivotLinkedTableMutationUnsupported(
             sheet: names.sheet,
             table: names.table,
-            operation: groupedMutationOperationName(for: operation)
+            operation: groupedMutationOperationName(for: operation),
+            linkedObjectIDs: pivotLinkedTableInfoObjectIDs.sorted()
           )
         }
 
@@ -1862,20 +1878,20 @@ enum IWASetCellWriter {
     }
   }
 
-  private static func groupedMutationOperationName(for operation: LowLevelOperation) -> String {
+  static func groupedMutationOperationName(for operation: LowLevelOperation) -> String {
     switch operation {
     case .setCell:
       return "setCell"
     case .appendRow:
       return "appendRow"
-    case .insertRow:
-      return "insertRow"
+    case .insertRow(_, _, let rowIndex, _):
+      return "insertRow(rowIndex: \(rowIndex))"
     case .appendColumn:
       return "appendColumn"
-    case .deleteRow:
-      return "deleteRow"
-    case .deleteColumn:
-      return "deleteColumn"
+    case .deleteRow(_, _, let rowIndex):
+      return "deleteRow(rowIndex: \(rowIndex))"
+    case .deleteColumn(_, _, let columnIndex):
+      return "deleteColumn(columnIndex: \(columnIndex))"
     case .mergeCells:
       return "mergeCells"
     case .unmergeCells:
@@ -2896,6 +2912,77 @@ enum IWASetCellWriter {
       return "="
     }
     return trimmed.hasPrefix("=") ? trimmed : "=\(trimmed)"
+  }
+
+  private static func validateFormulaWriteSafety(
+    _ formula: String,
+    targetRow: Int,
+    targetColumn: Int,
+    sheetName: String,
+    tableName: String
+  ) throws {
+    let normalized = normalizeStoredFormula(formula)
+    let targetAddress = CellAddress(row: targetRow, column: targetColumn)
+    let targetA1 = CellReference(address: targetAddress).a1
+    let locationPrefix = "\(sheetName)/\(tableName)"
+
+    if normalized.contains("!") {
+      throw EditableNumbersError.nativeWriteFailed(
+        "IWA writer: unsafe formula reference at \(locationPrefix) \(targetA1). Sheet-qualified references are unsupported in strict native-write mode."
+      )
+    }
+
+    let expressionRange = NSRange(location: 0, length: normalized.utf16.count)
+    let matches = formulaReferenceRegex.matches(in: normalized, options: [], range: expressionRange)
+    for match in matches {
+      guard let tokenRange = Range(match.range, in: normalized) else {
+        continue
+      }
+      let token = normalized[tokenRange]
+        .replacingOccurrences(of: " ", with: "")
+        .replacingOccurrences(of: "\t", with: "")
+      guard !token.isEmpty else {
+        continue
+      }
+
+      if token.contains(":") {
+        let parts = token.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2,
+          let start = formulaReferenceAddress(from: String(parts[0])),
+          let end = formulaReferenceAddress(from: String(parts[1]))
+        else {
+          throw EditableNumbersError.nativeWriteFailed(
+            "IWA writer: unsafe formula reference at \(locationPrefix) \(targetA1). Invalid range token \(token)."
+          )
+        }
+        let minRow = min(start.row, end.row)
+        let maxRow = max(start.row, end.row)
+        let minColumn = min(start.column, end.column)
+        let maxColumn = max(start.column, end.column)
+        if targetRow >= minRow, targetRow <= maxRow,
+          targetColumn >= minColumn, targetColumn <= maxColumn
+        {
+          throw EditableNumbersError.nativeWriteFailed(
+            "IWA writer: unsafe self-referential formula at \(locationPrefix) \(targetA1) via range \(token)."
+          )
+        }
+        continue
+      }
+
+      if let address = formulaReferenceAddress(from: token),
+        address.row == targetRow,
+        address.column == targetColumn
+      {
+        throw EditableNumbersError.nativeWriteFailed(
+          "IWA writer: unsafe self-referential formula at \(locationPrefix) \(targetA1) via reference \(token)."
+        )
+      }
+    }
+  }
+
+  private static func formulaReferenceAddress(from token: String) -> CellAddress? {
+    let cleaned = token.replacingOccurrences(of: "$", with: "")
+    return try? CellReference(cleaned).address
   }
 
   private static func encodeStoredString(_ string: String) -> String {

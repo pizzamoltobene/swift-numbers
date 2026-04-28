@@ -66,12 +66,12 @@ Core internal modules:
 | Edit cell values | Supported | `string`, `formula`, `number`, `bool`, `empty`, `date` |
 | Append/insert rows | Supported | Low-level IWA path; grouped-table unsafe structural edits fail fast with deterministic guidance |
 | Append columns | Supported | Low-level IWA path; grouped-table unsafe structural edits fail fast with deterministic guidance |
-| Delete rows/columns | Supported | `deleteRow` / `deleteColumn` with deterministic index shifting and bounds validation |
+| Delete rows/columns | Supported | `deleteRow` / `deleteColumn` with deterministic index shifting and bounds validation; grouped-table blocks include actionable operation index context |
 | Merge/unmerge ranges | Supported | Editable API supports `mergeCells` and `unmergeCells` with deterministic merge metadata persistence and exact-range unmerge semantics |
 | Add sheet/table | Supported | Low-level IWA path |
 | Save to new path | Supported | `save(to:)` |
 | Save in place | Supported | in-place on current working path (`save(to: samePath)` or `saveInPlace()`) |
-| Formula write (basic arithmetic + function refs) | Supported | Formula literals are persisted and round-tripped deterministically (`=A1+B1`, `=SUM(A1:A5)`) |
+| Formula write (basic arithmetic + function refs) | Supported | Formula literals are persisted and round-tripped deterministically (`=A1+B1`, `=SUM(A1:A5)`); unsafe sheet-qualified/self-referential single-cell and range references are rejected with deterministic errors |
 | Advanced formula engine + pivots/charts/etc. | Out of scope | Full recalculation engine parity and pivot/chart mutation support remain out of scope |
 
 ## 4) Public Data Model
@@ -1839,6 +1839,13 @@ Representative diagnostic codes:
 - `resolver.table.resolveFailed`
 - `resolver.pivot.candidateDetected`
 - `decode.rowStorage.patched`
+- `decode.cell.unsupportedTypeDropped`
+- `decode.formula.unsupportedAstNodes`
+
+Unsupported decode warnings are deduplicated deterministically by object path and node type (first occurrence order is preserved).
+
+Pivot candidate diagnostics include deterministic cardinality summaries via context keys:
+`drawableTypeCount`, `referencedObjectCount`, `linkedTableInfoCount`, `linkedTableModelCount`.
 
 ## 7) Write Engine Behavior
 
@@ -1880,6 +1887,8 @@ Common failure sources:
 - `groupedTableMutationUnsupported`
 - `pivotLinkedTableMutationUnsupported`
 - `nativeWriteFailed`
+
+`pivotLinkedTableMutationUnsupported` payloads include deterministic linked object identifiers to improve operator triage of pivot-linked write blocks.
 
 ## 9) Quality and Delivery Baseline
 

@@ -92,7 +92,7 @@ try editable.save(to: outputURL)
 
 | Area | Operations (examples from code) | Status | Notes |
 |---|---|---|---|
-| Document open and introspection | `NumbersDocument.open`, `sheet(named:)`, `sheet(at:)`, `tableNames`, `dump`, `renderDump` | Supported | Real-read pipeline with structured diagnostics |
+| Document open and introspection | `NumbersDocument.open`, `sheet(named:)`, `sheet(at:)`, `tableNames`, `dump`, `renderDump` | Supported | Real-read pipeline with structured diagnostics; unsupported decode warnings are deduplicated by object/node type; pivot candidate diagnostics include stable count and ID summaries |
 | Cell and table read API | `cell`, `readCell`, `readValue`, `formula`, `formulaResult`, `rows/readRows/readValues`, `column`, `values(in:)`, `readCells(in:)` | Supported | Typed read models and A1/range-based extraction |
 | Typed decode and formatting | `value(_:at:)`, `optionalValue(_:at:)`, `decodeRows(as:)`, `formattedValue(...)` | Supported | Deterministic formatting modes and typed access |
 | Grouped read surface | `categorizedRows(by:)`, `categorizedValues(by:)` | Supported | Read-only grouped/category output |
@@ -103,7 +103,7 @@ try editable.save(to: outputURL)
 | Document registries | `registerStyle`, `registeredStyles`, `registerCustomFormat`, `registeredCustomFormats` | Supported | Reusable style/custom-format registry APIs |
 | CLI inspection | `list-sheets`, `list-tables`, `list-formulas`, `read-cell`, `read-column`, `read-table`, `read-range`, `dump`, `inspect` | Supported | `text/json`, `--jsonl` on column/table/range reads, parity switches `--formulas` / `--formatting` on read-column/read-table/read-range, low-level inspection (`--redact`, `--compact`) |
 | CLI data transfer | `export-csv`, `import-csv` | Supported | Sheet/table selectors, header mode, date parsing |
-| Safety guards | Grouped/pivot-linked mutation protection (`groupedTableMutationUnsupported`, `pivotLinkedTableMutationUnsupported`) | Supported | Unsafe structural writes are blocked with clear errors |
+| Safety guards | Grouped/pivot-linked mutation protection (`groupedTableMutationUnsupported`, `pivotLinkedTableMutationUnsupported`) + formula write safety validation | Supported | Unsafe structural writes are blocked with clear errors; grouped delete diagnostics include operation index context; pivot-linked guard errors include linked object identifiers for triage; unsafe formula references (sheet-qualified/self-referential single-cell or range references) are rejected deterministically |
 
 ### On Roadmap
 

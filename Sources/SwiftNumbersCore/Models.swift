@@ -596,6 +596,9 @@ public struct PivotLinkMetadata: Hashable, Sendable {
   public let drawableTypeIDs: [UInt32]
   public let linkedTableInfoObjectIDs: [UInt64]
   public let linkedTableModelObjectIDs: [UInt64]
+  public var drawableTypeCount: Int { drawableTypeIDs.count }
+  public var linkedTableInfoCount: Int { linkedTableInfoObjectIDs.count }
+  public var linkedTableModelCount: Int { linkedTableModelObjectIDs.count }
 
   public init(
     drawableObjectID: UInt64,

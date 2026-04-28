@@ -17,7 +17,12 @@ public enum EditableNumbersError: LocalizedError {
   case invalidHeaderRowCount(Int)
   case invalidHeaderColumnCount(Int)
   case groupedTableMutationUnsupported(sheet: String, table: String, operation: String)
-  case pivotLinkedTableMutationUnsupported(sheet: String, table: String, operation: String)
+  case pivotLinkedTableMutationUnsupported(
+    sheet: String,
+    table: String,
+    operation: String,
+    linkedObjectIDs: [UInt64]
+  )
   case nativeWriteFailed(String)
 
   public var errorDescription: String? {
@@ -51,9 +56,15 @@ public enum EditableNumbersError: LocalizedError {
     case .groupedTableMutationUnsupported(let sheet, let table, let operation):
       return
         "Unsafe grouped-table mutation blocked for \(sheet)/\(table) during \(operation). Grouped tables are currently read-only for structural edits. Remove grouping in Apple Numbers and retry."
-    case .pivotLinkedTableMutationUnsupported(let sheet, let table, let operation):
+    case .pivotLinkedTableMutationUnsupported(let sheet, let table, let operation, let linkedObjectIDs):
+      let renderedLinkedObjectIDs: String
+      if linkedObjectIDs.isEmpty {
+        renderedLinkedObjectIDs = "none"
+      } else {
+        renderedLinkedObjectIDs = linkedObjectIDs.sorted().map(String.init).joined(separator: ",")
+      }
       return
-        "Unsafe pivot-linked mutation blocked for \(sheet)/\(table) during \(operation). This table is linked to a non-table analytical drawable (pivot-like structure) and is currently read-only for native writes. Remove pivot linkage in Apple Numbers and retry."
+        "Unsafe pivot-linked mutation blocked for \(sheet)/\(table) during \(operation). Linked object identifiers: [\(renderedLinkedObjectIDs)]. This table is linked to a non-table analytical drawable (pivot-like structure) and is currently read-only for native writes. Remove pivot linkage in Apple Numbers and retry."
     case .nativeWriteFailed(let details):
       return "Swift-native write failed: \(details)"
     }

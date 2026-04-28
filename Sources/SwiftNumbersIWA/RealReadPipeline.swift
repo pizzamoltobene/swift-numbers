@@ -220,6 +220,9 @@ public struct IWAResolvedPivotLink: Hashable, Sendable {
   public let drawableTypeIDs: [UInt32]
   public let linkedTableInfoObjectIDs: [UInt64]
   public let linkedTableModelObjectIDs: [UInt64]
+  public var drawableTypeCount: Int { drawableTypeIDs.count }
+  public var linkedTableInfoCount: Int { linkedTableInfoObjectIDs.count }
+  public var linkedTableModelCount: Int { linkedTableModelObjectIDs.count }
 
   public init(
     drawableObjectID: UInt64,
@@ -504,7 +507,93 @@ public enum IWARealDocumentReader {
     }
 
     var resolver = Resolver(inventory: inventory, diagnostics: diagnostics)
-    return resolver.resolve()
+    let resolved = resolver.resolve()
+    return IWARealReadResult(
+      sheets: resolved.sheets,
+      structuredDiagnostics: deduplicateUnsupportedDecodeDiagnostics(resolved.structuredDiagnostics)
+    )
+  }
+
+  static func deduplicateUnsupportedDecodeDiagnostics(_ diagnostics: [IWAReadDiagnostic])
+    -> [IWAReadDiagnostic]
+  {
+    var deduplicated: [IWAReadDiagnostic] = []
+    deduplicated.reserveCapacity(diagnostics.count)
+
+    var seenUnsupportedKeys = Set<String>()
+    for diagnostic in diagnostics {
+      guard isUnsupportedDecodeDiagnosticCode(diagnostic.code) else {
+        deduplicated.append(diagnostic)
+        continue
+      }
+
+      guard let nodeType = unsupportedNodeType(for: diagnostic) else {
+        deduplicated.append(diagnostic)
+        continue
+      }
+
+      let objectPath = normalizedObjectPath(diagnostic.objectPath)
+      let key = "\(diagnostic.code)|\(objectPath)|\(nodeType)"
+      if seenUnsupportedKeys.insert(key).inserted {
+        deduplicated.append(diagnostic)
+      }
+    }
+
+    return deduplicated
+  }
+
+  private static func isUnsupportedDecodeDiagnosticCode(_ code: String) -> Bool {
+    code == DiagnosticCode.unsupportedCellTypeDropped.rawValue
+      || code == DiagnosticCode.formulaUnsupportedAstNodes.rawValue
+  }
+
+  private static func unsupportedNodeType(for diagnostic: IWAReadDiagnostic) -> String? {
+    let rawNodeType: String?
+    let isNodeTypeList: Bool
+    switch diagnostic.code {
+    case DiagnosticCode.unsupportedCellTypeDropped.rawValue:
+      rawNodeType = diagnostic.context["cellType"]
+      isNodeTypeList = false
+    case DiagnosticCode.formulaUnsupportedAstNodes.rawValue:
+      if let list = diagnostic.context["unsupportedNodeTypes"] {
+        rawNodeType = list
+        isNodeTypeList = true
+      } else {
+        rawNodeType = diagnostic.context["unsupportedNodeType"]
+        isNodeTypeList = false
+      }
+    default:
+      return nil
+    }
+
+    guard let rawNodeType else { return nil }
+    if isNodeTypeList {
+      return normalizeUnsupportedNodeTypeList(rawNodeType)
+    }
+    return normalizeUnsupportedNodeTypeToken(rawNodeType)
+  }
+
+  private static func normalizedObjectPath(_ objectPath: String?) -> String {
+    objectPath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+  }
+
+  private static func normalizeUnsupportedNodeTypeToken(_ rawValue: String) -> String? {
+    let collapsed = rawValue
+      .split(whereSeparator: \.isWhitespace)
+      .map(String.init)
+      .joined(separator: " ")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased()
+    return collapsed.isEmpty ? nil : collapsed
+  }
+
+  private static func normalizeUnsupportedNodeTypeList(_ rawValue: String) -> String? {
+    let normalizedTokens = rawValue.split(separator: ",")
+      .compactMap { normalizeUnsupportedNodeTypeToken(String($0)) }
+    guard !normalizedTokens.isEmpty else {
+      return nil
+    }
+    return Array(Set(normalizedTokens)).sorted().joined(separator: ",")
   }
 
   private struct Resolver {
@@ -807,8 +896,12 @@ public enum IWARealDocumentReader {
       let context: [String: String] = [
         "drawableObjectID": String(drawableObjectID),
         "drawableTypeIDs": drawableTypeIDs.map(String.init).joined(separator: ","),
+        "drawableTypeCount": String(drawableTypeIDs.count),
+        "referencedObjectCount": String(referencedObjectIDs.count),
         "linkedTableInfoObjectIDs": linkedTableInfoObjectIDs.map(String.init).joined(separator: ","),
+        "linkedTableInfoCount": String(linkedTableInfoObjectIDs.count),
         "linkedTableModelObjectIDs": linkedTableModelObjectIDs.map(String.init).joined(separator: ","),
+        "linkedTableModelCount": String(linkedTableModelObjectIDs.count),
       ]
 
       addDiagnostic(
@@ -988,27 +1081,23 @@ public enum IWARealDocumentReader {
         }
       }
       if !decodeResult.formulaUnsupportedNodeCounts.isEmpty {
-        let unsupportedSummary = decodeResult.formulaUnsupportedNodeCounts
-          .keys
-          .sorted()
-          .map { key in
-            "\(key)=\(decodeResult.formulaUnsupportedNodeCounts[key] ?? 0)"
-          }
-          .joined(separator: ",")
-        addDiagnostic(
-          .formulaUnsupportedAstNodes,
-          severity: .warning,
-          message: "Encountered unsupported formula AST nodes; using best-effort fallback rendering.",
-          objectPath: "table/\(tableID)",
-          suggestion: "Extend TSCE AST decode for full formula fidelity on advanced functions.",
-          context: [
-            "tableID": tableID,
-            "tableName": tableName,
-            "affectedFormulaCells": String(decodeResult.formulasWithUnsupportedNodes),
-            "fallbackFormulaCells": String(decodeResult.formulasUsingFallback),
-            "unsupportedNodeTypes": unsupportedSummary,
-          ]
-        )
+        for nodeType in decodeResult.formulaUnsupportedNodeCounts.keys.sorted() {
+          addDiagnostic(
+            .formulaUnsupportedAstNodes,
+            severity: .warning,
+            message: "Encountered unsupported formula AST nodes; using best-effort fallback rendering.",
+            objectPath: "table/\(tableID)",
+            suggestion: "Extend TSCE AST decode for full formula fidelity on advanced functions.",
+            context: [
+              "tableID": tableID,
+              "tableName": tableName,
+              "affectedFormulaCells": String(decodeResult.formulasWithUnsupportedNodes),
+              "fallbackFormulaCells": String(decodeResult.formulasUsingFallback),
+              "unsupportedNodeType": nodeType,
+              "unsupportedNodeCount": String(decodeResult.formulaUnsupportedNodeCounts[nodeType] ?? 0),
+            ]
+          )
+        }
       }
       let cells = decodeResult.cells
       let merges = decodeMergeRanges(dataStore.mergeRegionMap)

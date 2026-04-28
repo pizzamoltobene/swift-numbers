@@ -234,6 +234,150 @@ final class RealReadPipelineUnitTests: XCTestCase {
     XCTAssertNil(NumbersDocumentVersion.unsupportedVersionDiagnostic(for: "14.5"))
   }
 
+  func testDeduplicateUnsupportedDecodeDiagnosticsByObjectAndNodeTypePreservesOrder() {
+    let diagnostics: [IWAReadDiagnostic] = [
+      IWAReadDiagnostic(
+        code: "decode.formula.unsupportedAstNodes",
+        severity: .warning,
+        message: "formula let first",
+        objectPath: "table/100",
+        context: ["unsupportedNodeType": "let", "unsupportedNodeCount": "2"]
+      ),
+      IWAReadDiagnostic(
+        code: "decode.formula.unsupportedAstNodes",
+        severity: .warning,
+        message: "formula let duplicate",
+        objectPath: "table/100",
+        context: ["unsupportedNodeType": "let", "unsupportedNodeCount": "7"]
+      ),
+      IWAReadDiagnostic(
+        code: "decode.formula.unsupportedAstNodes",
+        severity: .warning,
+        message: "formula call first",
+        objectPath: "table/100",
+        context: ["unsupportedNodeType": "call", "unsupportedNodeCount": "1"]
+      ),
+      IWAReadDiagnostic(
+        code: "decode.formula.unsupportedAstNodes",
+        severity: .warning,
+        message: "formula let other table",
+        objectPath: "table/101",
+        context: ["unsupportedNodeType": "let", "unsupportedNodeCount": "1"]
+      ),
+      IWAReadDiagnostic(
+        code: "decode.cell.unsupportedTypeDropped",
+        severity: .warning,
+        message: "cell type first",
+        objectPath: "table/100",
+        context: ["cellType": "37", "count": "4"]
+      ),
+      IWAReadDiagnostic(
+        code: "decode.cell.unsupportedTypeDropped",
+        severity: .warning,
+        message: "cell type duplicate",
+        objectPath: "table/100",
+        context: ["cellType": "37", "count": "9"]
+      ),
+      IWAReadDiagnostic(
+        code: "resolver.sheet.empty",
+        severity: .warning,
+        message: "non-deduplicated code"
+      ),
+    ]
+
+    let deduplicated = IWARealDocumentReader.deduplicateUnsupportedDecodeDiagnostics(diagnostics)
+    XCTAssertEqual(
+      deduplicated.map(\.message),
+      [
+        "formula let first",
+        "formula call first",
+        "formula let other table",
+        "cell type first",
+        "non-deduplicated code",
+      ]
+    )
+    XCTAssertEqual(deduplicated.count, 5)
+  }
+
+  func testDeduplicateUnsupportedDecodeDiagnosticsNormalizesWhitespaceInNodeType() {
+    let diagnostics: [IWAReadDiagnostic] = [
+      IWAReadDiagnostic(
+        code: "decode.formula.unsupportedAstNodes",
+        severity: .warning,
+        message: "formula let first",
+        objectPath: "table/100",
+        context: ["unsupportedNodeType": " let "]
+      ),
+      IWAReadDiagnostic(
+        code: "decode.formula.unsupportedAstNodes",
+        severity: .warning,
+        message: "formula let duplicate trimmed",
+        objectPath: "table/100",
+        context: ["unsupportedNodeType": "let"]
+      ),
+      IWAReadDiagnostic(
+        code: "decode.cell.unsupportedTypeDropped",
+        severity: .warning,
+        message: "cell type first",
+        objectPath: "table/100",
+        context: ["cellType": " 37 "]
+      ),
+      IWAReadDiagnostic(
+        code: "decode.cell.unsupportedTypeDropped",
+        severity: .warning,
+        message: "cell type duplicate trimmed",
+        objectPath: "table/100",
+        context: ["cellType": "37"]
+      ),
+    ]
+
+    let deduplicated = IWARealDocumentReader.deduplicateUnsupportedDecodeDiagnostics(diagnostics)
+    XCTAssertEqual(
+      deduplicated.map(\.message),
+      [
+        "formula let first",
+        "cell type first",
+      ]
+    )
+    XCTAssertEqual(deduplicated.count, 2)
+  }
+
+  func testDeduplicateUnsupportedDecodeDiagnosticsNormalizesNodeTypeListsAndObjectPathWhitespace() {
+    let diagnostics: [IWAReadDiagnostic] = [
+      IWAReadDiagnostic(
+        code: "decode.formula.unsupportedAstNodes",
+        severity: .warning,
+        message: "formula list first",
+        objectPath: "table/100",
+        context: ["unsupportedNodeTypes": " Let,Call "]
+      ),
+      IWAReadDiagnostic(
+        code: "decode.formula.unsupportedAstNodes",
+        severity: .warning,
+        message: "formula list duplicate reordered",
+        objectPath: " table/100 ",
+        context: ["unsupportedNodeTypes": "call, let"]
+      ),
+      IWAReadDiagnostic(
+        code: "decode.formula.unsupportedAstNodes",
+        severity: .warning,
+        message: "formula list distinct",
+        objectPath: "table/100",
+        context: ["unsupportedNodeTypes": "call, thunk"]
+      ),
+    ]
+
+    let deduplicated = IWARealDocumentReader.deduplicateUnsupportedDecodeDiagnostics(diagnostics)
+    XCTAssertEqual(
+      deduplicated.map(\.message),
+      [
+        "formula list first",
+        "formula list distinct",
+      ]
+    )
+    XCTAssertEqual(deduplicated.count, 2)
+  }
+
   func testResolverChoosesDeterministicDocumentCandidate() {
     let records = [
       IWAObjectRecord(objectID: 20, typeID: 1, payloadSize: 0, sourceBlobPath: "A.iwa"),
@@ -373,15 +517,22 @@ final class RealReadPipelineUnitTests: XCTestCase {
     let pivotLink = try XCTUnwrap(resolvedTable.pivotLinks.first)
     XCTAssertEqual(pivotLink.drawableObjectID, 300)
     XCTAssertEqual(pivotLink.drawableTypeIDs, [7777])
+    XCTAssertEqual(pivotLink.drawableTypeCount, 1)
     XCTAssertEqual(pivotLink.linkedTableInfoObjectIDs, [500])
+    XCTAssertEqual(pivotLink.linkedTableInfoCount, 1)
     XCTAssertEqual(pivotLink.linkedTableModelObjectIDs, [400])
+    XCTAssertEqual(pivotLink.linkedTableModelCount, 1)
     let diagnostic = result.structuredDiagnostics.first { $0.code == "resolver.pivot.candidateDetected" }
     XCTAssertNotNil(diagnostic)
     XCTAssertEqual(diagnostic?.severity, .info)
     XCTAssertEqual(diagnostic?.context["drawableObjectID"], "300")
     XCTAssertEqual(diagnostic?.context["drawableTypeIDs"], "7777")
+    XCTAssertEqual(diagnostic?.context["drawableTypeCount"], "1")
+    XCTAssertEqual(diagnostic?.context["referencedObjectCount"], "2")
     XCTAssertEqual(diagnostic?.context["linkedTableInfoObjectIDs"], "500")
+    XCTAssertEqual(diagnostic?.context["linkedTableInfoCount"], "1")
     XCTAssertEqual(diagnostic?.context["linkedTableModelObjectIDs"], "400")
+    XCTAssertEqual(diagnostic?.context["linkedTableModelCount"], "1")
   }
 
   func testResolverMergesParentTraversalTablesWhenDrawableListIsPartial() throws {
@@ -609,6 +760,297 @@ final class RealReadPipelineUnitTests: XCTestCase {
       let resolvedSheet = try XCTUnwrap(result.sheets.first)
       XCTAssertEqual(resolvedSheet.tables.count, 3)
       XCTAssertEqual(resolvedSheet.tables.map(\.tableInfoObjectID), [300, 301, 302])
+    }
+  }
+
+  func testResolverMergedTraversalIgnoresNonTableDrawableRefsAndZeroIdentifiers() throws {
+    var document = TN_DocumentArchive()
+    document.sheets = [reference(200)]
+
+    var sheet = TN_SheetArchive()
+    sheet.name = "Main"
+    // Includes zero + non-table drawable references that should not perturb table traversal order.
+    sheet.drawableInfos = [reference(900), reference(301), reference(0), reference(300), reference(900), reference(301)]
+
+    var tableInfo300 = TST_TableInfoArchive()
+    var drawable300 = TSD_DrawableArchive()
+    drawable300.parent = reference(200)
+    tableInfo300.super = drawable300
+    tableInfo300.tableModel = reference(400)
+
+    var tableInfo301 = TST_TableInfoArchive()
+    var drawable301 = TSD_DrawableArchive()
+    drawable301.parent = reference(200)
+    tableInfo301.super = drawable301
+    tableInfo301.tableModel = reference(401)
+
+    var tableInfo302 = TST_TableInfoArchive()
+    var drawable302 = TSD_DrawableArchive()
+    drawable302.parent = reference(200)
+    tableInfo302.super = drawable302
+    tableInfo302.tableModel = reference(402)
+
+    var tableModel400 = TST_TableModelArchive()
+    tableModel400.tableID = "table-400"
+    tableModel400.tableName = "Table A"
+    tableModel400.numberOfRows = 0
+    tableModel400.numberOfColumns = 0
+
+    var tableModel401 = TST_TableModelArchive()
+    tableModel401.tableID = "table-401"
+    tableModel401.tableName = "Table B"
+    tableModel401.numberOfRows = 0
+    tableModel401.numberOfColumns = 0
+
+    var tableModel402 = TST_TableModelArchive()
+    tableModel402.tableID = "table-402"
+    tableModel402.tableName = "Table C"
+    tableModel402.numberOfRows = 0
+    tableModel402.numberOfColumns = 0
+
+    let documentPayload = try document.serializedData()
+    let sheetPayload = try sheet.serializedData()
+    let tableInfo300Payload = try tableInfo300.serializedData()
+    let tableInfo301Payload = try tableInfo301.serializedData()
+    let tableInfo302Payload = try tableInfo302.serializedData()
+    let tableModel400Payload = try tableModel400.serializedData()
+    let tableModel401Payload = try tableModel401.serializedData()
+    let tableModel402Payload = try tableModel402.serializedData()
+    let nonTableDrawablePayload = Data([0x00, 0x01, 0x02])
+
+    let orderedRecords = [
+      IWAObjectRecord(
+        objectID: 100,
+        typeID: 1,
+        payloadSize: documentPayload.count,
+        payloadData: documentPayload,
+        sourceBlobPath: "Doc.iwa",
+        objectReferences: [200]
+      ),
+      IWAObjectRecord(
+        objectID: 200,
+        typeID: 2,
+        payloadSize: sheetPayload.count,
+        payloadData: sheetPayload,
+        sourceBlobPath: "Sheet.iwa",
+        objectReferences: [900, 301, 0, 300, 900, 301]
+      ),
+      IWAObjectRecord(
+        objectID: 900,
+        typeID: 7777,
+        payloadSize: nonTableDrawablePayload.count,
+        payloadData: nonTableDrawablePayload,
+        sourceBlobPath: "PivotLikeDrawable.iwa",
+        objectReferences: [302, 402]
+      ),
+      IWAObjectRecord(
+        objectID: 301,
+        typeID: 6000,
+        payloadSize: tableInfo301Payload.count,
+        payloadData: tableInfo301Payload,
+        sourceBlobPath: "TableB.iwa",
+        objectReferences: [200, 401]
+      ),
+      IWAObjectRecord(
+        objectID: 401,
+        typeID: 6001,
+        payloadSize: tableModel401Payload.count,
+        payloadData: tableModel401Payload,
+        sourceBlobPath: "TableBModel.iwa"
+      ),
+      IWAObjectRecord(
+        objectID: 300,
+        typeID: 6000,
+        payloadSize: tableInfo300Payload.count,
+        payloadData: tableInfo300Payload,
+        sourceBlobPath: "TableA.iwa",
+        objectReferences: [200, 400]
+      ),
+      IWAObjectRecord(
+        objectID: 400,
+        typeID: 6001,
+        payloadSize: tableModel400Payload.count,
+        payloadData: tableModel400Payload,
+        sourceBlobPath: "TableAModel.iwa"
+      ),
+      // Parent traversal should merge this table even though it is not a table drawable ref.
+      IWAObjectRecord(
+        objectID: 302,
+        typeID: 6000,
+        payloadSize: tableInfo302Payload.count,
+        payloadData: tableInfo302Payload,
+        sourceBlobPath: "TableC.iwa",
+        objectReferences: [200, 402]
+      ),
+      IWAObjectRecord(
+        objectID: 402,
+        typeID: 6001,
+        payloadSize: tableModel402Payload.count,
+        payloadData: tableModel402Payload,
+        sourceBlobPath: "TableCModel.iwa"
+      ),
+    ]
+
+    for records in [orderedRecords, Array(orderedRecords.reversed())] {
+      let inventory = IWAInventory(records: records, unparsedBlobPaths: [])
+      let result = IWARealDocumentReader.read(from: inventory, documentVersion: nil)
+      let resolvedSheet = try XCTUnwrap(result.sheets.first)
+      XCTAssertEqual(resolvedSheet.tables.count, 3)
+      XCTAssertEqual(resolvedSheet.tables.map(\.tableInfoObjectID), [300, 301, 302])
+      XCTAssertEqual(Set(resolvedSheet.tables.map(\.tableInfoObjectID)).count, resolvedSheet.tables.count)
+
+      let pivotCandidate = result.structuredDiagnostics.first {
+        $0.code == "resolver.pivot.candidateDetected" && $0.context["drawableObjectID"] == "900"
+      }
+      XCTAssertNotNil(pivotCandidate)
+    }
+  }
+
+  func testResolverMergedTraversalSnapshotStaysStableWithDuplicateTableInfoRecords() throws {
+    var document = TN_DocumentArchive()
+    document.sheets = [reference(200)]
+
+    var sheet = TN_SheetArchive()
+    sheet.name = "Main"
+    sheet.drawableInfos = [reference(301), reference(300), reference(301)]
+
+    var tableInfo300 = TST_TableInfoArchive()
+    var drawable300 = TSD_DrawableArchive()
+    drawable300.parent = reference(200)
+    tableInfo300.super = drawable300
+    tableInfo300.tableModel = reference(400)
+
+    var tableInfo301 = TST_TableInfoArchive()
+    var drawable301 = TSD_DrawableArchive()
+    drawable301.parent = reference(200)
+    tableInfo301.super = drawable301
+    tableInfo301.tableModel = reference(401)
+
+    var tableInfo302 = TST_TableInfoArchive()
+    var drawable302 = TSD_DrawableArchive()
+    drawable302.parent = reference(200)
+    tableInfo302.super = drawable302
+    tableInfo302.tableModel = reference(402)
+
+    var tableModel400 = TST_TableModelArchive()
+    tableModel400.tableID = "table-400"
+    tableModel400.tableName = "Table A"
+    tableModel400.numberOfRows = 0
+    tableModel400.numberOfColumns = 0
+
+    var tableModel401 = TST_TableModelArchive()
+    tableModel401.tableID = "table-401"
+    tableModel401.tableName = "Table B"
+    tableModel401.numberOfRows = 0
+    tableModel401.numberOfColumns = 0
+
+    var tableModel402 = TST_TableModelArchive()
+    tableModel402.tableID = "table-402"
+    tableModel402.tableName = "Table C"
+    tableModel402.numberOfRows = 0
+    tableModel402.numberOfColumns = 0
+
+    let documentPayload = try document.serializedData()
+    let sheetPayload = try sheet.serializedData()
+    let tableInfo300Payload = try tableInfo300.serializedData()
+    let tableInfo301Payload = try tableInfo301.serializedData()
+    let tableInfo302Payload = try tableInfo302.serializedData()
+    let tableModel400Payload = try tableModel400.serializedData()
+    let tableModel401Payload = try tableModel401.serializedData()
+    let tableModel402Payload = try tableModel402.serializedData()
+    let corruptTableInfoPayload = Data(repeating: 0x80, count: tableInfo301Payload.count + 8)
+
+    let baselineRecords = [
+      IWAObjectRecord(
+        objectID: 100,
+        typeID: 1,
+        payloadSize: documentPayload.count,
+        payloadData: documentPayload,
+        sourceBlobPath: "Doc.iwa",
+        objectReferences: [200]
+      ),
+      IWAObjectRecord(
+        objectID: 200,
+        typeID: 2,
+        payloadSize: sheetPayload.count,
+        payloadData: sheetPayload,
+        sourceBlobPath: "Sheet.iwa",
+        objectReferences: [301, 300, 301]
+      ),
+      IWAObjectRecord(
+        objectID: 301,
+        typeID: 6000,
+        payloadSize: tableInfo301Payload.count,
+        payloadData: tableInfo301Payload,
+        sourceBlobPath: "TableB.iwa",
+        objectReferences: [200, 401]
+      ),
+      IWAObjectRecord(
+        objectID: 401,
+        typeID: 6001,
+        payloadSize: tableModel401Payload.count,
+        payloadData: tableModel401Payload,
+        sourceBlobPath: "TableBModel.iwa"
+      ),
+      IWAObjectRecord(
+        objectID: 300,
+        typeID: 6000,
+        payloadSize: tableInfo300Payload.count,
+        payloadData: tableInfo300Payload,
+        sourceBlobPath: "TableA.iwa",
+        objectReferences: [200, 400]
+      ),
+      IWAObjectRecord(
+        objectID: 400,
+        typeID: 6001,
+        payloadSize: tableModel400Payload.count,
+        payloadData: tableModel400Payload,
+        sourceBlobPath: "TableAModel.iwa"
+      ),
+      IWAObjectRecord(
+        objectID: 302,
+        typeID: 6000,
+        payloadSize: tableInfo302Payload.count,
+        payloadData: tableInfo302Payload,
+        sourceBlobPath: "TableC.iwa",
+        objectReferences: [200, 402]
+      ),
+      IWAObjectRecord(
+        objectID: 402,
+        typeID: 6001,
+        payloadSize: tableModel402Payload.count,
+        payloadData: tableModel402Payload,
+        sourceBlobPath: "TableCModel.iwa"
+      ),
+    ]
+
+    let withCorruptDuplicate = [
+      IWAObjectRecord(
+        objectID: 301,
+        typeID: 6000,
+        payloadSize: corruptTableInfoPayload.count,
+        payloadData: corruptTableInfoPayload,
+        sourceBlobPath: "TableBCorrupt.iwa",
+        objectReferences: [200, 401]
+      )
+    ] + baselineRecords
+
+    let variants: [[IWAObjectRecord]] = [
+      baselineRecords,
+      Array(baselineRecords.reversed()),
+      withCorruptDuplicate,
+    ]
+    let expectedSnapshot = "300:400:Table A|301:401:Table B|302:402:Table C"
+
+    for records in variants {
+      let inventory = IWAInventory(records: records, unparsedBlobPaths: [])
+      let result = IWARealDocumentReader.read(from: inventory, documentVersion: nil)
+      let resolvedSheet = try XCTUnwrap(result.sheets.first)
+      let snapshot = resolvedSheet.tables.map {
+        "\($0.tableInfoObjectID):\($0.tableModelObjectID):\($0.name)"
+      }.joined(separator: "|")
+      XCTAssertEqual(snapshot, expectedSnapshot)
+      XCTAssertEqual(Set(resolvedSheet.tables.map(\.tableInfoObjectID)).count, resolvedSheet.tables.count)
     }
   }
 

@@ -66,6 +66,30 @@ final class NumbersDocumentTests: XCTestCase {
     XCTAssertGreaterThan(identifiers.tableModelObjectID ?? 0, 0)
   }
 
+  func testTableMetadataPivotLinksExposeStableCountsAndIdentifiers() {
+    let link = PivotLinkMetadata(
+      drawableObjectID: 300,
+      drawableTypeIDs: [7777, 8888],
+      linkedTableInfoObjectIDs: [500, 501],
+      linkedTableModelObjectIDs: [400]
+    )
+    let metadata = TableMetadata(
+      rowCount: 1,
+      columnCount: 1,
+      mergeRanges: [],
+      pivotLinks: [link]
+    )
+
+    let pivotLink = metadata.pivotLinks.first
+    XCTAssertEqual(pivotLink?.drawableObjectID, 300)
+    XCTAssertEqual(pivotLink?.drawableTypeIDs, [7777, 8888])
+    XCTAssertEqual(pivotLink?.linkedTableInfoObjectIDs, [500, 501])
+    XCTAssertEqual(pivotLink?.linkedTableModelObjectIDs, [400])
+    XCTAssertEqual(pivotLink?.drawableTypeCount, 2)
+    XCTAssertEqual(pivotLink?.linkedTableInfoCount, 2)
+    XCTAssertEqual(pivotLink?.linkedTableModelCount, 1)
+  }
+
   func testReadLookupByNameAndIndex() throws {
     assertMetadataOnlyFixtureRejected("multi-sheet.numbers")
   }

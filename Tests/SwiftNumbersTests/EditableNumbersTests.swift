@@ -285,8 +285,8 @@ final class EditableNumbersDocumentTests: XCTestCase {
   func testSetValueFormulaRoundTripOnSingleFileArchive() throws {
     try assertSetValueRoundTrip(
       archiveForm: .singleFile,
-      value: .formula("=SUM(A1:A3)"),
-      expected: .formula("=SUM(A1:A3)"),
+      value: .formula("=SUM(B1:B3)"),
+      expected: .formula("=SUM(B1:B3)"),
       outputName: "editable-value-formula-archive-roundtrip.numbers"
     )
   }
@@ -340,8 +340,8 @@ final class EditableNumbersDocumentTests: XCTestCase {
   func testSetValueFormulaRoundTripOnPackageArchive() throws {
     try assertSetValueRoundTrip(
       archiveForm: .package,
-      value: .formula("=SUM(A1:A3)"),
-      expected: .formula("=SUM(A1:A3)"),
+      value: .formula("=SUM(B1:B3)"),
+      expected: .formula("=SUM(B1:B3)"),
       outputName: "editable-value-formula-package-roundtrip.numbers"
     )
   }
@@ -820,7 +820,7 @@ final class EditableNumbersDocumentTests: XCTestCase {
     let editable = try EditableNumbersDocument.open(at: fixture)
     let table = try XCTUnwrap(editable.firstSheet?.firstTable)
 
-    table.setValue(.formula("A1+B1"), at: CellAddress(row: 0, column: 0))
+    table.setValue(.formula("B1+C1"), at: CellAddress(row: 0, column: 0))
     try table.setValue(.formula("=SUM(A1:A5)"), at: "B1")
 
     let output = temporaryArchiveOutputURL("editable-formula-low-level-output.numbers")
@@ -828,14 +828,14 @@ final class EditableNumbersDocumentTests: XCTestCase {
 
     let reopened = try NumbersDocument.open(at: output)
     let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
-    XCTAssertEqual(reopenedTable.cell(at: CellAddress(row: 0, column: 0)), .formula("=A1+B1"))
+    XCTAssertEqual(reopenedTable.cell(at: CellAddress(row: 0, column: 0)), .formula("=B1+C1"))
     XCTAssertEqual(reopenedTable.cell("B1"), .formula("=SUM(A1:A5)"))
 
     let firstFormula = try XCTUnwrap(reopenedTable.formula("A1"))
-    XCTAssertEqual(firstFormula.rawFormula, "=A1+B1")
-    XCTAssertEqual(firstFormula.parsedTokens, ["=", "A1", "+", "B1"])
-    XCTAssertEqual(firstFormula.result, .formula("=A1+B1"))
-    XCTAssertEqual(firstFormula.resultFormatted, "=A1+B1")
+    XCTAssertEqual(firstFormula.rawFormula, "=B1+C1")
+    XCTAssertEqual(firstFormula.parsedTokens, ["=", "B1", "+", "C1"])
+    XCTAssertEqual(firstFormula.result, .formula("=B1+C1"))
+    XCTAssertEqual(firstFormula.resultFormatted, "=B1+C1")
 
     let secondFormula = try XCTUnwrap(reopenedTable.formula("B1"))
     XCTAssertEqual(secondFormula.rawFormula, "=SUM(A1:A5)")
@@ -846,6 +846,83 @@ final class EditableNumbersDocumentTests: XCTestCase {
     let container = try NumbersContainer.open(at: output)
     let metadataOverlay = try container.readMetadataFile(named: "DocumentMetadata.json")
     XCTAssertNil(metadataOverlay, "Formula writes should persist via low-level IWA writer.")
+  }
+
+  func testSaveOnSingleFileArchiveRejectsSelfReferentialFormulaRange() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    try table.setValue(.formula("=SUM(A1:B2)"), at: "B2")
+
+    let output = temporaryArchiveOutputURL("editable-formula-unsafe-range-output.numbers")
+    XCTAssertThrowsError(try editable.save(to: output)) { error in
+      guard case let EditableNumbersError.nativeWriteFailed(details) = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(
+        details,
+        "IWA writer: unsafe self-referential formula at Sheet 1/Table 1 B2 via range A1:B2."
+      )
+    }
+  }
+
+  func testSaveOnSingleFileArchiveRejectsSheetQualifiedFormulaReference() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    try table.setValue(.formula("=Sheet2!A1"), at: "A1")
+
+    let output = temporaryArchiveOutputURL("editable-formula-sheet-qualified-output.numbers")
+    XCTAssertThrowsError(try editable.save(to: output)) { error in
+      guard case let EditableNumbersError.nativeWriteFailed(details) = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(
+        details,
+        "IWA writer: unsafe formula reference at Sheet 1/Table 1 A1. Sheet-qualified references are unsupported in strict native-write mode."
+      )
+    }
+  }
+
+  func testSaveOnSingleFileArchiveRejectsSelfReferentialFormulaReference() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    try table.setValue(.formula("=B2+1"), at: "B2")
+
+    let output = temporaryArchiveOutputURL("editable-formula-unsafe-self-reference-output.numbers")
+    XCTAssertThrowsError(try editable.save(to: output)) { error in
+      guard case let EditableNumbersError.nativeWriteFailed(details) = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(
+        details,
+        "IWA writer: unsafe self-referential formula at Sheet 1/Table 1 B2 via reference B2."
+      )
+    }
+  }
+
+  func testSaveOnSingleFileArchiveRejectsSelfReferentialAbsoluteFormulaReference() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    try table.setValue(.formula("=$B$2+1"), at: "B2")
+
+    let output = temporaryArchiveOutputURL(
+      "editable-formula-unsafe-self-reference-absolute-output.numbers")
+    XCTAssertThrowsError(try editable.save(to: output)) { error in
+      guard case let EditableNumbersError.nativeWriteFailed(details) = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(
+        details,
+        "IWA writer: unsafe self-referential formula at Sheet 1/Table 1 B2 via reference $B$2."
+      )
+    }
   }
 
   func testSaveOnSingleFileArchiveUsesLowLevelIWAWriterForStructuralMutations() throws {
@@ -1637,15 +1714,67 @@ final class EditableNumbersDocumentTests: XCTestCase {
     )
   }
 
+  func testGroupedDeleteRowMutationUnsupportedErrorMessageIncludesRowIndex() {
+    let error = EditableNumbersError.groupedTableMutationUnsupported(
+      sheet: "Sheet 1",
+      table: "Table 1",
+      operation: "deleteRow(rowIndex: 3)"
+    )
+    XCTAssertEqual(
+      error.errorDescription,
+      "Unsafe grouped-table mutation blocked for Sheet 1/Table 1 during deleteRow(rowIndex: 3). Grouped tables are currently read-only for structural edits. Remove grouping in Apple Numbers and retry."
+    )
+  }
+
   func testPivotLinkedTableMutationUnsupportedErrorMessageIsDeterministic() {
     let error = EditableNumbersError.pivotLinkedTableMutationUnsupported(
       sheet: "Sheet 1",
       table: "Table 1",
-      operation: "setCell"
+      operation: "setCell",
+      linkedObjectIDs: [300, 400]
     )
     XCTAssertEqual(
       error.errorDescription,
-      "Unsafe pivot-linked mutation blocked for Sheet 1/Table 1 during setCell. This table is linked to a non-table analytical drawable (pivot-like structure) and is currently read-only for native writes. Remove pivot linkage in Apple Numbers and retry."
+      "Unsafe pivot-linked mutation blocked for Sheet 1/Table 1 during setCell. Linked object identifiers: [300,400]. This table is linked to a non-table analytical drawable (pivot-like structure) and is currently read-only for native writes. Remove pivot linkage in Apple Numbers and retry."
+    )
+  }
+
+  func testPivotLinkedTableMutationUnsupportedErrorMessageHandlesEmptyIdentifiersDeterministically() {
+    let error = EditableNumbersError.pivotLinkedTableMutationUnsupported(
+      sheet: "Sheet 1",
+      table: "Table 1",
+      operation: "setCell",
+      linkedObjectIDs: []
+    )
+    XCTAssertEqual(
+      error.errorDescription,
+      "Unsafe pivot-linked mutation blocked for Sheet 1/Table 1 during setCell. Linked object identifiers: [none]. This table is linked to a non-table analytical drawable (pivot-like structure) and is currently read-only for native writes. Remove pivot linkage in Apple Numbers and retry."
+    )
+  }
+
+  func testPivotLinkedTableMutationUnsupportedErrorMessageSortsIdentifiersDeterministically() {
+    let error = EditableNumbersError.pivotLinkedTableMutationUnsupported(
+      sheet: "Sheet 1",
+      table: "Table 1",
+      operation: "setCell",
+      linkedObjectIDs: [400, 300]
+    )
+    XCTAssertEqual(
+      error.errorDescription,
+      "Unsafe pivot-linked mutation blocked for Sheet 1/Table 1 during setCell. Linked object identifiers: [300,400]. This table is linked to a non-table analytical drawable (pivot-like structure) and is currently read-only for native writes. Remove pivot linkage in Apple Numbers and retry."
+    )
+  }
+
+  func testPivotLinkedDeleteRowMutationUnsupportedErrorMessageIncludesRowIndex() {
+    let error = EditableNumbersError.pivotLinkedTableMutationUnsupported(
+      sheet: "Sheet 1",
+      table: "Table 1",
+      operation: "deleteRow(rowIndex: 3)",
+      linkedObjectIDs: [300, 400]
+    )
+    XCTAssertEqual(
+      error.errorDescription,
+      "Unsafe pivot-linked mutation blocked for Sheet 1/Table 1 during deleteRow(rowIndex: 3). Linked object identifiers: [300,400]. This table is linked to a non-table analytical drawable (pivot-like structure) and is currently read-only for native writes. Remove pivot linkage in Apple Numbers and retry."
     )
   }
 }
@@ -1778,6 +1907,78 @@ final class IWASetCellWriterTests: XCTestCase {
         columnCount: 3,
         operation: .deleteColumn(sheetName: "S", tableName: "T", columnIndex: 1)
       )
+    )
+  }
+
+  func testGroupedTableSafetyGuardDeleteRowIsDeterministicAcrossIndices() {
+    let groupedDecisions = [0, 1, 3].map { rowIndex in
+      IWASetCellWriter.shouldBlockGroupedTableMutation(
+        bucketCount: 2,
+        rowCount: 4,
+        columnCount: 3,
+        operation: .deleteRow(sheetName: "S", tableName: "T", rowIndex: rowIndex)
+      )
+    }
+    XCTAssertEqual(groupedDecisions, [true, true, true])
+
+    let ungroupedDecisions = [0, 1, 3].map { rowIndex in
+      IWASetCellWriter.shouldBlockGroupedTableMutation(
+        bucketCount: 1,
+        rowCount: 4,
+        columnCount: 3,
+        operation: .deleteRow(sheetName: "S", tableName: "T", rowIndex: rowIndex)
+      )
+    }
+    XCTAssertEqual(ungroupedDecisions, [false, false, false])
+  }
+
+  func testGroupedTableSafetyGuardDeleteRowIsDeterministicAcrossOutOfBoundsIndices() {
+    let groupedDecisions = [-1, 0, 4].map { rowIndex in
+      IWASetCellWriter.shouldBlockGroupedTableMutation(
+        bucketCount: 2,
+        rowCount: 4,
+        columnCount: 3,
+        operation: .deleteRow(sheetName: "S", tableName: "T", rowIndex: rowIndex)
+      )
+    }
+    XCTAssertEqual(groupedDecisions, [true, true, true])
+
+    let ungroupedDecisions = [-1, 0, 4].map { rowIndex in
+      IWASetCellWriter.shouldBlockGroupedTableMutation(
+        bucketCount: 1,
+        rowCount: 4,
+        columnCount: 3,
+        operation: .deleteRow(sheetName: "S", tableName: "T", rowIndex: rowIndex)
+      )
+    }
+    XCTAssertEqual(ungroupedDecisions, [false, false, false])
+  }
+
+  func testGroupedTableSafetyGuardAllowsDeleteMutationsWhenTableIsNotGrouped() {
+    XCTAssertFalse(
+      IWASetCellWriter.shouldBlockGroupedTableMutation(
+        bucketCount: 1,
+        rowCount: 4,
+        columnCount: 3,
+        operation: .deleteRow(sheetName: "S", tableName: "T", rowIndex: 2)
+      )
+    )
+    XCTAssertFalse(
+      IWASetCellWriter.shouldBlockGroupedTableMutation(
+        bucketCount: 1,
+        rowCount: 4,
+        columnCount: 3,
+        operation: .deleteColumn(sheetName: "S", tableName: "T", columnIndex: 1)
+      )
+    )
+  }
+
+  func testGroupedTableMutationOperationNameForDeleteRowIncludesIndex() {
+    XCTAssertEqual(
+      IWASetCellWriter.groupedMutationOperationName(
+        for: .deleteRow(sheetName: "S", tableName: "T", rowIndex: 3)
+      ),
+      "deleteRow(rowIndex: 3)"
     )
   }
 
