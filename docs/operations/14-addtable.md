@@ -25,11 +25,21 @@ func addTable(named: String, rows: Int, columns: Int, onSheetNamed: String) thro
 
 **Throws**
 
-- `sheetNotFound`
-- `invalidRowIndex`
-- `invalidColumnIndex`
-- `duplicateTableName` (same sheet)
-- `nativeWriteFailed` (ambiguous low-level targeting)
+- `EditableNumbersError.sheetNotFound(String)`
+- `EditableNumbersError.invalidRowIndex(Int)`
+- `EditableNumbersError.invalidColumnIndex(Int)`
+- `EditableNumbersError.duplicateTableName(sheet: String, table: String)`
+
+**Behavior**
+
+- `name` is trimmed; empty/whitespace table names normalize to `Table N`.
+- duplicate names on the same sheet fail fast (no auto-suffix).
+- `rows`/`columns` may be zero (`>= 0` is accepted).
+
+**Side Effects**
+
+- appends the new table to the target sheet table list (stable order)
+- marks sheet/document state as structure-dirty
 
 **Visual**
 

@@ -26,6 +26,8 @@ func addSheet(named: String) -> EditableSheet
 - adds a sheet
 - creates default `Table 1` with `1x1`
 - if name already exists, auto-suffixes (`Name`, `Name (2)`, ...)
+- empty/whitespace input normalizes to `Sheet N` before uniqueness suffixing
+- marks document state as structure-dirty
 
 **Visual**
 

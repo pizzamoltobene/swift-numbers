@@ -13,8 +13,15 @@ swift run swiftnumbers <subcommand> ...
 ## Global
 
 ```bash
-swiftnumbers --help
+swift run swiftnumbers --help
+swift run swiftnumbers help <subcommand>
 ```
+
+Selector rule used by read/export/import commands:
+
+- For sheet selection, provide exactly one of: `--sheet` or `--sheet-index`.
+- For table selection, provide exactly one of: `--table` or `--table-index`.
+- If selector is missing (or both forms are provided), command exits with a validation error.
 
 ## Subcommands
 
@@ -442,6 +449,10 @@ swiftnumbers import-csv <file.numbers> <file.csv> (--sheet "<Sheet Name>" | --sh
 - `--date-column` scopes date parsing to selected columns; without it, date parsing applies to all columns.
 - `--date-format` patterns are evaluated before built-in date fallbacks.
 - With `--header no-header`, a generated header row (`Column 1`, `Column 2`, ...) is inserted before CSV data.
+- `--date-column`, `--date-format`, and `--day-first` are valid only together with `--parse-dates`.
+- Built-in date fallbacks are:
+  - default mode: `MM/dd/yyyy`, `MM-dd-yyyy`, `MM/dd/yyyy HH:mm:ss`, `MM/dd/yyyy HH:mm`, `yyyy-MM-dd`
+  - with `--day-first`: `dd/MM/yyyy`, `dd-MM-yyyy`, `dd/MM/yyyy HH:mm:ss`, `dd/MM/yyyy HH:mm`, `yyyy-MM-dd`
 
 ## 10) `dump`
 
@@ -575,6 +586,8 @@ swiftnumbers inspect <file.numbers> [--format text|json] [--redact] [--compact]
 | `document.sheetCount` | `Int` | Number of sheets |
 | `document.tableCount` | `Int` | Number of tables |
 | `document.resolvedCellCount` | `Int` | Number of populated cells parsed |
+| `document.sheetNames` | `[String]` | Ordered sheet names |
+| `document.tableNames` | `[String]` | Fully-qualified table names (`Sheet/Table`) |
 | `typeHistogram` | `[String:Int]` | Type-ID distribution |
 | `diagnosticCount` | `Int` | Count of string diagnostics |
 | `diagnostics` | `[String]` | Human-readable diagnostics |

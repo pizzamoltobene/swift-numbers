@@ -22,9 +22,12 @@ func save(to outputURL: URL) throws
 
 **Behavior**
 
-- if `outputURL` equals current working path: performs atomic in-place replace
+- if `outputURL` equals current working path and there are no pending changes: no-op
+- if `outputURL` equals current working path and there are pending changes: performs atomic in-place replace
 - if `outputURL` is a different path: writes a new document and sets that path as the new working path
 - if no changes and `outputURL` is a different path: copies current working container
+- repeated saves continue from the latest successful working path
+- successful save resets pending operations/style registries and sets `dirtyState` to `clean`
 
 **Visual**
 

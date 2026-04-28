@@ -20,10 +20,18 @@ func appendRow(_ values: [CellValue])
 |---|---|---|---|
 | `values` | `[CellValue]` | Yes | New row values |
 
+**Behavior**
+
+- `values.isEmpty` still appends one blank row.
+- only non-`.empty` values are materialized into cell storage (sparse representation).
+
 **Side Effects**
 
 - `rowCount += 1`
 - may increase `columnCount` if `values.count` is larger
+- appends one `rowHeights` slot (`nil`) for the new row
+- when `columnCount` grows, appends matching `columnWidths` slots (`nil`)
+- marks document/table dirty (structure changed)
 
 **Visual (before/after)**
 

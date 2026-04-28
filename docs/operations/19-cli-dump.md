@@ -11,7 +11,7 @@ Inspect read path, inventory, diagnostics, and table summaries.
 **Command**
 
 ```bash
-swiftnumbers dump <file.numbers> [--format text|json]
+swiftnumbers dump <file.numbers> [--format text|json] [--formulas] [--cells] [--formatting]
 ```
 
 **Attributes**
@@ -20,6 +20,14 @@ swiftnumbers dump <file.numbers> [--format text|json]
 |---|---|---|---|
 | `<file.numbers>` | path | Yes | Input `.numbers` |
 | `--format` | `text`/`json` | No | Default `text` |
+| `--formulas` | flag | No | Include formula-read details |
+| `--cells` | flag | No | Include populated-cell read snapshots |
+| `--formatting` | flag | No | Include deterministic per-cell formatting profiles |
+
+**Behavior**
+
+- default format is `text` (`--format json` emits structured payload).
+- `--formulas`, `--cells`, and `--formatting` are additive; each section is included independently.
 
 **Visual output (text, abbreviated)**
 
@@ -38,6 +46,20 @@ Diagnostics: 0
   "readPath": "real",
   "sheetCount": 2,
   "tableCount": 3,
+  "sheets": [
+    {
+      "name": "Sheet 1",
+      "tables": [
+        {
+          "name": "Table 1",
+          "tableNameVisible": true,
+          "captionVisible": false,
+          "captionText": "",
+          "captionTextSupported": true
+        }
+      ]
+    }
+  ],
   "resolvedCellCount": 420,
   "diagnostics": []
 }

@@ -22,6 +22,12 @@ var firstTable: EditableTable? { get }
 | `tables` | `[EditableTable]` | Mutable table list in the sheet |
 | `firstTable` | `EditableTable?` | Convenience accessor for quick workflows |
 
+**Behavior**
+
+- table order is deterministic insertion order (`addTable` appends to `tables`).
+- `firstTable` is exactly `tables.first`.
+- name lookup uses `table(named:)` and throws `EditableNumbersError.tableNotFound(sheet:table:)` when missing.
+
 **Visual**
 
 ```text

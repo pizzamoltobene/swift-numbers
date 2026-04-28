@@ -16,6 +16,27 @@ All notable changes to this project are documented in this file.
 
 - Revert to the previous stable tag and redeploy package artifacts.
 
+## [0.4.0] - 2026-04-28
+
+### Summary
+
+- Completed a full documentation synchronization pass against the current codebase:
+  refreshed API/CLI/docs hub/quickstart pages and regenerated operation docs `01` through `25`
+  from canonical capability cards.
+- Hardened operation-doc generation to target only top-level operation cards (`5.<n>`),
+  preventing subsection collisions and keeping generated docs stable/reproducible.
+- Expanded capability cards with implementation-accurate behavior for editable write flows
+  (`setValue`, `appendRow`, `insertRow`, `appendColumn`, save semantics, and typed reference behavior),
+  including concrete throw contracts and side effects.
+
+### Breaking Changes
+
+- None.
+
+### Rollback Hint
+
+- Revert to the previous stable tag and redeploy package artifacts.
+
 ## [0.3.12] - 2026-04-28
 
 ### Summary

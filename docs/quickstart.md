@@ -4,6 +4,12 @@ This guide is the fastest path to verify `SwiftNumbers` on your machine.
 
 For complete API behavior, see [Capabilities](capabilities.md).  
 For practical scenarios, see [Cookbook](cookbook.md).
+For full CLI contract, see [CLI Reference](cli-reference.md).
+
+## Prerequisites
+
+- macOS with Swift toolchain available (`swift --version`)
+- Repository checked out locally
 
 ## 1) Build
 
@@ -23,19 +29,27 @@ swift test
 ./scripts/ci-check.sh
 ```
 
-## 4) Try CLI on public fixtures
+## 4) CLI smoke test on public fixtures
 
 ```bash
+swift run swiftnumbers --help
+swift run swiftnumbers help read-column
 swift run swiftnumbers list-sheets Tests/Fixtures/multi-sheet.numbers
-swift run swiftnumbers dump Tests/Fixtures/simple-table.numbers
-swift run swiftnumbers dump Tests/Fixtures/simple-table.numbers --format json
+swift run swiftnumbers list-tables Tests/Fixtures/multi-sheet.numbers --format json
+swift run swiftnumbers list-formulas Tests/Fixtures/simple-table.numbers --format json
+swift run swiftnumbers read-cell Tests/Fixtures/simple-table.numbers A1 --sheet "Sheet 1" --table "Table 1" --format json
+swift run swiftnumbers read-range Tests/Fixtures/simple-table.numbers A2:B3 --sheet "Sheet 1" --table "Table 1" --jsonl
+swift run swiftnumbers dump Tests/Fixtures/simple-table.numbers --format json --cells --formatting
+swift run swiftnumbers inspect Tests/Fixtures/simple-table.numbers --format json --redact --compact
 ```
 
 Expected outcomes:
 
-- `list-sheets` prints ordered sheet names
-- `dump` prints read path, counts, diagnostics
-- `--format json` emits machine-friendly payload
+- `list-sheets` / `list-tables` return deterministic ordering
+- `read-cell` / `read-range` return typed read snapshots
+- `dump --cells --formatting` includes structural + cell-level diagnostics
+- `inspect --redact --compact` emits machine-friendly low-level payload
+- scoped commands require one sheet selector (`--sheet` or `--sheet-index`) and one table selector (`--table` or `--table-index`)
 
 ## 5) Open → edit → save (library API)
 
@@ -72,13 +86,20 @@ export SWIFT_NUMBERS_PRIVATE_CORPUS="/absolute/path/to/private-corpus"
 
 Keep `.private-corpus/expectations.json` in sync with your local corpus baseline before running private-corpus regression checks.
 
-## 8) Run release checks
+## 8) Check release batch gate and run release checks
 
 ```bash
+./scripts/release_batch_count.sh --changelog ./CHANGELOG.md
+./scripts/release_batch_count.sh --changelog ./CHANGELOG.md --check --threshold 5
 ./scripts/release_check.sh
 # After manual Numbers.app smoke checks:
 SWIFT_NUMBERS_NUMBERS_APP_OK=1 ./scripts/release_check.sh
 ```
+
+Notes:
+
+- `release_batch_count.sh --check --threshold 5` returns success when `Unreleased -> Summary` has at least 5 non-placeholder bullets.
+- `release_check.sh` validates release metadata, `swift build -c release`, `swift test`, and manual Numbers.app smoke status.
 
 Release metadata gate requirements for the target changelog section:
 

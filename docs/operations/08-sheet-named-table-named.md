@@ -6,7 +6,7 @@
 
 **Purpose**
 
-Resolve mutable sheet/table by name.
+Resolve mutable sheet/table by exact name.
 
 **Signatures**
 
@@ -19,12 +19,16 @@ func table(named: String) throws -> EditableTable
 
 | Attribute | Type | Required | Notes |
 |---|---|---|---|
-| `name` | `String` | Yes | Exact match in current model |
+| `name` | `String` | Yes | Exact, case-sensitive match in current model |
 
 **Throws**
 
-- `sheetNotFound`
-- `tableNotFound`
+- `EditableNumbersError.sheetNotFound(String)` when sheet lookup fails
+- `EditableNumbersError.tableNotFound(sheet: String, table: String)` when table lookup fails within resolved sheet
+
+**Side Effects**
+
+- none (lookup only; does not mutate model state)
 
 **Visual**
 

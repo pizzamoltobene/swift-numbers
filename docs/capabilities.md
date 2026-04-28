@@ -62,16 +62,18 @@ Core internal modules:
 | Open single-file archive `.numbers` | Supported | Reads embedded `Index`/`Index.zip` |
 | Read sheets/tables/cells | Supported | Real-read first with deterministic merged table traversal across package/single-file archives; metadata fallback as needed |
 | Read merge ranges | Supported | Exposed via `Table.metadata.mergeRanges` |
-| CLI `dump`, `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, `read-range`, `export-csv`, and `import-csv` | Supported | Text/JSON modes for introspection commands (`read-column/read-table/read-range` also support `--jsonl`); CSV export/import via `export-csv` / `import-csv` |
+| CLI `dump`, `inspect`, `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, `read-range`, `export-csv`, and `import-csv` | Supported | Text/JSON modes for introspection commands (`read-column/read-table/read-range` also support `--jsonl`); `inspect` supports `--redact/--compact`; CSV export/import via `export-csv` / `import-csv` |
 | Edit cell values | Supported | `string`, `formula`, `number`, `bool`, `empty`, `date` |
 | Append/insert rows | Supported | Low-level IWA path; grouped-table unsafe structural edits fail fast with deterministic guidance |
 | Append columns | Supported | Low-level IWA path; grouped-table unsafe structural edits fail fast with deterministic guidance |
 | Delete rows/columns | Supported | `deleteRow` / `deleteColumn` with deterministic index shifting and bounds validation; grouped-table blocks include actionable operation index context |
 | Merge/unmerge ranges | Supported | Editable API supports `mergeCells` and `unmergeCells` with deterministic merge metadata persistence and exact-range unmerge semantics |
+| Header and geometry mutations | Supported | `setHeaderRowCount` / `setHeaderColumnCount`, `setRowHeight`, `setColumnWidth` persist through low-level IWA path |
+| Table presentation metadata mutations | Supported | `setTableNameVisible`, `setCaptionVisible`, `setCaptionText` persist through low-level IWA path |
 | Add sheet/table | Supported | Low-level IWA path |
 | Save to new path | Supported | `save(to:)` |
 | Save in place | Supported | in-place on current working path (`save(to: samePath)` or `saveInPlace()`) |
-| Formula write (basic arithmetic + function refs) | Supported | Formula literals are persisted and round-tripped deterministically (`=A1+B1`, `=SUM(A1:A5)`); unsafe sheet-qualified/self-referential single-cell and range references are rejected with deterministic errors |
+| Formula write (basic arithmetic + function refs) | Supported | Formula literals are persisted and round-tripped deterministically (`=A1+B1`, `=SUM(A1:A5)`); unsafe sheet-qualified/self-referential single-cell and range references (including absolute refs like `$B$2`) are rejected with deterministic errors |
 | Advanced formula engine + pivots/charts/etc. | Out of scope | Full recalculation engine parity and pivot/chart mutation support remain out of scope |
 
 ## 4) Public Data Model
@@ -165,10 +167,10 @@ This section gives operation-by-operation examples with:
 | Read open/introspection | `open`, `sheets`, `firstSheet`, `sheet(named:)`, `sheet(at:)`, `tables`, `firstTable`, `table(named:)`, `table(at:)`, `metadata`, `cell(at:)`, `cell(row:column:)`, `cell("A1")`, `readCell(...)`, `readValue(...)`, `formula(...)`, `formulas()`, `formulaResult(...)`, `rows()/rows(valuesOnly:)/rows(lazy:)`, `readRows()/readRows(lazy:)`, `readValues()/readValues(lazy:)`, `categorizedRows(by:)`, `categorizedValues(by:)`, `column(named:)`, `values(in:)`, `decodeRows(as:)`, typed `value(_:at:)`, `formattedValue(...)`, `rowHeight(...)`, `columnWidth(...)`, `cellGeometry(...)`, `mergeRange(...)`, `isMergedCell(...)`, `dump`, `renderDump` |
 | Editable open/navigation | `EditableNumbersDocument.open`, `sheet(named:)`, `table(named:)`, `cell(_:)`, `cell(at: CellReference)` |
 | Editable registries | `registerStyle`, `registeredStyles`, `registeredStyle(id:)`, `registerCustomFormat`, `registeredCustomFormats`, `registeredCustomFormat(id:)` |
-| Editable mutation | `setValue`, `setStyle`, `setBorder`, `applyStyle(id:at:)`, `setFormat`, `applyCustomFormat(id:at:)`, `setHeaderRowCount`, `setHeaderColumnCount`, `setRowHeight`, `setColumnWidth`, `appendRow`, `insertRow`, `appendColumn`, `deleteRow`, `deleteColumn`, `mergeCells`, `unmergeCells`, `addTable`, `addSheet` |
+| Editable mutation | `setValue`, `setStyle`, `setBorder`, `applyStyle(id:at:)`, `setFormat`, `applyCustomFormat(id:at:)`, `setHeaderRowCount`, `setHeaderColumnCount`, `setRowHeight`, `setColumnWidth`, `setTableNameVisible`, `setCaptionVisible`, `setCaptionText`, `appendRow`, `insertRow`, `appendColumn`, `deleteRow`, `deleteColumn`, `mergeCells`, `unmergeCells`, `addTable`, `addSheet` |
 | Save | `save(to:)`, `saveInPlace()` |
 | Runtime capability/state | `canSaveEditableDocuments`, `hasChanges`, `dirtyState`, `firstSheet`, `firstTable` |
-| CLI | `swiftnumbers list-sheets`, `swiftnumbers list-tables`, `swiftnumbers list-formulas`, `swiftnumbers read-column`, `swiftnumbers read-table`, `swiftnumbers read-cell`, `swiftnumbers read-range`, `swiftnumbers export-csv`, `swiftnumbers import-csv`, `swiftnumbers dump` |
+| CLI | `swiftnumbers list-sheets`, `swiftnumbers list-tables`, `swiftnumbers list-formulas`, `swiftnumbers read-column`, `swiftnumbers read-table`, `swiftnumbers read-cell`, `swiftnumbers read-range`, `swiftnumbers export-csv`, `swiftnumbers import-csv`, `swiftnumbers inspect`, `swiftnumbers dump` |
 
 ### Task-to-Operation Cheat Sheet
 
@@ -182,8 +184,9 @@ This section gives operation-by-operation examples with:
 | Inspect table window (CLI) | CLI `read-table` | Windowed rows x columns read with truncation flags; supports `--jsonl` stream |
 | Inspect one cell deeply | CLI `read-cell` | Value + formatted + style + merge + formula snapshot |
 | Inspect a range deeply | CLI `read-range` | Emits typed range snapshots with A1 coordinates in text/JSON; supports `--jsonl` stream |
+| Inspect low-level container/object diagnostics | CLI `inspect` | Shows read-path/container/object metrics with structured diagnostics; supports `--redact` and `--compact` |
 | Export table as CSV (CLI) | CLI `export-csv` | Uses sheet/table selectors; supports `--mode value|formatted|formula` and `--output` |
-| Import CSV into table (CLI) | CLI `import-csv` | Uses sheet/table selectors; supports `--header with-header|no-header`, `--parse-dates`, and optional `--output` |
+| Import CSV into table (CLI) | CLI `import-csv` | Uses sheet/table selectors; supports deterministic `rename -> delete-column -> transform` pipeline, date-parse selectors/options, and optional `--output` |
 | Read one value | `cell(at:)`, `cell(row:column:)`, `cell("A1")` | Read-only `Table` API |
 | Read rich cell object | `readCell(...)` | Includes `kind`, `readValue`, `formulaResult`, `formatted`, merge role, IDs, plus `richText` runs and read-only `style` snapshot when available |
 | Read formulas | `formula(...)`, `formulas()`, `formulaResult(...)` | Exposes `formulaID`, raw formula, parsed tokens, AST summary, computed value/result formatting |
@@ -219,7 +222,7 @@ This section gives operation-by-operation examples with:
 
 **Purpose**
 
-Open a `.numbers` file and build the read model.
+Open a `.numbers` file and build the Swift-native read model (`NumbersDocument`).
 
 **Signature**
 
@@ -240,7 +243,8 @@ static func open(at url: URL) throws -> NumbersDocument
 **Throws**
 
 - container/path/archive parse errors
-- malformed IWA parse failures
+- `NumbersDocumentError.encryptedDocumentUnsupported` for password-protected documents
+- `NumbersDocumentError.realReadFailed(String)` when real-read returns no sheet model (with best available diagnostic reason)
 
 **Side Effects**
 
@@ -251,9 +255,11 @@ static func open(at url: URL) throws -> NumbersDocument
 ```mermaid
 graph TD
   A["Input: file.numbers"] --> B["Container load"]
-  B --> C["IWA inventory"]
-  C --> D["Real-read decode"]
-  D --> E["NumbersDocument(sheets/tables/cells)"]
+  B --> C["Encryption guard"]
+  C --> D["IWA inventory"]
+  D --> E["Real-read decode"]
+  E --> F["Optional style overlay metadata"]
+  F --> G["NumbersDocument(sheets/tables/cells)"]
 ```
 
 **Example**
@@ -269,13 +275,19 @@ print(doc.sheets.count)
 
 **Purpose**
 
-Access all sheets in read model order.
+Access all sheets in deterministic read-model order.
 
 **Attributes**
 
 | Attribute | Type | Required | Notes |
 |---|---|---|---|
-| `sheets` | `[Sheet]` | n/a | Read-only collection |
+| `sheets` | `[Sheet]` | n/a | Immutable snapshot collection returned by `open(at:)`; order is preserved from resolved document traversal |
+
+**Related helpers**
+
+- `firstSheet` returns `sheets.first`
+- `sheetNames` returns `sheets.map(\.name)`
+- `sheet(named:)` / `sheet(at:)` provide convenience lookups without mutating model state
 
 **Visual**
 
@@ -294,6 +306,8 @@ graph TD
 for sheet in doc.sheets {
   print(sheet.name)
 }
+print(doc.firstSheet?.name ?? "<none>")
+print(doc.sheetNames)
 ```
 
 ---
@@ -302,13 +316,19 @@ for sheet in doc.sheets {
 
 **Purpose**
 
-Read tables available on a sheet.
+Access all tables on one sheet in deterministic read-model order.
 
 **Attributes**
 
 | Attribute | Type | Required | Notes |
 |---|---|---|---|
-| `tables` | `[Table]` | n/a | Read-only |
+| `tables` | `[Table]` | n/a | Immutable snapshot collection for that sheet |
+
+**Related helpers**
+
+- `firstTable` returns `tables.first`
+- `tableNames` returns `tables.map(\.name)`
+- `table(named:)` / `table(at:)` and subscripts (`sheet["Name"]`, `sheet[index]`) provide non-throwing lookup helpers
 
 **Visual**
 
@@ -320,6 +340,18 @@ Before:
 | 2 | Pen | 5 |
 
 After calling `sheet.tables`: no mutation, same data.
+
+**Example**
+
+```swift
+for table in sheet.tables {
+  print(table.name)
+}
+print(sheet.firstTable?.name ?? "<none>")
+print(sheet.tableNames)
+print(sheet.table(named: "Table 1") as Any)
+print(sheet[0] as Any)
+```
 
 ---
 
@@ -335,7 +367,15 @@ Get structural metadata for a table.
 |---|---|---|
 | `rowCount` | `Int` | Logical row count |
 | `columnCount` | `Int` | Logical column count |
+| `headerRowCount` | `Int` | Header rows count (zero-based data starts after this region) |
+| `headerColumnCount` | `Int` | Header columns count |
+| `rowHeights` | `[Double?]` | Optional per-row heights (`nil` when row uses default height) |
+| `columnWidths` | `[Double?]` | Optional per-column widths (`nil` when column uses default width) |
 | `mergeRanges` | `[MergeRange]` | Merge areas if present |
+| `tableNameVisible` | `Bool?` | Presentation flag when available in source document |
+| `captionVisible` | `Bool?` | Caption visibility flag when available |
+| `captionText` | `String?` | Caption text when available |
+| `captionTextSupported` | `Bool` | Whether caption text storage is available for this table |
 | `objectIdentifiers` | `TableObjectIdentifiers?` | Stable object IDs (`tableInfoObjectID`, `tableModelObjectID`) when available on real-read path |
 | `pivotLinks` | `[PivotLinkMetadata]` | Resolver-discovered pivot-like drawable links with stable IDs |
 
@@ -353,6 +393,9 @@ mergeRanges:
 ```swift
 let m = table.metadata
 print(m.rowCount, m.columnCount, m.mergeRanges.count)
+print(m.headerRowCount, m.headerColumnCount)
+print(m.rowHeights.count, m.columnWidths.count)
+print(m.tableNameVisible as Any, m.captionVisible as Any, m.captionText as Any, m.captionTextSupported)
 print(m.objectIdentifiers?.tableInfoObjectID as Any, m.pivotLinks.count)
 ```
 
@@ -362,12 +405,19 @@ print(m.objectIdentifiers?.tableInfoObjectID as Any, m.pivotLinks.count)
 
 **Purpose**
 
-Read the value at a zero-based address.
+Read the stored `CellValue` at a zero-based address.
 
 **Signature**
 
 ```swift
 func cell(at address: CellAddress) -> CellValue?
+```
+
+**Related overloads**
+
+```swift
+func cell(row: Int, column: Int) -> CellValue?
+func cell(_ reference: String) -> CellValue?
 ```
 
 **Attributes**
@@ -379,7 +429,13 @@ func cell(at address: CellAddress) -> CellValue?
 
 **Returns**
 
-- `CellValue?` (`nil` when absent)
+- `CellValue?`:
+  - populated cell -> concrete value (`.string`, `.number`, `.bool`, `.date`, `.formula`, `.empty`)
+  - missing/unpopulated cell -> `nil`
+  - invalid A1 in `cell(_ reference:)` -> `nil`
+  - negative index in `cell(row:column:)` -> `nil`
+
+Use `readCell(at:)` when you need an explicit read snapshot for empty in-bounds cells.
 
 **Visual**
 
@@ -389,6 +445,7 @@ func cell(at address: CellAddress) -> CellValue?
 | 2 | Pen | 5 | false |
 
 `cell(at: .init(row: 1, column: 1)) -> .number(5)`
+`cell(at: .init(row: 99, column: 99)) -> nil`
 
 ---
 
@@ -409,20 +466,48 @@ func renderDump() -> String
 
 | Field | Type | Meaning |
 |---|---|---|
+| `sourcePath` | `String` | Absolute/relative source path used for open |
+| `documentVersion` | `String?` | Version from document metadata when available |
 | `readPath` | `DocumentReadPath` | `real` or `metadataFallback` |
 | `fallbackReason` | `String?` | Why fallback happened |
+| `blobCount` | `Int` | Index blob count |
+| `objectCount` | `Int` | IWA object count |
+| `objectReferenceEdgeCount` | `Int` | Object reference graph edge count |
+| `rootObjectCount` | `Int` | Root object count |
 | `resolvedCellCount` | `Int` | Parsed populated cells |
+| `typeHistogram` | `[UInt32:Int]` | Distribution by object type ID |
+| `unparsedBlobPaths` | `[String]` | Blob paths that could not be parsed |
 | `diagnostics` | `[String]` | Human-readable diagnostics |
+| `structuredDiagnostics` | `[ReadDiagnostic]` | Structured diagnostics (`code`, `severity`, `message`, `objectPath`, `suggestion`, `context`) |
+
+`renderDump()` produces a human-readable text report and includes inventory counts, type histogram, unparsed blob paths, and `diagnostics`. For machine workflows and structured diagnostics, use `dump()`.
 
 **Visual**
 
 ```text
 Source: /path/file.numbers
+Document version: 14.5
 Read path: real
 Sheets: 3
 Tables: 5
 Resolved cells: 1200
+Index blobs: 42
+IWA objects: 915
+Object reference edges: 1820
+Root objects: 6
+Type histogram:
+  6000: 120
+  6001: 34
+Unparsed blobs: 0
 Diagnostics: 1
+```
+
+**Example**
+
+```swift
+let report = doc.dump()
+print(report.readPath, report.resolvedCellCount, report.structuredDiagnostics.count)
+print(doc.renderDump())
 ```
 
 ---
@@ -431,7 +516,7 @@ Diagnostics: 1
 
 **Purpose**
 
-Open a document in mutable mode.
+Open a `.numbers` document in mutable mode by bootstrapping editable sheets/tables from read model data.
 
 **Signature**
 
@@ -447,17 +532,31 @@ static func open(at url: URL) throws -> EditableNumbersDocument
 
 **Returns**
 
-- editable document with mutation APIs
+- `EditableNumbersDocument` with:
+  - editable `sheets` graph initialized from `NumbersDocument.open(at:)`
+  - persisted style/custom-format registries restored from metadata overlays when present
+  - clean initial state (`dirtyState == .clean`, `hasChanges == false`)
+
+**Throws**
+
+- read/open errors bubbled from `NumbersDocument.open(at:)`
+- metadata overlay decode/open errors (style/custom-format registries)
+
+**Side Effects**
+
+- no mutation of source file on disk
+- normalizes/stores `sourceURL` as standardized file URL
 
 **Visual**
 
 ```mermaid
 flowchart TD
   A["file.numbers"] --> B["EditableNumbersDocument.open(at:)"]
-  B --> C["sheets[]"]
-  C --> D["EditableSheet"]
-  D --> E["EditableTable"]
-  E --> F["setValue / append / insert / add"]
+  B --> C["NumbersDocument.open(at:)"]
+  C --> D["Bootstrap editable sheets/tables"]
+  D --> E["Load style registry overlay (optional)"]
+  E --> F["Load custom-format overlay (optional)"]
+  F --> G["EditableNumbersDocument (clean state)"]
 ```
 
 **Example**
@@ -465,6 +564,7 @@ flowchart TD
 ```swift
 let editable = try EditableNumbersDocument.open(at: inputURL)
 print(editable.sheets.count)
+print(editable.dirtyState, editable.hasChanges)
 ```
 
 ---
@@ -473,7 +573,7 @@ print(editable.sheets.count)
 
 **Purpose**
 
-Resolve mutable sheet/table by name.
+Resolve mutable sheet/table by exact name.
 
 **Signatures**
 
@@ -486,12 +586,16 @@ func table(named: String) throws -> EditableTable
 
 | Attribute | Type | Required | Notes |
 |---|---|---|---|
-| `name` | `String` | Yes | Exact match in current model |
+| `name` | `String` | Yes | Exact, case-sensitive match in current model |
 
 **Throws**
 
-- `sheetNotFound`
-- `tableNotFound`
+- `EditableNumbersError.sheetNotFound(String)` when sheet lookup fails
+- `EditableNumbersError.tableNotFound(sheet: String, table: String)` when table lookup fails within resolved sheet
+
+**Side Effects**
+
+- none (lookup only; does not mutate model state)
 
 **Visual**
 
@@ -520,7 +624,7 @@ print(q1.name)
 
 **Purpose**
 
-Convenient A1-based editable accessor.
+Convenient A1-based editable accessor with mutable cell proxy semantics.
 
 **Signatures**
 
@@ -533,11 +637,21 @@ var value: CellValue? { get set }
 
 | Attribute | Type | Required | Notes |
 |---|---|---|---|
-| `reference` | `String` | Yes | A1 format (`C4`, `AA12`) |
+| `reference` | `String` | Yes | A1 format (`C4`, `AA12`); validated through `CellReference` parsing |
 
 **Throws**
 
-- `invalidCellReference`
+- `EditableNumbersError.invalidCellReference(String)` when A1 parsing fails
+
+**Setter behavior (`EditableCell.value`)**
+
+- `value = .some(cellValue)` writes that typed value.
+- `value = nil` writes `.empty` (clears effective value, not an optional “missing cell” state).
+
+**Side Effects**
+
+- updating `EditableCell.value` marks document/table dirty
+- can grow table bounds when target address is outside current dimensions
 
 **Visual**
 
@@ -591,6 +705,15 @@ func setValue(_ value: CellValue, at reference: String) throws
 | `value` | `CellValue` | Yes | Any supported value type |
 | `address` | `CellAddress` | Yes | Zero-based coordinate |
 | `reference` | `String` | Yes | A1 coordinate (alt overload) |
+
+**Throws**
+
+- `CellReferenceError.invalidFormat(String)` when `reference` is not valid A1 syntax
+
+**Behavior**
+
+- `value == .empty` removes the stored value entry for that address.
+- negative `row`/`column` addresses are ignored (no mutation, no dirty mark).
 
 **Side Effects**
 
@@ -771,10 +894,18 @@ func appendRow(_ values: [CellValue])
 |---|---|---|---|
 | `values` | `[CellValue]` | Yes | New row values |
 
+**Behavior**
+
+- `values.isEmpty` still appends one blank row.
+- only non-`.empty` values are materialized into cell storage (sparse representation).
+
 **Side Effects**
 
 - `rowCount += 1`
 - may increase `columnCount` if `values.count` is larger
+- appends one `rowHeights` slot (`nil`) for the new row
+- when `columnCount` grows, appends matching `columnWidths` slots (`nil`)
+- marks document/table dirty (structure changed)
 
 **Visual (before/after)**
 
@@ -824,7 +955,21 @@ func insertRow(_ values: [CellValue], at rowIndex: Int) throws
 
 **Throws**
 
-- `invalidRowIndex`
+- `EditableNumbersError.invalidRowIndex(Int)`
+
+**Behavior**
+
+- `rowIndex == rowCount` is allowed (equivalent to append-at-end semantics).
+- existing rows at and below `rowIndex` are shifted down by one.
+- only non-`.empty` values are materialized into cell storage (sparse representation).
+
+**Side Effects**
+
+- `rowCount += 1`
+- may increase `columnCount` if `values.count` is larger
+- inserts one `rowHeights` slot (`nil`) at `rowIndex`
+- when `columnCount` grows, appends matching `columnWidths` slots (`nil`)
+- marks document/table dirty (structure changed)
 
 **Visual (before/after)**
 
@@ -871,10 +1016,18 @@ func appendColumn(_ values: [CellValue])
 |---|---|---|---|
 | `values` | `[CellValue]` | Yes | Values for each row |
 
+**Behavior**
+
+- `values.isEmpty` still appends one blank column.
+- only non-`.empty` values are materialized into cell storage (sparse representation).
+
 **Side Effects**
 
 - `columnCount += 1`
 - may increase `rowCount` if `values.count` is larger
+- appends one `columnWidths` slot (`nil`) for the new column
+- when `rowCount` grows, appends matching `rowHeights` slots (`nil`)
+- marks document/table dirty (structure changed)
 
 **Visual (before/after)**
 
@@ -925,11 +1078,21 @@ func addTable(named: String, rows: Int, columns: Int, onSheetNamed: String) thro
 
 **Throws**
 
-- `sheetNotFound`
-- `invalidRowIndex`
-- `invalidColumnIndex`
-- `duplicateTableName` (same sheet)
-- `nativeWriteFailed` (ambiguous low-level targeting)
+- `EditableNumbersError.sheetNotFound(String)`
+- `EditableNumbersError.invalidRowIndex(Int)`
+- `EditableNumbersError.invalidColumnIndex(Int)`
+- `EditableNumbersError.duplicateTableName(sheet: String, table: String)`
+
+**Behavior**
+
+- `name` is trimmed; empty/whitespace table names normalize to `Table N`.
+- duplicate names on the same sheet fail fast (no auto-suffix).
+- `rows`/`columns` may be zero (`>= 0` is accepted).
+
+**Side Effects**
+
+- appends the new table to the target sheet table list (stable order)
+- marks sheet/document state as structure-dirty
 
 **Visual**
 
@@ -981,6 +1144,8 @@ func addSheet(named: String) -> EditableSheet
 - adds a sheet
 - creates default `Table 1` with `1x1`
 - if name already exists, auto-suffixes (`Name`, `Name (2)`, ...)
+- empty/whitespace input normalizes to `Sheet N` before uniqueness suffixing
+- marks document state as structure-dirty
 
 **Visual**
 
@@ -1026,10 +1191,12 @@ func save(to outputURL: URL) throws
 
 **Behavior**
 
-- if `outputURL` equals current working path: performs atomic in-place replace
+- if `outputURL` equals current working path and there are no pending changes: no-op
+- if `outputURL` equals current working path and there are pending changes: performs atomic in-place replace
 - if `outputURL` is a different path: writes a new document and sets that path as the new working path
 - if no changes and `outputURL` is a different path: copies current working container
 - repeated saves continue from the latest successful working path
+- successful save resets pending operations/style registries and sets `dirtyState` to `clean`
 
 **Visual**
 
@@ -1065,6 +1232,7 @@ func saveInPlace() throws
 - writes to temp path
 - atomically replaces current working file
 - no-op if there are no pending changes
+- successful save clears pending operations/style registries and sets `dirtyState` to `clean`
 
 **Visual**
 
@@ -1220,7 +1388,7 @@ Inspect one column with typed read snapshots, selected by zero-based index or by
 **Command**
 
 ```bash
-swiftnumbers read-column <file.numbers> [<column-index>] (--sheet "<Sheet Name>" | --sheet-index <n>) (--table "<Table Name>" | --table-index <n>) [--from-row <row>] [--header "<Header>"] [--header-row <row>] [--include-header] [--format text|json] [--jsonl]
+swiftnumbers read-column <file.numbers> [<column-index>] (--sheet "<Sheet Name>" | --sheet-index <n>) (--table "<Table Name>" | --table-index <n>) [--from-row <row>] [--header "<Header>"] [--header-row <row>] [--include-header] [--formulas] [--formatting] [--format text|json] [--jsonl]
 ```
 
 **Attributes**
@@ -1237,6 +1405,8 @@ swiftnumbers read-column <file.numbers> [<column-index>] (--sheet "<Sheet Name>"
 | `--header` | string | No* | Header label selector (case-insensitive) |
 | `--header-row` | int | No | Default `0`; used with `--header` |
 | `--include-header` | flag | No | Include header row in output with `--header` |
+| `--formulas` | flag | No | Parity mode: prefer formula literals when available |
+| `--formatting` | flag | No | Parity mode: prefer formatted display values |
 | `--format` | `text`/`json` | No | Default `text` |
 | `--jsonl` | flag | No | Emit NDJSON stream (one cell per line) |
 
@@ -1273,7 +1443,7 @@ Inspect a table window as typed read snapshots (`rows x columns`) with explicit 
 **Command**
 
 ```bash
-swiftnumbers read-table <file.numbers> (--sheet "<Sheet Name>" | --sheet-index <n>) (--table "<Table Name>" | --table-index <n>) [--from-row <row>] [--from-column <col>] [--max-rows <n>] [--max-columns <n>] [--format text|json] [--jsonl]
+swiftnumbers read-table <file.numbers> (--sheet "<Sheet Name>" | --sheet-index <n>) (--table "<Table Name>" | --table-index <n>) [--from-row <row>] [--from-column <col>] [--max-rows <n>] [--max-columns <n>] [--formulas] [--formatting] [--format text|json] [--jsonl]
 ```
 
 **Attributes**
@@ -1289,6 +1459,8 @@ swiftnumbers read-table <file.numbers> (--sheet "<Sheet Name>" | --sheet-index <
 | `--from-column` | int | No | Default `0` |
 | `--max-rows` | int | No | Default `100` |
 | `--max-columns` | int | No | Default `50` |
+| `--formulas` | flag | No | Parity mode: prefer formula literals when available |
+| `--formatting` | flag | No | Parity mode: prefer formatted display values |
 | `--format` | `text`/`json` | No | Default `text` |
 | `--jsonl` | flag | No | Emit NDJSON stream (one row per line) |
 
@@ -1374,7 +1546,7 @@ Inspect a range with typed read snapshots (value/readValue/formatted + merge met
 **Command**
 
 ```bash
-swiftnumbers read-range <file.numbers> <A1:D10> (--sheet "<Sheet Name>" | --sheet-index <n>) (--table "<Table Name>" | --table-index <n>) [--format text|json] [--jsonl]
+swiftnumbers read-range <file.numbers> <A1:D10> (--sheet "<Sheet Name>" | --sheet-index <n>) (--table "<Table Name>" | --table-index <n>) [--formulas] [--formatting] [--format text|json] [--jsonl]
 ```
 
 **Attributes**
@@ -1387,6 +1559,8 @@ swiftnumbers read-range <file.numbers> <A1:D10> (--sheet "<Sheet Name>" | --shee
 | `--sheet-index` | int | Conditional | Zero-based sheet index (mutually exclusive with `--sheet`) |
 | `--table` | string | Conditional | Exact table name (mutually exclusive with `--table-index`) |
 | `--table-index` | int | Conditional | Zero-based table index in selected sheet (mutually exclusive with `--table`) |
+| `--formulas` | flag | No | Parity mode: prefer formula literals when available |
+| `--formatting` | flag | No | Parity mode: prefer formatted display values |
 | `--format` | `text`/`json` | No | Default `text` |
 | `--jsonl` | flag | No | Emit NDJSON stream (one range row per line) |
 
@@ -1466,7 +1640,7 @@ Import CSV content into one selected table and persist updated `.numbers` output
 **Command**
 
 ```bash
-swiftnumbers import-csv <file.numbers> <file.csv> (--sheet "<Sheet Name>" | --sheet-index <n>) (--table "<Table Name>" | --table-index <n>) [--header with-header|no-header] [--parse-dates] [--output <path.numbers>]
+swiftnumbers import-csv <file.numbers> <file.csv> (--sheet "<Sheet Name>" | --sheet-index <n>) (--table "<Table Name>" | --table-index <n>) [--header with-header|no-header] [--rename OLD:NEW]... [--delete-column NAME_OR_INDEX]... [--transform DEST=FUNC:SRC1;SRC2]... [--parse-dates] [--date-column NAME_OR_INDEX]... [--day-first] [--date-format "<pattern>"]... [--output <path.numbers>]
 ```
 
 **Attributes**
@@ -1480,14 +1654,52 @@ swiftnumbers import-csv <file.numbers> <file.csv> (--sheet "<Sheet Name>" | --sh
 | `--table` | string | Conditional | Exact table name (mutually exclusive with `--table-index`) |
 | `--table-index` | int | Conditional | Zero-based table index in selected sheet (mutually exclusive with `--table`) |
 | `--header` | enum | No | `with-header` (default) or `no-header` |
-| `--parse-dates` | flag | No | Parse supported date forms (`yyyy-MM-dd`, ISO8601) into typed date cells |
+| `--rename` | repeatable string | No | Rename stage `OLD:NEW` (`OLD` = exact header name or zero-based index) |
+| `--delete-column` | repeatable string | No | Delete stage selector (exact header name or zero-based index) |
+| `--transform` | repeatable string | No | Transform stage `DEST=FUNC:SRC1;SRC2`, `FUNC` in `merge`, `pos`, `neg`, `upper`, `lower`, `trim` |
+| `--parse-dates` | flag | No | Parse date-like values into typed date cells |
+| `--date-column` | repeatable string | No | Date-parse selector (exact header name or zero-based index); requires `--parse-dates` |
+| `--day-first` | flag | No | With `--parse-dates`, treats ambiguous slash/hyphen dates as day-first |
+| `--date-format` | repeatable string | No | Additional `DateFormatter` patterns (checked before defaults); requires `--parse-dates` |
 | `--output` | path | No | Save to output path; default is in-place save |
 
 **Import behavior**
 
 - Header mode `with-header`: first CSV row is preserved as row 0.
 - Header mode `no-header`: generated row `Column 1..N` is inserted before CSV data.
+- Pipeline stage order is deterministic: `rename -> delete-column -> transform`.
 - Typed import converts booleans/numbers, and dates when `--parse-dates` is enabled.
+- `--date-column`, `--date-format`, and `--day-first` are valid only with `--parse-dates`.
+- Built-in date fallbacks: default `MM/dd/yyyy`, `MM-dd-yyyy`, `MM/dd/yyyy HH:mm:ss`, `MM/dd/yyyy HH:mm`, `yyyy-MM-dd`; with `--day-first`: `dd/MM/yyyy`, `dd-MM-yyyy`, `dd/MM/yyyy HH:mm:ss`, `dd/MM/yyyy HH:mm`, `yyyy-MM-dd`.
+
+---
+
+### 5.18.9 `swiftnumbers inspect`
+
+**Purpose**
+
+Inspect low-level container/object diagnostics, read-path decisions, and structured diagnostic payloads.
+
+**Command**
+
+```bash
+swiftnumbers inspect <file.numbers> [--format text|json] [--redact] [--compact]
+```
+
+**Attributes**
+
+| Attribute | Type | Required | Notes |
+|---|---|---|---|
+| `<file.numbers>` | path | Yes | Input `.numbers` |
+| `--format` | `text`/`json` | No | Default `json` |
+| `--redact` | flag | No | Redacts path-like fields in output |
+| `--compact` | flag | No | Minifies JSON or emits one-line text summary |
+
+**Visual output (text, compact)**
+
+```text
+readPath=real version=14.5 sheets=2 tables=3 cells=420 blobs=8 objects=112 edges=154 roots=1 diagnostics=0 structuredDiagnostics=0 redacted=false
+```
 
 ---
 
@@ -1512,6 +1724,11 @@ swiftnumbers dump <file.numbers> [--format text|json] [--formulas] [--cells] [--
 | `--formulas` | flag | No | Include formula-read details |
 | `--cells` | flag | No | Include populated-cell read snapshots |
 | `--formatting` | flag | No | Include deterministic per-cell formatting profiles |
+
+**Behavior**
+
+- default format is `text` (`--format json` emits structured payload).
+- `--formulas`, `--cells`, and `--formatting` are additive; each section is included independently.
 
 **Visual output (text, abbreviated)**
 
@@ -1572,6 +1789,7 @@ static func canSaveEditableDocuments() -> Bool
 **Returns**
 
 - `Bool`
+- current implementation always returns `true`
 
 **Visual**
 
@@ -1614,7 +1832,7 @@ var dirtyState: DocumentDirtyState { get }
 |---|---|---|
 | `sheets` | `[EditableSheet]` | Full mutable sheet list |
 | `firstSheet` | `EditableSheet?` | Convenience accessor |
-| `hasChanges` | `Bool` | `true` when edit journal is not empty |
+| `hasChanges` | `Bool` | `true` when operation journal is non-empty **or** style/custom-format registries are dirty |
 | `dirtyState` | `DocumentDirtyState` | `clean` / `dataDirty` / `structureDirty` |
 
 **Visual (state transition)**
@@ -1660,6 +1878,12 @@ var firstTable: EditableTable? { get }
 | `tables` | `[EditableTable]` | Mutable table list in the sheet |
 | `firstTable` | `EditableTable?` | Convenience accessor for quick workflows |
 
+**Behavior**
+
+- table order is deterministic insertion order (`addTable` appends to `tables`).
+- `firstTable` is exactly `tables.first`.
+- name lookup uses `table(named:)` and throws `EditableNumbersError.tableNotFound(sheet:table:)` when missing.
+
 **Visual**
 
 ```text
@@ -1704,6 +1928,12 @@ var populatedCellCount: Int { get }
 | `metadata.rowHeights` | `[Double?]` | Optional per-row height values when present in source |
 | `metadata.columnWidths` | `[Double?]` | Optional per-column width values when present in source |
 | `metadata.mergeRanges` | `[MergeRange]` | Current merge map |
+| `metadata.tableNameVisible` | `Bool?` | Table name visibility flag when available |
+| `metadata.captionVisible` | `Bool?` | Caption visibility flag when available |
+| `metadata.captionText` | `String?` | Caption text when available |
+| `metadata.captionTextSupported` | `Bool` | Whether caption text storage is available |
+| `metadata.objectIdentifiers` | `TableObjectIdentifiers?` | Stable table object IDs when available |
+| `metadata.pivotLinks` | `[PivotLinkMetadata]` | Resolver-discovered pivot-like links |
 | `populatedCellCount` | `Int` | Non-empty cells currently stored |
 
 **Visual (before/after `appendRow`)**
@@ -1739,8 +1969,13 @@ var populatedCellCount: Int { get }
 
 | Property | Type | Meaning |
 |---|---|---|
-| `allCells` | `[CellAddress: CellValue]` | Sparse dictionary of populated cells |
-| `populatedCellCount` | `Int` | Number of stored non-empty cells |
+| `allCells` | `[CellAddress: CellValue]` | Sparse value dictionary from the read model |
+| `populatedCellCount` | `Int` | Count of resolved read cells (`readCellsByAddress.count`) |
+
+**Behavior**
+
+- this is an immutable read snapshot.
+- `populatedCellCount` is read-cell based and can differ from `allCells.count` in fallback/synthetic read paths.
 
 **Visual**
 
@@ -1785,6 +2020,16 @@ func cell(at reference: CellReference) -> EditableCell
 | `address` | `CellAddress` | Yes | Zero-based coordinate |
 | `reference.address` | `CellAddress` | n/a | Parsed row/column |
 | `reference.a1` | `String` | n/a | Normalized uppercase A1 text |
+
+**Throws**
+
+- `EditableNumbersError.invalidCellReference(String)` when `rawValue` fails A1 parsing
+
+**Behavior**
+
+- parsing trims leading/trailing whitespace and normalizes column letters to uppercase.
+- `cell(at reference: CellReference)` is non-throwing and avoids reparsing raw string input.
+- `CellReference(address:)` preserves the provided address directly; it does not validate negative row/column values.
 
 **Visual**
 
@@ -1842,7 +2087,7 @@ Representative diagnostic codes:
 - `decode.cell.unsupportedTypeDropped`
 - `decode.formula.unsupportedAstNodes`
 
-Unsupported decode warnings are deduplicated deterministically by object path and node type (first occurrence order is preserved).
+Unsupported decode warnings are deduplicated deterministically by normalized object path + node type key (first occurrence order is preserved). Node-type normalization trims/collapses whitespace, lowercases values, and canonicalizes list payloads (for example `unsupportedNodeTypes`) into stable sorted keys.
 
 Pivot candidate diagnostics include deterministic cardinality summaries via context keys:
 `drawableTypeCount`, `referencedObjectCount`, `linkedTableInfoCount`, `linkedTableModelCount`.
@@ -1859,6 +2104,16 @@ Low-level path supports:
 - `appendRow`
 - `insertRow`
 - `appendColumn`
+- `deleteRow`
+- `deleteColumn`
+- `mergeCells`
+- `unmergeCells`
+- `setHeaderCounts` (`setHeaderRowCount` / `setHeaderColumnCount`)
+- `setRowHeight`
+- `setColumnWidth`
+- `setTableNameVisibility`
+- `setCaptionVisibility`
+- `setCaptionText`
 - `addSheet`
 - `addTable`
 - `setStyle`, `applyStyle(id:...)`, `setFormat`, and `applyCustomFormat(id:...)` are currently handled by metadata-overlay fallback (not low-level patch path).
@@ -1888,7 +2143,7 @@ Common failure sources:
 - `pivotLinkedTableMutationUnsupported`
 - `nativeWriteFailed`
 
-`pivotLinkedTableMutationUnsupported` payloads include deterministic linked object identifiers to improve operator triage of pivot-linked write blocks.
+`pivotLinkedTableMutationUnsupported` payloads include deterministic linked object identifiers and operation context (for example `deleteRow(rowIndex: N)`) to improve operator triage of pivot-linked write blocks.
 
 ## 9) Quality and Delivery Baseline
 

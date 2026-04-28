@@ -6,13 +6,19 @@
 
 **Purpose**
 
-Access all sheets in read model order.
+Access all sheets in deterministic read-model order.
 
 **Attributes**
 
 | Attribute | Type | Required | Notes |
 |---|---|---|---|
-| `sheets` | `[Sheet]` | n/a | Read-only collection |
+| `sheets` | `[Sheet]` | n/a | Immutable snapshot collection returned by `open(at:)`; order is preserved from resolved document traversal |
+
+**Related helpers**
+
+- `firstSheet` returns `sheets.first`
+- `sheetNames` returns `sheets.map(\.name)`
+- `sheet(named:)` / `sheet(at:)` provide convenience lookups without mutating model state
 
 **Visual**
 
@@ -31,6 +37,8 @@ graph TD
 for sheet in doc.sheets {
   print(sheet.name)
 }
+print(doc.firstSheet?.name ?? "<none>")
+print(doc.sheetNames)
 ```
 
 ---

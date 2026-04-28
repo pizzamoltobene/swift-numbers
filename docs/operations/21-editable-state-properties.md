@@ -23,7 +23,7 @@ var dirtyState: DocumentDirtyState { get }
 |---|---|---|
 | `sheets` | `[EditableSheet]` | Full mutable sheet list |
 | `firstSheet` | `EditableSheet?` | Convenience accessor |
-| `hasChanges` | `Bool` | `true` when edit journal is not empty |
+| `hasChanges` | `Bool` | `true` when operation journal is non-empty **or** style/custom-format registries are dirty |
 | `dirtyState` | `DocumentDirtyState` | `clean` / `dataDirty` / `structureDirty` |
 
 **Visual (state transition)**

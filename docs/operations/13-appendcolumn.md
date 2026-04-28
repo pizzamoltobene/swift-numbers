@@ -20,10 +20,18 @@ func appendColumn(_ values: [CellValue])
 |---|---|---|---|
 | `values` | `[CellValue]` | Yes | Values for each row |
 
+**Behavior**
+
+- `values.isEmpty` still appends one blank column.
+- only non-`.empty` values are materialized into cell storage (sparse representation).
+
 **Side Effects**
 
 - `columnCount += 1`
 - may increase `rowCount` if `values.count` is larger
+- appends one `columnWidths` slot (`nil`) for the new column
+- when `rowCount` grows, appends matching `rowHeights` slots (`nil`)
+- marks document/table dirty (structure changed)
 
 **Visual (before/after)**
 

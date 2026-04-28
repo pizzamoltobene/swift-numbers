@@ -6,7 +6,7 @@
 
 **Purpose**
 
-Convenient A1-based editable accessor.
+Convenient A1-based editable accessor with mutable cell proxy semantics.
 
 **Signatures**
 
@@ -19,11 +19,21 @@ var value: CellValue? { get set }
 
 | Attribute | Type | Required | Notes |
 |---|---|---|---|
-| `reference` | `String` | Yes | A1 format (`C4`, `AA12`) |
+| `reference` | `String` | Yes | A1 format (`C4`, `AA12`); validated through `CellReference` parsing |
 
 **Throws**
 
-- `invalidCellReference`
+- `EditableNumbersError.invalidCellReference(String)` when A1 parsing fails
+
+**Setter behavior (`EditableCell.value`)**
+
+- `value = .some(cellValue)` writes that typed value.
+- `value = nil` writes `.empty` (clears effective value, not an optional “missing cell” state).
+
+**Side Effects**
+
+- updating `EditableCell.value` marks document/table dirty
+- can grow table bounds when target address is outside current dimensions
 
 **Visual**
 

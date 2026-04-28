@@ -6,7 +6,7 @@
 
 **Purpose**
 
-Open a `.numbers` file and build the read model.
+Open a `.numbers` file and build the Swift-native read model (`NumbersDocument`).
 
 **Signature**
 
@@ -27,7 +27,8 @@ static func open(at url: URL) throws -> NumbersDocument
 **Throws**
 
 - container/path/archive parse errors
-- malformed IWA parse failures
+- `NumbersDocumentError.encryptedDocumentUnsupported` for password-protected documents
+- `NumbersDocumentError.realReadFailed(String)` when real-read returns no sheet model (with best available diagnostic reason)
 
 **Side Effects**
 
@@ -38,9 +39,11 @@ static func open(at url: URL) throws -> NumbersDocument
 ```mermaid
 graph TD
   A["Input: file.numbers"] --> B["Container load"]
-  B --> C["IWA inventory"]
-  C --> D["Real-read decode"]
-  D --> E["NumbersDocument(sheets/tables/cells)"]
+  B --> C["Encryption guard"]
+  C --> D["IWA inventory"]
+  D --> E["Real-read decode"]
+  E --> F["Optional style overlay metadata"]
+  F --> G["NumbersDocument(sheets/tables/cells)"]
 ```
 
 **Example**

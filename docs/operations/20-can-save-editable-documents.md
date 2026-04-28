@@ -23,6 +23,7 @@ static func canSaveEditableDocuments() -> Bool
 **Returns**
 
 - `Bool`
+- current implementation always returns `true`
 
 **Visual**
 

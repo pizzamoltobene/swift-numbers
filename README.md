@@ -32,7 +32,7 @@ Start here: [Docs Hub](docs/index.md)
 ## Install (SwiftPM)
 
 ```swift
-.package(url: "https://github.com/pizzamoltobene/swift-numbers.git", from: "0.3.10")
+.package(url: "https://github.com/pizzamoltobene/swift-numbers.git", from: "0.4.0")
 ```
 
 ```swift

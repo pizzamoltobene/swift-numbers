@@ -15,8 +15,9 @@ fi
 
 mkdir -p "$ops_dir"
 
-starts=("${(@f)$(rg -n '^### 5\.' "$cap" | cut -d: -f1)}")
-heads=("${(@f)$(rg '^### 5\.' "$cap")}")
+# Only top-level operation cards (5.N). Exclude sub-cards like 5.10a / 5.18.1.
+starts=("${(@f)$(rg -n '^### 5\.[0-9]+ ' "$cap" | cut -d: -f1)}")
+heads=("${(@f)$(rg '^### 5\.[0-9]+ ' "$cap")}")
 section6_start=$(rg -n '^## 6\)' "$cap" | cut -d: -f1)
 
 if (( ${#starts[@]} == 0 )); then
@@ -65,7 +66,7 @@ for ((i=1; i<=${#starts[@]}; i++)); do
   fi
 
   heading=${heads[$i]}
-  op_num=$(echo "$heading" | sed -E 's/^### 5\.([0-9]+).*/\1/')
+  op_num=$(echo "$heading" | sed -E 's/^### 5\.([0-9]+) .*/\1/')
   slug=$(slug_for_num "$op_num")
   file=$(printf "%s/%02d-%s.md" "$ops_dir" "$op_num" "$slug")
 

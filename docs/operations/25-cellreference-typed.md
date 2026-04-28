@@ -25,6 +25,16 @@ func cell(at reference: CellReference) -> EditableCell
 | `reference.address` | `CellAddress` | n/a | Parsed row/column |
 | `reference.a1` | `String` | n/a | Normalized uppercase A1 text |
 
+**Throws**
+
+- `EditableNumbersError.invalidCellReference(String)` when `rawValue` fails A1 parsing
+
+**Behavior**
+
+- parsing trims leading/trailing whitespace and normalizes column letters to uppercase.
+- `cell(at reference: CellReference)` is non-throwing and avoids reparsing raw string input.
+- `CellReference(address:)` preserves the provided address directly; it does not validate negative row/column values.
+
 **Visual**
 
 | A1 | row | column |

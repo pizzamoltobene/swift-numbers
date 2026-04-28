@@ -14,7 +14,7 @@ import SwiftNumbersCore
 
 | Case | Description |
 |---|---|
-| `metadataMissing` | Document metadata missing (`Metadata/DocumentMetadata.pb` or `.json`) |
+| `realReadFailed` | `String` details from the Swift-native real-read path |
 | `encryptedDocumentUnsupported` | Input document appears encrypted (`.iwpv2` / `.iwph`) |
 
 ### `DocumentReadPath: String, Sendable`
@@ -31,12 +31,18 @@ import SwiftNumbersCore
 | `sheetNotFound` | `String` |
 | `tableNotFound` | `sheet: String, table: String` |
 | `duplicateTableName` | `sheet: String, table: String` |
+| `duplicateStyleName` | `String` |
+| `styleNotFound` | `String` |
+| `duplicateCustomFormatName` | `String` |
+| `customFormatNotFound` | `String` |
 | `invalidCellReference` | `String` |
 | `invalidRangeReference` | `String` |
 | `invalidRowIndex` | `Int` |
 | `invalidColumnIndex` | `Int` |
 | `invalidHeaderRowCount` | `Int` |
 | `invalidHeaderColumnCount` | `Int` |
+| `groupedTableMutationUnsupported` | `sheet: String, table: String, operation: String` |
+| `pivotLinkedTableMutationUnsupported` | `sheet: String, table: String, operation: String, linkedObjectIDs: [UInt64]` |
 | `nativeWriteFailed` | `String` |
 
 ### `DocumentDirtyState: String, Sendable`
@@ -163,6 +169,10 @@ public struct Table: Hashable, Sendable {
   public func readValue(_ reference: String) -> ReadCellValue?
   public func formula(at address: CellAddress) -> FormulaRead?
   public func formula(_ reference: String) -> FormulaRead?
+  public func richText(at address: CellAddress) -> RichTextRead?
+  public func richText(_ reference: String) -> RichTextRead?
+  public func style(at address: CellAddress) -> ReadCellStyle?
+  public func style(_ reference: String) -> ReadCellStyle?
   public func formulas() -> [FormulaRead]
   public func formulaResult(at address: CellAddress) -> FormulaResultRead?
   public func formulaResult(_ reference: String) -> FormulaResultRead?
@@ -421,6 +431,8 @@ public enum ReadNumberFormatMode: Hashable, Sendable {
   case currency(code: String?)
   case percent
   case scientific
+  case fraction(maxDenominator: Int)
+  case base(radix: Int, uppercase: Bool)
   case pattern(String)
 }
 ```
@@ -695,6 +707,8 @@ public enum EditableBorderSide: String, CaseIterable, Hashable, Sendable {
 - `setCaptionText(_:)` throws when caption storage is unavailable for the current table.
 - `setHeaderRowCount(_:)` throws `invalidHeaderRowCount` when count is negative or exceeds current row count.
 - `setHeaderColumnCount(_:)` throws `invalidHeaderColumnCount` when count is negative or exceeds current column count.
+- Structural mutations on grouped tables throw `groupedTableMutationUnsupported`.
+- Structural/data mutations on pivot-linked tables throw `pivotLinkedTableMutationUnsupported`.
 - `setRowHeight(_:at:)` throws `invalidRowIndex` for out-of-bounds row and `nativeWriteFailed` for negative/non-finite sizes.
 - `setColumnWidth(_:at:)` throws `invalidColumnIndex` for out-of-bounds column and `nativeWriteFailed` for negative/non-finite sizes.
 - `deleteRow(at:)` throws `invalidRowIndex` when index is out of bounds and shifts remaining rows deterministically.

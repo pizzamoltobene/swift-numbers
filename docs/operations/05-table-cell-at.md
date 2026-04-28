@@ -6,12 +6,19 @@
 
 **Purpose**
 
-Read the value at a zero-based address.
+Read the stored `CellValue` at a zero-based address.
 
 **Signature**
 
 ```swift
 func cell(at address: CellAddress) -> CellValue?
+```
+
+**Related overloads**
+
+```swift
+func cell(row: Int, column: Int) -> CellValue?
+func cell(_ reference: String) -> CellValue?
 ```
 
 **Attributes**
@@ -23,7 +30,13 @@ func cell(at address: CellAddress) -> CellValue?
 
 **Returns**
 
-- `CellValue?` (`nil` when absent)
+- `CellValue?`:
+  - populated cell -> concrete value (`.string`, `.number`, `.bool`, `.date`, `.formula`, `.empty`)
+  - missing/unpopulated cell -> `nil`
+  - invalid A1 in `cell(_ reference:)` -> `nil`
+  - negative index in `cell(row:column:)` -> `nil`
+
+Use `readCell(at:)` when you need an explicit read snapshot for empty in-bounds cells.
 
 **Visual**
 
@@ -33,6 +46,7 @@ func cell(at address: CellAddress) -> CellValue?
 | 2 | Pen | 5 | false |
 
 `cell(at: .init(row: 1, column: 1)) -> .number(5)`
+`cell(at: .init(row: 99, column: 99)) -> nil`
 
 ---
 

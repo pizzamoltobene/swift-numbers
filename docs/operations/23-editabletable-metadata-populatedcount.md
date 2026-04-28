@@ -21,7 +21,17 @@ var populatedCellCount: Int { get }
 |---|---|---|
 | `metadata.rowCount` | `Int` | Current logical row count |
 | `metadata.columnCount` | `Int` | Current logical column count |
+| `metadata.headerRowCount` | `Int` | Current header-row count persisted in table metadata |
+| `metadata.headerColumnCount` | `Int` | Current header-column count persisted in table metadata |
+| `metadata.rowHeights` | `[Double?]` | Optional per-row height values when present in source |
+| `metadata.columnWidths` | `[Double?]` | Optional per-column width values when present in source |
 | `metadata.mergeRanges` | `[MergeRange]` | Current merge map |
+| `metadata.tableNameVisible` | `Bool?` | Table name visibility flag when available |
+| `metadata.captionVisible` | `Bool?` | Caption visibility flag when available |
+| `metadata.captionText` | `String?` | Caption text when available |
+| `metadata.captionTextSupported` | `Bool` | Whether caption text storage is available |
+| `metadata.objectIdentifiers` | `TableObjectIdentifiers?` | Stable table object IDs when available |
+| `metadata.pivotLinks` | `[PivotLinkMetadata]` | Resolver-discovered pivot-like links |
 | `populatedCellCount` | `Int` | Non-empty cells currently stored |
 
 **Visual (before/after `appendRow`)**

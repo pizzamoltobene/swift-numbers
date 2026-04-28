@@ -19,8 +19,13 @@ var populatedCellCount: Int { get }
 
 | Property | Type | Meaning |
 |---|---|---|
-| `allCells` | `[CellAddress: CellValue]` | Sparse dictionary of populated cells |
-| `populatedCellCount` | `Int` | Number of stored non-empty cells |
+| `allCells` | `[CellAddress: CellValue]` | Sparse value dictionary from the read model |
+| `populatedCellCount` | `Int` | Count of resolved read cells (`readCellsByAddress.count`) |
+
+**Behavior**
+
+- this is an immutable read snapshot.
+- `populatedCellCount` is read-cell based and can differ from `allCells.count` in fallback/synthetic read paths.
 
 **Visual**
 

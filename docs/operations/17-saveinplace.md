@@ -25,6 +25,7 @@ func saveInPlace() throws
 - writes to temp path
 - atomically replaces current working file
 - no-op if there are no pending changes
+- successful save clears pending operations/style registries and sets `dirtyState` to `clean`
 
 **Visual**
 

@@ -23,7 +23,21 @@ func insertRow(_ values: [CellValue], at rowIndex: Int) throws
 
 **Throws**
 
-- `invalidRowIndex`
+- `EditableNumbersError.invalidRowIndex(Int)`
+
+**Behavior**
+
+- `rowIndex == rowCount` is allowed (equivalent to append-at-end semantics).
+- existing rows at and below `rowIndex` are shifted down by one.
+- only non-`.empty` values are materialized into cell storage (sparse representation).
+
+**Side Effects**
+
+- `rowCount += 1`
+- may increase `columnCount` if `values.count` is larger
+- inserts one `rowHeights` slot (`nil`) at `rowIndex`
+- when `columnCount` grows, appends matching `columnWidths` slots (`nil`)
+- marks document/table dirty (structure changed)
 
 **Visual (before/after)**
 
