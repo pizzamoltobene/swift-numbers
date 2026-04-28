@@ -78,6 +78,27 @@ SWIFT_NUMBERS_TASK_ID=SN-RXX ./scripts/release_autofix.sh
 
 This path promotes `Unreleased` changelog content, creates the release commit, then publishes tag and GitHub release.
 
+## Binary Distribution Sync (Homebrew tap)
+
+After a release is published, verify binary assets and tap update:
+
+1. Confirm `Release Binaries` GitHub Actions workflow passed.
+2. Confirm release assets exist for both architectures:
+   - `swiftnumbers_<version>_darwin_arm64.tar.gz`
+   - `swiftnumbers_<version>_darwin_x86_64.tar.gz`
+3. Update tap formula (`Formula/swiftnumbers.rb`) with:
+   - `version`
+   - `url` values for both archives
+   - `sha256` values for both archives
+4. Validate installation from tap:
+
+```bash
+brew install <github-user>/tap/swiftnumbers
+swiftnumbers --help
+```
+
+Full guide: [Homebrew Distribution](homebrew-distribution.md)
+
 ## Expected Release Artifacts
 
 - Updated `CHANGELOG.md` with:
@@ -86,5 +107,6 @@ This path promotes `Unreleased` changelog content, creates the release commit, t
 - Release commit (pattern: `chore(release): vX.Y.Z (...)`)
 - Git tag: `vX.Y.Z`
 - GitHub release for `vX.Y.Z` using changelog-derived notes
+- GitHub release binary assets for `arm64` and `x86_64` macOS
 - Updated [release cycle log](release-cycles.md) entry for the published tag
 - `.local/release-check.json` from latest gate run

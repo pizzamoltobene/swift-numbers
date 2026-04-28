@@ -6,7 +6,10 @@ All notable changes to this project are documented in this file.
 
 ### Summary
 
-- Pending.
+- Added aggregate pivot-link diagnostics summary on real-read path:
+  `resolver.pivot.candidateSummary` now emits deterministic candidate/table cardinality and ID sets
+  across all detected pivot-like drawables, complementing per-candidate
+  `resolver.pivot.candidateDetected` diagnostics.
 
 ### Breaking Changes
 

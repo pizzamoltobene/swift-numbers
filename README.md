@@ -26,10 +26,21 @@ Start here: [Docs Hub](docs/index.md)
 - Exact signatures/types: [API Reference](docs/api-reference.md)
 - Practical workflows: [Cookbook](docs/cookbook.md)
 - CLI usage: [CLI Reference](docs/cli-reference.md)
+- Prebuilt CLI distribution via Homebrew tap: [Homebrew Distribution](docs/homebrew-distribution.md)
 - Failure handling: [Troubleshooting](docs/troubleshooting.md)
 - Internal design: [Architecture](docs/architecture.md)
 
-## Install (SwiftPM)
+## Install (Homebrew, prebuilt binary)
+
+After publishing a Homebrew tap formula:
+
+```bash
+brew install <github-user>/tap/swiftnumbers
+```
+
+This installs a prebuilt binary release asset for the current macOS architecture, so users do not need to compile locally.
+
+## Install (SwiftPM library dependency)
 
 ```swift
 .package(url: "https://github.com/pizzamoltobene/swift-numbers.git", from: "0.4.0")
@@ -92,7 +103,7 @@ try editable.save(to: outputURL)
 
 | Area | Operations (examples from code) | Status | Notes |
 |---|---|---|---|
-| Document open and introspection | `NumbersDocument.open`, `sheet(named:)`, `sheet(at:)`, `tableNames`, `dump`, `renderDump` | Supported | Real-read pipeline with structured diagnostics; unsupported decode warnings are deduplicated by object/node type; pivot candidate diagnostics include stable count and ID summaries |
+| Document open and introspection | `NumbersDocument.open`, `sheet(named:)`, `sheet(at:)`, `tableNames`, `dump`, `renderDump` | Supported | Real-read pipeline with structured diagnostics; unsupported decode warnings are deduplicated by object/node type; pivot diagnostics include per-candidate (`resolver.pivot.candidateDetected`) and aggregate (`resolver.pivot.candidateSummary`) stable count/ID summaries |
 | Cell and table read API | `cell`, `readCell`, `readValue`, `formula`, `formulaResult`, `rows/readRows/readValues`, `column`, `values(in:)`, `readCells(in:)` | Supported | Typed read models and A1/range-based extraction |
 | Typed decode and formatting | `value(_:at:)`, `optionalValue(_:at:)`, `decodeRows(as:)`, `formattedValue(...)` | Supported | Deterministic formatting modes and typed access |
 | Grouped read surface | `categorizedRows(by:)`, `categorizedValues(by:)` | Supported | Read-only grouped/category output |

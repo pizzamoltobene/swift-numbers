@@ -522,6 +522,7 @@ Diagnostics: 0
 Pivot-related observability:
 
 - `structuredDiagnostics[].code == "resolver.pivot.candidateDetected"` indicates a non-table drawable linked to table objects (potential pivot/analytic view), surfaced as read-only guidance.
+- `structuredDiagnostics[].code == "resolver.pivot.candidateSummary"` provides aggregate stable cardinality/ID context across all detected pivot-like candidates (`candidateObjectIDs`, `candidateCount`, `linkedTableInfoObjectIDs`, `linkedTableInfoCount`, `linkedTableModelObjectIDs`, `linkedTableModelCount`).
 
 ### JSON output (abridged)
 

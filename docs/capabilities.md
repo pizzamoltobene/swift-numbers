@@ -2083,14 +2083,19 @@ Representative diagnostic codes:
 - `resolver.sheet.decodeMissing`
 - `resolver.table.resolveFailed`
 - `resolver.pivot.candidateDetected`
+- `resolver.pivot.candidateSummary`
 - `decode.rowStorage.patched`
 - `decode.cell.unsupportedTypeDropped`
 - `decode.formula.unsupportedAstNodes`
 
 Unsupported decode warnings are deduplicated deterministically by normalized object path + node type key (first occurrence order is preserved). Node-type normalization trims/collapses whitespace, lowercases values, and canonicalizes list payloads (for example `unsupportedNodeTypes`) into stable sorted keys.
 
-Pivot candidate diagnostics include deterministic cardinality summaries via context keys:
-`drawableTypeCount`, `referencedObjectCount`, `linkedTableInfoCount`, `linkedTableModelCount`.
+Pivot candidate diagnostics include deterministic cardinality summaries:
+- Per-candidate (`resolver.pivot.candidateDetected`) context keys:
+  `drawableTypeCount`, `referencedObjectCount`, `linkedTableInfoCount`, `linkedTableModelCount`.
+- Aggregate (`resolver.pivot.candidateSummary`) context keys:
+  `candidateObjectIDs`, `candidateCount`, `linkedTableInfoObjectIDs`, `linkedTableInfoCount`,
+  `linkedTableModelObjectIDs`, `linkedTableModelCount`.
 
 ## 7) Write Engine Behavior
 

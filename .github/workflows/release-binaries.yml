@@ -1,0 +1,98 @@
+name: Release Binaries
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.4.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-upload:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-13
+            archive_arch: x86_64
+          - runner: macos-14
+            archive_arch: arm64
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Select Xcode 16
+        run: |
+          set -euo pipefail
+          XCODE_APP="$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [[ -z "$XCODE_APP" ]]; then
+            echo "No Xcode 16.x installation found on runner"
+            ls -1 /Applications | grep -E '^Xcode' || true
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+
+      - name: Swift Version
+        run: swift --version
+
+      - name: Resolve release tag
+        id: resolve_tag
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            tag="${{ github.event.release.tag_name }}"
+          else
+            tag="${{ github.event.inputs.tag }}"
+          fi
+
+          if [[ -z "$tag" ]]; then
+            echo "Tag is required." >&2
+            exit 1
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Build release binary
+        run: swift build -c release
+
+      - name: Package release artifact
+        id: package
+        run: |
+          set -euo pipefail
+          tag="${{ steps.resolve_tag.outputs.tag }}"
+          version="${tag#v}"
+          archive="swiftnumbers_${version}_darwin_${{ matrix.archive_arch }}.tar.gz"
+
+          mkdir -p dist
+          tar -czf "dist/$archive" -C .build/release swiftnumbers
+
+          checksum="$(shasum -a 256 "dist/$archive" | awk '{print $1}')"
+          printf '%s  %s\n' "$checksum" "$archive" > "dist/$archive.sha256"
+
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+          echo "checksum=$checksum" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.resolve_tag.outputs.tag }}"
+          gh release upload "$tag" dist/* --clobber
+
+      - name: Print formula hints
+        run: |
+          set -euo pipefail
+          tag="${{ steps.resolve_tag.outputs.tag }}"
+          archive="${{ steps.package.outputs.archive }}"
+          checksum="${{ steps.package.outputs.checksum }}"
+          echo "Release asset URL: https://github.com/${{ github.repository }}/releases/download/${tag}/${archive}"
+          echo "SHA256: $checksum"

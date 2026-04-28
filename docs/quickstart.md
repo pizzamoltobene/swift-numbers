@@ -11,6 +11,15 @@ For full CLI contract, see [CLI Reference](cli-reference.md).
 - macOS with Swift toolchain available (`swift --version`)
 - Repository checked out locally
 
+## Optional: Install prebuilt CLI (no local compile)
+
+```bash
+brew install <github-user>/tap/swiftnumbers
+swiftnumbers --help
+```
+
+See [Homebrew Distribution](homebrew-distribution.md) for maintainer setup and release flow.
+
 ## 1) Build
 
 ```bash

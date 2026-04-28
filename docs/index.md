@@ -34,6 +34,7 @@ Documentation hub for the current `SwiftNumbers` release line.
 | Test-only autonomous queue and milestones | [Testing Autopilot Roadmap](testing-autopilot-roadmap.md) |
 | Test-only autonomous runbook | [Testing Autopilot Operations](testing-autopilot-operations.md) |
 | Official release gate and publish checklist | [Release Checklist](release-checklist.md) |
+| Prebuilt binary + Homebrew tap distribution flow | [Homebrew Distribution](homebrew-distribution.md) |
 | Autonomous release cadence, gates, and pause rules | [Autonomous Release Policy](autonomous-release-policy.md) |
 | Consecutive autonomous release cycle log | [Release Cycles](release-cycles.md) |
 | Public autonomous delivery model | [Autonomous Development](autonomous-development.md) |

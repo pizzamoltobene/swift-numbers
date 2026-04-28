@@ -487,6 +487,7 @@ public enum IWARealDocumentReader {
     case sheetDecodeMissing = "resolver.sheet.decodeMissing"
     case tableResolveFailed = "resolver.table.resolveFailed"
     case pivotCandidateDetected = "resolver.pivot.candidateDetected"
+    case pivotCandidateSummary = "resolver.pivot.candidateSummary"
     case rowStorageMapPatched = "decode.rowStorage.patched"
     case unsupportedCellTypeDropped = "decode.cell.unsupportedTypeDropped"
     case formulaDecodeFailed = "decode.formula.failed"
@@ -727,6 +728,8 @@ public enum IWARealDocumentReader {
         )
       }
 
+      emitPivotCandidateSummaryDiagnosticIfNeeded()
+
       if sheets.isEmpty {
         addDiagnostic(
           .noSheetsResolved,
@@ -929,6 +932,64 @@ public enum IWARealDocumentReader {
         }
       }
       pivotDiagnosticDrawableObjectIDs.insert(drawableObjectID)
+    }
+
+    private mutating func emitPivotCandidateSummaryDiagnosticIfNeeded() {
+      let candidateDiagnostics = diagnostics.filter {
+        $0.code == DiagnosticCode.pivotCandidateDetected.rawValue
+      }
+      guard !candidateDiagnostics.isEmpty else {
+        return
+      }
+
+      var candidateObjectIDs = Set<UInt64>()
+      var linkedTableInfoObjectIDs = Set<UInt64>()
+      var linkedTableModelObjectIDs = Set<UInt64>()
+      for diagnostic in candidateDiagnostics {
+        if let rawObjectID = diagnostic.context["drawableObjectID"],
+          let objectID = UInt64(rawObjectID)
+        {
+          candidateObjectIDs.insert(objectID)
+        }
+        linkedTableInfoObjectIDs.formUnion(parseObjectIDs(diagnostic.context["linkedTableInfoObjectIDs"]))
+        linkedTableModelObjectIDs.formUnion(parseObjectIDs(diagnostic.context["linkedTableModelObjectIDs"]))
+      }
+
+      let sortedCandidateObjectIDs = candidateObjectIDs.sorted()
+      let sortedLinkedTableInfoObjectIDs = linkedTableInfoObjectIDs.sorted()
+      let sortedLinkedTableModelObjectIDs = linkedTableModelObjectIDs.sorted()
+
+      addDiagnostic(
+        .pivotCandidateSummary,
+        severity: .info,
+        message: "Summarized pivot-like drawable links detected during read resolution.",
+        suggestion:
+          "Use candidate and linked-table identifiers to inspect pivot-linked read-only regions before edits.",
+        context: [
+          "candidateObjectIDs": sortedCandidateObjectIDs.map(String.init).joined(separator: ","),
+          "candidateCount": String(sortedCandidateObjectIDs.count),
+          "linkedTableInfoObjectIDs": sortedLinkedTableInfoObjectIDs.map(String.init).joined(separator: ","),
+          "linkedTableInfoCount": String(sortedLinkedTableInfoObjectIDs.count),
+          "linkedTableModelObjectIDs": sortedLinkedTableModelObjectIDs.map(String.init).joined(
+            separator: ","),
+          "linkedTableModelCount": String(sortedLinkedTableModelObjectIDs.count),
+        ]
+      )
+    }
+
+    private func parseObjectIDs(_ rawValue: String?) -> Set<UInt64> {
+      guard let rawValue else {
+        return []
+      }
+
+      var objectIDs = Set<UInt64>()
+      for token in rawValue.split(separator: ",") {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let objectID = UInt64(trimmed), objectID > 0 {
+          objectIDs.insert(objectID)
+        }
+      }
+      return objectIDs
     }
 
     private func hasRecord(objectID: UInt64, typeID: UInt32) -> Bool {

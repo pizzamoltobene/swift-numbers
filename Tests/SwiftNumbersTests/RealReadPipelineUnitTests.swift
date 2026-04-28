@@ -533,6 +533,15 @@ final class RealReadPipelineUnitTests: XCTestCase {
     XCTAssertEqual(diagnostic?.context["linkedTableInfoCount"], "1")
     XCTAssertEqual(diagnostic?.context["linkedTableModelObjectIDs"], "400")
     XCTAssertEqual(diagnostic?.context["linkedTableModelCount"], "1")
+    let summary = result.structuredDiagnostics.first { $0.code == "resolver.pivot.candidateSummary" }
+    XCTAssertNotNil(summary)
+    XCTAssertEqual(summary?.severity, .info)
+    XCTAssertEqual(summary?.context["candidateObjectIDs"], "300")
+    XCTAssertEqual(summary?.context["candidateCount"], "1")
+    XCTAssertEqual(summary?.context["linkedTableInfoObjectIDs"], "500")
+    XCTAssertEqual(summary?.context["linkedTableInfoCount"], "1")
+    XCTAssertEqual(summary?.context["linkedTableModelObjectIDs"], "400")
+    XCTAssertEqual(summary?.context["linkedTableModelCount"], "1")
   }
 
   func testResolverMergesParentTraversalTablesWhenDrawableListIsPartial() throws {
@@ -903,6 +912,16 @@ final class RealReadPipelineUnitTests: XCTestCase {
         $0.code == "resolver.pivot.candidateDetected" && $0.context["drawableObjectID"] == "900"
       }
       XCTAssertNotNil(pivotCandidate)
+      let pivotSummary = result.structuredDiagnostics.first {
+        $0.code == "resolver.pivot.candidateSummary"
+      }
+      XCTAssertNotNil(pivotSummary)
+      XCTAssertEqual(pivotSummary?.context["candidateObjectIDs"], "900")
+      XCTAssertEqual(pivotSummary?.context["candidateCount"], "1")
+      XCTAssertEqual(pivotSummary?.context["linkedTableInfoObjectIDs"], "302")
+      XCTAssertEqual(pivotSummary?.context["linkedTableInfoCount"], "1")
+      XCTAssertEqual(pivotSummary?.context["linkedTableModelObjectIDs"], "402")
+      XCTAssertEqual(pivotSummary?.context["linkedTableModelCount"], "1")
     }
   }
 
