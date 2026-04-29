@@ -6,9 +6,25 @@ All notable changes to this project are documented in this file.
 
 ### Summary
 
+- Pending.
+
+### Breaking Changes
+
+- None.
+
+### Rollback Hint
+
+- Revert to the previous stable tag and redeploy package artifacts.
+
+## [0.4.2] - 2026-04-29
+
+### Summary
+
 - Added AppleScript mutation parity probe rows to the generated capability map, covering document,
   sheet, table, row, column, cell/range, and table transform write semantics with deterministic
   mapping to supported SwiftNumbers APIs and backlog gaps.
+- Moved development automation scripts out of the package repository into a sibling automation
+  workspace, keeping GitHub focused on library source, tests, docs, and inline CI workflows.
 
 ### Breaking Changes
 

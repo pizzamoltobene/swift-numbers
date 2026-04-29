@@ -14,21 +14,21 @@ Use this document to operate Autopilot safely when tasks are in progress, blocke
 - The delivery focus is bugfix-first (reliability/correctness before expansion).
 - One task is advanced per run.
 - If no `[TODO]` remains, regenerate backlog first:
-  - `./scripts/autopilot_backlog_synthesis.sh`
+  - `../swift-numbers-automation/scripts/autopilot_backlog_synthesis.sh`
 - When Apple Numbers parity tasks are active, discover Numbers through AppleScript/LaunchServices:
   - `swift run swiftnumbers refresh-apple-numbers-map`
   - deterministic skipped validation: `swift run swiftnumbers refresh-apple-numbers-map --skip-oracle --dry-run`
   - do not assume `/Applications/Numbers.app`
 - When AppleScript/OSAScript oracle probes cannot run, record a deterministic skipped oracle status and continue from checked-in roadmap signals.
 - When M7 code-parity tasks are active, refresh parity baseline first:
-  - `./scripts/refresh_numbers_parser_code_map.sh`
+  - `../swift-numbers-automation/scripts/refresh_numbers_parser_code_map.sh`
 - Compute parity queue ordering from roadmap + capability map before selecting new parity work:
-  - `./scripts/parity_task_queue.sh --roadmap ./docs/autopilot-roadmap.md --apple-map ./docs/apple-numbers-applescript-capability-map.md --code-map ./docs/numbers-parser-code-capability-map.md`
+  - `../swift-numbers-automation/scripts/parity_task_queue.sh --roadmap ./docs/autopilot-roadmap.md --apple-map ./docs/apple-numbers-applescript-capability-map.md --code-map ./docs/numbers-parser-code-capability-map.md`
 - Required validation gates per run:
   - `swift build`
   - `swift test`
 - Release is gated by changelog batch size:
-  - `./scripts/release_batch_count.sh --changelog ./CHANGELOG.md`
+  - `../swift-numbers-automation/scripts/release_batch_count.sh --changelog ./CHANGELOG.md`
   - release when batch count is `>= 5`
 - Monthly release train:
   - target at least one GitHub release per calendar month when validated unreleased work exists

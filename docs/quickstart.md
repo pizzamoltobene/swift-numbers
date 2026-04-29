@@ -35,7 +35,8 @@ swift test
 ## 3) Run full local quality gate
 
 ```bash
-./scripts/ci-check.sh
+swift build
+swift test
 ```
 
 ## 4) CLI smoke test on public fixtures
@@ -98,11 +99,11 @@ Keep `.private-corpus/expectations.json` in sync with your local corpus baseline
 ## 8) Check release batch gate and run release checks
 
 ```bash
-./scripts/release_batch_count.sh --changelog ./CHANGELOG.md
-./scripts/release_batch_count.sh --changelog ./CHANGELOG.md --check --threshold 5
-./scripts/release_check.sh
+../swift-numbers-automation/scripts/release_batch_count.sh --changelog ./CHANGELOG.md
+../swift-numbers-automation/scripts/release_batch_count.sh --changelog ./CHANGELOG.md --check --threshold 5
+../swift-numbers-automation/scripts/release_check.sh
 # After manual Numbers.app smoke checks:
-SWIFT_NUMBERS_NUMBERS_APP_OK=1 ./scripts/release_check.sh
+SWIFT_NUMBERS_NUMBERS_APP_OK=1 ../swift-numbers-automation/scripts/release_check.sh
 ```
 
 Notes:
@@ -116,25 +117,25 @@ Release metadata gate requirements for the target changelog section:
 - `### Breaking Changes` (with at least one bullet, `- None.` allowed)
 - `### Rollback Hint` (with at least one bullet)
 
-Template: `scripts/release-notes-template.md`
+Template: `../swift-numbers-automation/scripts/release-notes-template.md`
 
 ## 9) Dry-run release pipeline
 
 ```bash
-SWIFT_NUMBERS_NUMBERS_APP_OK=1 ./scripts/release_publish.sh --tag vX.Y.Z --dry-run
+SWIFT_NUMBERS_NUMBERS_APP_OK=1 ../swift-numbers-automation/scripts/release_publish.sh --tag vX.Y.Z --dry-run
 ```
 
 ## 10) Autorelease one completed fix
 
 ```bash
-SWIFT_NUMBERS_TASK_ID=SN-RXX ./scripts/release_autofix.sh
+SWIFT_NUMBERS_TASK_ID=SN-RXX ../swift-numbers-automation/scripts/release_autofix.sh
 ```
 
 This command:
 
 - promotes `Unreleased` changelog notes into the next patch version
 - creates a release commit
-- pushes tag/release through `./scripts/release_publish.sh`
+- pushes tag/release through `../swift-numbers-automation/scripts/release_publish.sh`
 
 ## Next Steps
 

@@ -14,8 +14,8 @@ An official release is allowed only when all gates pass in the same run:
 
 - `swift build`
 - `swift test`
-- `./scripts/runtime-critical-check.sh`
-- release metadata/gate checks from `./scripts/release_check.sh`
+- `../swift-numbers-automation/scripts/runtime-critical-check.sh`
+- release metadata/gate checks from `../swift-numbers-automation/scripts/release_check.sh`
 
 For user-visible behavior changes, the run must also update:
 
@@ -26,10 +26,10 @@ For user-visible behavior changes, the run must also update:
 ## Release Trigger
 
 - Compute batch count from changelog summary bullets:
-  - `./scripts/release_batch_count.sh --changelog ./CHANGELOG.md`
+  - `../swift-numbers-automation/scripts/release_batch_count.sh --changelog ./CHANGELOG.md`
 - Publish only when batch count is `>= 5` and quality gates pass.
 - Standard automation entrypoint:
-  - `SWIFT_NUMBERS_TASK_ID=<task-id> ./scripts/release_autofix.sh`
+  - `SWIFT_NUMBERS_TASK_ID=<task-id> ../swift-numbers-automation/scripts/release_autofix.sh`
 
 ## Release Pause Conditions
 

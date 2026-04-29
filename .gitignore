@@ -7,3 +7,4 @@ PrivateCorpus/
 .private-corpus/
 .local/
 *.profraw
+/x86_64/

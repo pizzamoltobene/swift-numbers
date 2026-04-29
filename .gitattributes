@@ -1,0 +1,4 @@
+# Keep repository automation metadata out of GitHub-generated source archives.
+# Workflows still run from repository checkout.
+/.github/** export-ignore
+/.github export-ignore

@@ -4,11 +4,11 @@ Use this checklist for every official release of `swift-numbers`.
 
 ## Active Release Scripts
 
-- `./scripts/release_batch_count.sh`
-- `./scripts/release_check.sh`
-- `./scripts/release_publish.sh`
-- `./scripts/release_autofix.sh`
-- `./scripts/release-notes-template.md` (metadata template)
+- `../swift-numbers-automation/scripts/release_batch_count.sh`
+- `../swift-numbers-automation/scripts/release_check.sh`
+- `../swift-numbers-automation/scripts/release_publish.sh`
+- `../swift-numbers-automation/scripts/release_autofix.sh`
+- `../swift-numbers-automation/scripts/release-notes-template.md` (metadata template)
 
 ## Preconditions
 
@@ -26,13 +26,13 @@ Use this checklist for every official release of `swift-numbers`.
 1. Compute unreleased batch size:
 
 ```bash
-./scripts/release_batch_count.sh --changelog ./CHANGELOG.md
+../swift-numbers-automation/scripts/release_batch_count.sh --changelog ./CHANGELOG.md
 ```
 
 2. Verify threshold (current policy: `5`):
 
 ```bash
-./scripts/release_batch_count.sh --check --threshold 5 --changelog ./CHANGELOG.md
+../swift-numbers-automation/scripts/release_batch_count.sh --check --threshold 5 --changelog ./CHANGELOG.md
 ```
 
 Release should proceed only when threshold check exits `0`.
@@ -42,13 +42,13 @@ Release should proceed only when threshold check exits `0`.
 Run release checks and generate report artifact:
 
 ```bash
-./scripts/release_check.sh
+../swift-numbers-automation/scripts/release_check.sh
 ```
 
 Optional manual Numbers.app confirmation:
 
 ```bash
-SWIFT_NUMBERS_NUMBERS_APP_OK=1 ./scripts/release_check.sh
+SWIFT_NUMBERS_NUMBERS_APP_OK=1 ../swift-numbers-automation/scripts/release_check.sh
 ```
 
 Expected artifact:
@@ -61,19 +61,19 @@ Expected artifact:
 1. Dry run:
 
 ```bash
-SWIFT_NUMBERS_NUMBERS_APP_OK=1 ./scripts/release_publish.sh --tag vX.Y.Z --dry-run
+SWIFT_NUMBERS_NUMBERS_APP_OK=1 ../swift-numbers-automation/scripts/release_publish.sh --tag vX.Y.Z --dry-run
 ```
 
 2. Publish:
 
 ```bash
-SWIFT_NUMBERS_NUMBERS_APP_OK=1 ./scripts/release_publish.sh --tag vX.Y.Z
+SWIFT_NUMBERS_NUMBERS_APP_OK=1 ../swift-numbers-automation/scripts/release_publish.sh --tag vX.Y.Z
 ```
 
 ### Path B: Autopilot one-task release
 
 ```bash
-SWIFT_NUMBERS_TASK_ID=SN-RXX ./scripts/release_autofix.sh
+SWIFT_NUMBERS_TASK_ID=SN-RXX ../swift-numbers-automation/scripts/release_autofix.sh
 ```
 
 This path promotes `Unreleased` changelog content, creates the release commit, then publishes tag and GitHub release.

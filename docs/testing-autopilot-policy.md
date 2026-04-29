@@ -59,7 +59,7 @@ Testing backlog synthesis must score signals from:
 ## Backlog Synthesis Rules (When No `[TODO]` Exists)
 
 1. Run synthesis command:
-   - `./scripts/testing_backlog_synthesis.sh`
+   - `../swift-numbers-automation/scripts/testing_backlog_synthesis.sh`
 2. Produce at least `12` candidate testing tasks.
 3. Score each candidate:
    - Impact: `1..5`
@@ -85,8 +85,8 @@ Every testing-autopilot run must execute:
 
 - `swift build`
 - `swift test`
-- `./scripts/test-growth-report.sh --target 1000`
-- `./scripts/coverage-summary.sh --threshold 70`
+- `../swift-numbers-automation/scripts/test-growth-report.sh --target 1000`
+- `../swift-numbers-automation/scripts/coverage-summary.sh --threshold 70`
 
 ## Growth Guardrails
 

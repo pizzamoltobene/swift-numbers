@@ -2187,7 +2187,7 @@ Common failure sources:
 
 Local quality gate:
 
-- `./scripts/ci-check.sh`
+- `../swift-numbers-automation/scripts/ci-check.sh`
 - format check (`swift format` / `swift-format` strict lint)
 - warnings-as-errors build
 - tests + coverage collection
@@ -2202,14 +2202,14 @@ GitHub CI baseline:
 
 Release helper:
 
-- `./scripts/release_check.sh`
+- `../swift-numbers-automation/scripts/release_check.sh`
 - outputs `.local/release-check.json` (or custom path passed as the first argument)
 - includes manual Apple Numbers smoke-check confirmation step
 - enforces changelog completeness for release metadata (`Summary`, `Breaking Changes`, `Rollback Hint`)
-- release-note template: `scripts/release-notes-template.md`
-- `./scripts/release_publish.sh --tag vX.Y.Z --dry-run` validates and prints the publish plan
-- `./scripts/release_publish.sh --tag vX.Y.Z` executes tag push + GitHub release publish (requires clean working tree and authenticated `gh`)
-- `./scripts/release_autofix.sh` performs changelog promotion + commit + official release publish for each completed fix cycle
+- release-note template: `../swift-numbers-automation/scripts/release-notes-template.md`
+- `../swift-numbers-automation/scripts/release_publish.sh --tag vX.Y.Z --dry-run` validates and prints the publish plan
+- `../swift-numbers-automation/scripts/release_publish.sh --tag vX.Y.Z` executes tag push + GitHub release publish (requires clean working tree and authenticated `gh`)
+- `../swift-numbers-automation/scripts/release_autofix.sh` performs changelog promotion + commit + official release publish for each completed fix cycle
 
 ## 10) Out of Scope
 

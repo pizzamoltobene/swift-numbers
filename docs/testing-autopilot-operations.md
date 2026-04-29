@@ -15,7 +15,7 @@ Use this runbook when operating the test-growth loop, including task execution, 
 5. Run validation gates:
    - `swift build`
    - `swift test`
-   - `./scripts/test-growth-report.sh --target 1000`
+   - `../swift-numbers-automation/scripts/test-growth-report.sh --target 1000`
 6. Update task status:
    - `[DONE]` on success
    - `[BLOCKED]` with root cause on failure
@@ -25,7 +25,7 @@ Use this runbook when operating the test-growth loop, including task execution, 
 
 When no `[TODO]` remains:
 
-1. Run `./scripts/testing_backlog_synthesis.sh`.
+1. Run `../swift-numbers-automation/scripts/testing_backlog_synthesis.sh`.
 2. Confirm new milestone appended with `SN-TEST-YYYYMMDD-XX` tasks.
 3. Resume from first new `[TODO]`.
 
@@ -34,11 +34,11 @@ When no `[TODO]` remains:
 Use report command for deterministic growth metrics:
 
 - quick report:
-  - `./scripts/test-growth-report.sh --target 1000`
+  - `../swift-numbers-automation/scripts/test-growth-report.sh --target 1000`
 - report with live execution stats:
-  - `./scripts/test-growth-report.sh --run-tests --target 1000`
+  - `../swift-numbers-automation/scripts/test-growth-report.sh --run-tests --target 1000`
 - enforce monotonic growth against a stored baseline:
-  - `./scripts/test-growth-report.sh --baseline .local/test-count-baseline.txt --require-growth --write-baseline`
+  - `../swift-numbers-automation/scripts/test-growth-report.sh --baseline .local/test-count-baseline.txt --require-growth --write-baseline`
 
 ## `[BLOCKED]` Unblock Protocol
 

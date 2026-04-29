@@ -15,13 +15,13 @@ Long-lived policy lives in [Testing Autopilot Policy](testing-autopilot-policy.m
 1. This file is the single source of truth for testing-autopilot task order.
 2. Execute only the first task marked `[TODO]`.
 3. Exactly one task may be advanced per run.
-4. If no `[TODO]` remains, run `./scripts/testing_backlog_synthesis.sh`.
+4. If no `[TODO]` remains, run `../swift-numbers-automation/scripts/testing_backlog_synthesis.sh`.
 5. Enforce run lock via `.local/testing-autopilot-lock.json`.
 6. Set active task to `[IN_PROGRESS]` before edits and `[DONE]` or `[BLOCKED]` at run end.
 7. Mandatory validation per run:
    - `swift build`
    - `swift test`
-   - `./scripts/test-growth-report.sh --target 1000`
+   - `../swift-numbers-automation/scripts/test-growth-report.sh --target 1000`
 8. For user-visible test tooling or docs changes, update `README.md`, `docs/index.md`, and `CHANGELOG.md`.
 
 ## Status Legend
@@ -41,11 +41,11 @@ Long-lived policy lives in [Testing Autopilot Policy](testing-autopilot-policy.m
 
 - [DONE] `SN-T01` Add deterministic test-growth reporting script. (2026-04-26)
   - Definition of done: script reports declared test count, target gap, suite distribution, and roadmap status.
-  - Validation: `./scripts/test-growth-report.sh --target 1000`.
+  - Validation: `../swift-numbers-automation/scripts/test-growth-report.sh --target 1000`.
 
 - [DONE] `SN-T02` Add deterministic testing backlog synthesis script. (2026-04-26)
   - Definition of done: synthesis appends scored `SN-TEST-YYYYMMDD-XX` TODO tasks with mandatory area coverage.
-  - Validation: `./scripts/testing_backlog_synthesis.sh --dry-run`.
+  - Validation: `../swift-numbers-automation/scripts/testing_backlog_synthesis.sh --dry-run`.
 
 - [DONE] `SN-T03` Wire test-growth reporting into CI test workflow. (2026-04-26)
   - Definition of done: CI test job publishes growth summary every run.

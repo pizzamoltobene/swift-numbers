@@ -105,12 +105,17 @@ final class ParityTaskQueueTests: XCTestCase {
   }
 
   private func runParityQueueScript(arguments: [String]) throws -> String {
+    let environment = ProcessInfo.processInfo.environment
+    guard let scriptPath = environment["SWIFT_NUMBERS_PARITY_QUEUE_SCRIPT"],
+      FileManager.default.isExecutableFile(atPath: scriptPath)
+    else {
+      throw XCTSkip("External parity task queue script is not configured for package tests.")
+    }
+
     let process = Process()
     process.currentDirectoryURL = FixtureLocator.repoRoot
     process.executableURL = URL(fileURLWithPath: "/bin/bash")
-    process.arguments =
-      [FixtureLocator.repoRoot.appendingPathComponent("scripts/parity_task_queue.sh").path]
-      + arguments
+    process.arguments = [scriptPath] + arguments
 
     let stdoutPipe = Pipe()
     let stderrPipe = Pipe()

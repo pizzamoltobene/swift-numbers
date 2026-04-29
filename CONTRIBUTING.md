@@ -5,7 +5,6 @@
 ```bash
 swift build
 swift test
-./scripts/ci-check.sh
 ```
 
 ## Development Rules
@@ -30,7 +29,7 @@ swift test
 
 - [ ] Build passes locally (`swift build`)
 - [ ] Tests pass locally (`swift test`)
-- [ ] Full local pipeline passes (`./scripts/ci-check.sh`)
+- [ ] Full local pipeline passes (`swift build && swift test`)
 - [ ] Private corpus expectations updated if real-read behavior changed (`.private-corpus/expectations.json`)
 - [ ] README/docs updated when behavior changes
 - [ ] Changelog/release notes updated for user-visible changes

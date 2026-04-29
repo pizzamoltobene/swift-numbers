@@ -24,12 +24,21 @@ jobs:
           xcodebuild -version
       - name: Swift Version
         run: swift --version
-      - name: Synthesize Testing Backlog (Preview)
+      - name: Record External Backlog Note
         run: |
           mkdir -p .local
-          ./scripts/testing_backlog_synthesis.sh --dry-run > .local/testing-backlog-preview.md
+          echo "Backlog synthesis tooling lives outside the package repository." > .local/testing-backlog-preview.md
       - name: Run Test Growth Report
-        run: ./scripts/test-growth-report.sh --run-tests --target 1000 > .local/test-growth-report.txt
+        run: |
+          set -euo pipefail
+          mkdir -p .local
+          swift test > .local/swift-test-output.txt 2>&1
+          declared_count="$(find Tests/SwiftNumbersTests -name '*.swift' -print0 | xargs -0 grep -Eho 'func test[A-Za-z0-9_]+' | wc -l | tr -d ' ')"
+          {
+            echo "Declared XCTest cases: $declared_count"
+            echo "Target declared test count: 1000"
+            tail -n 40 .local/swift-test-output.txt
+          } > .local/test-growth-report.txt
       - name: Upload Testing Reports
         uses: actions/upload-artifact@v4
         with:

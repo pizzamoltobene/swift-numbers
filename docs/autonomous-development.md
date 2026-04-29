@@ -23,13 +23,13 @@ Each cycle is expected to:
 
 - Build must pass.
 - Tests must pass.
-- Critical-path runtime audit must pass (`./scripts/runtime-critical-check.sh`) to prevent Python/Node/Ruby drift in CI/release scripts.
+- Critical-path runtime audit must pass (`../swift-numbers-automation/scripts/runtime-critical-check.sh`) to prevent Python/Node/Ruby drift in CI/release scripts.
 - Changelog and release notes must be present for user-visible changes.
 - `CHANGELOG.md` `Unreleased -> Summary` must contain at least 5 non-placeholder bullet items.
-- Batch count should be computed by `./scripts/release_batch_count.sh --changelog ./CHANGELOG.md`.
+- Batch count should be computed by `../swift-numbers-automation/scripts/release_batch_count.sh --changelog ./CHANGELOG.md`.
 - If any gate fails, release is skipped and the run is treated as blocked/fix-required.
-- Release pipeline entry point: `./scripts/release_publish.sh`.
-- End-to-end automation entry point for threshold-based batched release: `./scripts/release_autofix.sh`.
+- Release pipeline entry point: `../swift-numbers-automation/scripts/release_publish.sh`.
+- End-to-end automation entry point for threshold-based batched release: `../swift-numbers-automation/scripts/release_autofix.sh`.
 
 ## Transparency
 

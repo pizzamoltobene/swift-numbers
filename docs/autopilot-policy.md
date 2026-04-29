@@ -77,7 +77,7 @@ Autopilot must collect and score signals from:
 
 1. Run `Backlog Synthesis` before implementation.
    - preferred command:
-     - `./scripts/autopilot_backlog_synthesis.sh`
+     - `../swift-numbers-automation/scripts/autopilot_backlog_synthesis.sh`
 2. Produce at least 10 candidate tasks from current signals.
 3. Score each candidate with:
    - Impact: `1..5`
@@ -119,10 +119,10 @@ Autopilot must collect and score signals from:
 ## Historical Code-Parity Refresh Rule
 
 - Keep `docs/numbers-parser-code-capability-map.md` regenerated from symbols before parity-gap planning:
-  - `./scripts/refresh_numbers_parser_code_map.sh`
+  - `../swift-numbers-automation/scripts/refresh_numbers_parser_code_map.sh`
 - The map must include snapshot metadata (commit/date) and deterministic section ordering.
 - Compute deterministic parity queue candidates from roadmap + code map before renewal planning:
-  - `./scripts/parity_task_queue.sh --roadmap ./docs/autopilot-roadmap.md --apple-map ./docs/apple-numbers-applescript-capability-map.md --code-map ./docs/numbers-parser-code-capability-map.md`
+  - `../swift-numbers-automation/scripts/parity_task_queue.sh --roadmap ./docs/autopilot-roadmap.md --apple-map ./docs/apple-numbers-applescript-capability-map.md --code-map ./docs/numbers-parser-code-capability-map.md`
 - Use the historical code map as a secondary signal after AppleScript/OSAScript parity signals.
 
 ## Execution Safety Rules
@@ -136,7 +136,7 @@ Autopilot must collect and score signals from:
 - Release only after quality gates pass and batch threshold is met.
 - Batch threshold rule:
   - release when `CHANGELOG.md` `## [Unreleased] -> ### Summary` has at least `5` non-placeholder bullets
-  - compute count with `./scripts/release_batch_count.sh --changelog ./CHANGELOG.md`
+  - compute count with `../swift-numbers-automation/scripts/release_batch_count.sh --changelog ./CHANGELOG.md`
 - Monthly release train rule:
   - if validated unreleased work exists near month end, prepare a GitHub release even if the batch count is below `5`
   - do not publish an empty release

@@ -24,7 +24,7 @@ Check first:
 | Save completed but value is wrong | mutated different sheet/table/cell | reopen output and assert exact target cell |
 | Diagnostics warnings in dump | fallback or decode anomaly | inspect `readPath`, `fallbackReason`, `structuredDiagnostics` |
 | Slow CLI timings | debug build / cold-start noise | run release build and compare median |
-| CI fails, local seems fine | environment mismatch | run `./scripts/ci-check.sh` and compare toolchain |
+| CI fails, local seems fine | environment mismatch | run `swift build` and `swift test`, then compare toolchain versions |
 
 ## Save Validation Routine
 
