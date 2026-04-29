@@ -1,6 +1,6 @@
 # SwiftNumbers Autopilot Policy
 
-Last updated: 2026-04-25
+Last updated: 2026-04-29
 
 ## Purpose
 
@@ -13,21 +13,50 @@ When roadmap tasks run out, the automation must generate new roadmap tasks from 
 
 1. Read reliability and compatibility
 2. Write reliability and data safety
-3. Formula support:
+3. Apple Numbers parity through AppleScript/OSAScript:
+   - use AppleScript dictionaries and probes as the Apple-native behavior oracle
+   - keep `SwiftNumbers` implementation Swift-first with no runtime dependency on Numbers.app
+4. Formula support:
    - read fidelity
    - write capability
-4. Pivot support:
+5. Pivot support:
    - pivot detection and read diagnostics
    - safe write behavior and incremental pivot support
-5. CLI usability and deterministic output contracts
-6. Performance and memory efficiency on large documents
-7. Documentation quality and release clarity
+6. CLI usability and deterministic output contracts
+7. Performance and memory efficiency on large documents
+8. Documentation quality and release clarity
 
 ## Cadence and Delivery Model
 
 - Execution cadence: hourly loop.
 - Delivery focus: bugfix-first (reliability/correctness hardening before feature expansion).
-- Release model: batched release after accumulation threshold, not per-fix release.
+- Team model: five-role rotation defined in [Autopilot Team Process](autopilot-team-process.md).
+- Release model: monthly release train plus threshold releases when enough validated work accumulates.
+- Normal release threshold: `5` changelog summary bullets.
+- Month-end release rule: publish with fewer than `5` bullets only when there is validated unreleased work and all gates pass.
+
+## Five-Role Operating Model
+
+Every run must interpret the selected roadmap task through this role sequence:
+
+1. Product / Roadmap Owner:
+   - selects the first `[TODO]` task
+   - confirms task type, area, and definition of done
+2. Apple Numbers Oracle Analyst:
+   - refreshes or reads AppleScript/OSAScript parity evidence when relevant
+   - records deterministic skipped status when Numbers.app or permissions are unavailable
+3. Swift Core Developer:
+   - implements the smallest Swift-first diff for the selected task
+   - avoids unrelated refactors
+4. QA / Compatibility Engineer:
+   - adds or updates focused tests when behavior changes
+   - runs `swift build` and `swift test`
+5. Docs / Release Engineer:
+   - updates README/docs/changelog when user-visible behavior changes
+   - computes release readiness and publishes only when release gates allow
+
+New synthesized tasks should include role/type/area metadata where practical.
+Allowed task types: `bugfix`, `feature`, `parity`, `docs`, `release`, `test`.
 
 ## Continuous Input Signals
 
@@ -37,6 +66,7 @@ Autopilot must collect and score signals from:
 - build warnings/errors
 - coverage hotspots in first-party code
 - parser diagnostics and unsupported node summaries
+- Apple Numbers AppleScript/OSAScript dictionary and probe drift when Numbers.app is available locally
 - code-parity drift between `docs/numbers-parser-code-capability-map.md` and current source symbols
 - TODO/FIXME markers in first-party sources
 - CLI regression or output instability
@@ -61,18 +91,39 @@ Autopilot must collect and score signals from:
    - at least 1 task for write reliability
    - at least 1 task for formula support
    - at least 1 task for pivot support
+   - at least 1 task from AppleScript/OSAScript parity signals when such signals exist
+   - target monthly mix: 40% bugfix/reliability, 30% Apple Numbers parity features, 20% formula/write support, 10% docs/CLI/release
 6. Append selected tasks to `docs/autopilot-roadmap.md` as a new milestone.
 7. Assign deterministic task IDs:
    - `SN-AUTO-YYYYMMDD-01`, `SN-AUTO-YYYYMMDD-02`, ...
 8. Start implementation from the first newly added `[TODO]`.
 
-## Code-Parity Refresh Rule
+## Apple-Native Parity Refresh Rule
+
+- Treat Apple Numbers AppleScript/OSAScript as the primary user-visible behavior oracle.
+- Refresh `docs/apple-numbers-applescript-capability-map.md` before parity-gap planning when Numbers.app is installed and automation permissions are available:
+  - `swift run swiftnumbers refresh-apple-numbers-map`
+  - `swift run swiftnumbers refresh-apple-numbers-map --skip-oracle --dry-run` for deterministic unavailable-oracle validation
+- Discover Numbers through LaunchServices/AppleScript (`path to application "Numbers"` or bundle identifier `com.apple.Numbers`), not by assuming `/Applications/Numbers.app`.
+- AppleScript/OSAScript probes are development and planning inputs only:
+  - production library code must remain Swift-first and must not depend on Numbers.app
+  - CI must skip AppleScript probes deterministically when Numbers.app is unavailable
+  - probe output must be normalized into stable capability rows before it can create roadmap tasks
+- The AppleScript capability map should cover, at minimum:
+  - document open/save/export behavior
+  - sheet/table/cell read surfaces
+  - row/column/table mutations exposed by Numbers
+  - formula read/write behavior visible through Numbers
+  - formatting, style, chart, pivot, and advanced object surfaces exposed by the scripting dictionary
+
+## Historical Code-Parity Refresh Rule
 
 - Keep `docs/numbers-parser-code-capability-map.md` regenerated from symbols before parity-gap planning:
   - `./scripts/refresh_numbers_parser_code_map.sh`
 - The map must include snapshot metadata (commit/date) and deterministic section ordering.
 - Compute deterministic parity queue candidates from roadmap + code map before renewal planning:
-  - `./scripts/parity_task_queue.sh --roadmap ./docs/autopilot-roadmap.md --code-map ./docs/numbers-parser-code-capability-map.md`
+  - `./scripts/parity_task_queue.sh --roadmap ./docs/autopilot-roadmap.md --apple-map ./docs/apple-numbers-applescript-capability-map.md --code-map ./docs/numbers-parser-code-capability-map.md`
+- Use the historical code map as a secondary signal after AppleScript/OSAScript parity signals.
 
 ## Execution Safety Rules
 
@@ -86,6 +137,10 @@ Autopilot must collect and score signals from:
 - Batch threshold rule:
   - release when `CHANGELOG.md` `## [Unreleased] -> ### Summary` has at least `5` non-placeholder bullets
   - compute count with `./scripts/release_batch_count.sh --changelog ./CHANGELOG.md`
+- Monthly release train rule:
+  - if validated unreleased work exists near month end, prepare a GitHub release even if the batch count is below `5`
+  - do not publish an empty release
+  - do not publish while build/test gates are failing
 
 ## Concurrency and Lease Rules
 

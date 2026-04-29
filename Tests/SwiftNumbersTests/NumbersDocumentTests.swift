@@ -21,6 +21,70 @@ final class NumbersDocumentTests: XCTestCase {
     assertMetadataOnlyFixtureRejected("simple-table.numbers")
   }
 
+  func testSheetSummariesExposeReferenceFixtureSheetAndTableCounts() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let summaries = try NumbersDocument.sheetSummaries(at: fixture)
+
+    XCTAssertEqual(summaries.count, 1)
+    XCTAssertEqual(summaries.first?.name, "Sheet 1")
+    XCTAssertEqual(summaries.first?.tableCount, 1)
+  }
+
+  func testTableSummariesMatchFullOpenMetadata() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let summaries = try NumbersDocument.tableSummaries(at: fixture)
+    let document = try NumbersDocument.open(at: fixture)
+
+    let fullTables = document.sheets.enumerated().flatMap { sheetIndex, sheet in
+      sheet.tables.enumerated().map { tableIndex, table in
+        (sheetIndex: sheetIndex, sheet: sheet, tableIndex: tableIndex, table: table)
+      }
+    }
+
+    XCTAssertEqual(summaries.count, fullTables.count)
+    let summary = try XCTUnwrap(summaries.first)
+    let full = try XCTUnwrap(fullTables.first)
+    XCTAssertEqual(summary.sheetName, full.sheet.name)
+    XCTAssertEqual(summary.sheetIndex, full.sheetIndex)
+    XCTAssertEqual(summary.tableName, full.table.name)
+    XCTAssertEqual(summary.tableIndex, full.tableIndex)
+    XCTAssertEqual(summary.rowCount, full.table.rowCount)
+    XCTAssertEqual(summary.columnCount, full.table.columnCount)
+    XCTAssertEqual(
+      Optional(summary.tableInfoObjectID),
+      full.table.metadata.objectIdentifiers?.tableInfoObjectID
+    )
+    XCTAssertEqual(
+      Optional(summary.tableModelObjectID),
+      full.table.metadata.objectIdentifiers?.tableModelObjectID
+    )
+  }
+
+  func testTargetedRangeMatchesFullOpenValuesAndSkipsStylesByDefault() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let selector = NumbersDocument.TableSelector(sheetName: "Sheet 1", tableName: "Table 1")
+    let range = CellRange(
+      start: CellAddress(row: 1, column: 0),
+      end: CellAddress(row: 2, column: 1)
+    )
+
+    let targeted = try NumbersDocument.readRange(at: fixture, selector: selector, range: range)
+    let fullTable = try XCTUnwrap(
+      NumbersDocument.open(at: fixture).sheet(named: "Sheet 1")?.table(named: "Table 1")
+    )
+
+    for row in range.start.row...range.end.row {
+      for column in range.start.column...range.end.column {
+        let address = CellAddress(row: row, column: column)
+        let targetedCell = try XCTUnwrap(targeted.table.readCell(at: address))
+        let fullCell = try XCTUnwrap(fullTable.readCell(at: address))
+        XCTAssertEqual(targetedCell.readValue, fullCell.readValue)
+        XCTAssertEqual(targetedCell.formatted, fullCell.formatted)
+        XCTAssertNil(targetedCell.style)
+      }
+    }
+  }
+
   func testMergedFixtureExposesMergeRanges() throws {
     assertMetadataOnlyFixtureRejected("merged-cells.numbers")
   }
@@ -185,12 +249,14 @@ final class NumbersDocumentTests: XCTestCase {
     )
 
     let groups = try table.categorizedRows(by: [0, 1], headerRow: 0)
-    XCTAssertEqual(groups.map(\.keyPath), [
-      ["Fruit", "Dried"],
-      ["Fruit", "Fresh"],
-      ["Transport", "Air"],
-      ["Transport", "Road"],
-    ])
+    XCTAssertEqual(
+      groups.map(\.keyPath),
+      [
+        ["Fruit", "Dried"],
+        ["Fruit", "Fresh"],
+        ["Transport", "Air"],
+        ["Transport", "Road"],
+      ])
     XCTAssertEqual(groups[0].rows.count, 1)
     XCTAssertEqual(groups[1].rows.count, 2)
     XCTAssertEqual(groups[2].rows.count, 1)

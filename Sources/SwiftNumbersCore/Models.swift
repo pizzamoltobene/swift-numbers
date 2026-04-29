@@ -827,7 +827,9 @@ public struct Table: Hashable, Sendable {
   }
 
   public func populatedCells(sorted: Bool = true) -> [ReadCell] {
-    let values = readCellsByAddress.values.map { applyingMergeMetadata(to: $0, address: $0.address) }
+    let values = readCellsByAddress.values.map {
+      applyingMergeMetadata(to: $0, address: $0.address)
+    }
     guard sorted else {
       return values
     }
@@ -1441,7 +1443,7 @@ public struct Table: Hashable, Sendable {
     case .number(let number):
       let mode =
         if options.preferCellNumberFormatHints,
-        let styleMode = numberFormatModeHint(from: style)
+          let styleMode = numberFormatModeHint(from: style)
         {
           styleMode
         } else {
@@ -1501,27 +1503,7 @@ public struct Table: Hashable, Sendable {
     mode: ReadNumberFormatMode,
     options: ReadFormattingOptions
   ) -> String {
-    let formatter = NumberFormatter()
-    formatter.locale = Locale(identifier: options.localeIdentifier)
-    formatter.usesGroupingSeparator = options.usesGroupingSeparator
-    formatter.minimumFractionDigits = max(options.minimumFractionDigits, 0)
-    formatter.maximumFractionDigits = max(
-      options.maximumFractionDigits,
-      formatter.minimumFractionDigits
-    )
-
     switch mode {
-    case .decimal:
-      formatter.numberStyle = .decimal
-    case .currency(let code):
-      formatter.numberStyle = .currency
-      if let code, !code.isEmpty {
-        formatter.currencyCode = code
-      }
-    case .percent:
-      formatter.numberStyle = .percent
-    case .scientific:
-      formatter.numberStyle = .scientific
     case .fraction(let maxDenominator):
       return fractionString(for: value, maxDenominator: maxDenominator)
     case .base(let radix, let uppercase):
@@ -1531,11 +1513,11 @@ public struct Table: Hashable, Sendable {
         uppercase: uppercase,
         maximumFractionDigits: options.maximumFractionDigits
       )
-    case .pattern(let pattern):
-      formatter.numberStyle = .decimal
-      formatter.positiveFormat = pattern
+    case .decimal, .currency, .percent, .scientific, .pattern:
+      break
     }
 
+    let formatter = cachedNumberFormatter(mode: mode, options: options)
     return formatter.string(from: NSNumber(value: value)) ?? String(value)
   }
 
@@ -1617,7 +1599,8 @@ public struct Table: Hashable, Sendable {
     }
 
     let normalizedRadix = min(max(radix, 2), 36)
-    let symbols = uppercase
+    let symbols =
+      uppercase
       ? Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
       : Array("0123456789abcdefghijklmnopqrstuvwxyz")
 
@@ -1679,30 +1662,156 @@ public struct Table: Hashable, Sendable {
     mode: ReadDateFormatMode,
     options: ReadFormattingOptions
   ) -> String {
+    let resolvedTimeZone = userTimeZone(for: options) ?? TimeZone(secondsFromGMT: 0) ?? .current
     switch mode {
     case .iso8601:
-      let formatter = ISO8601DateFormatter()
-      formatter.formatOptions =
-        options.includeFractionalSeconds
-        ? [.withInternetDateTime, .withFractionalSeconds]
-        : [.withInternetDateTime]
-      formatter.timeZone = userTimeZone(for: options) ?? TimeZone(secondsFromGMT: 0)
+      let formatter = cachedISO8601DateFormatter(options: options, timeZone: resolvedTimeZone)
       return formatter.string(from: value)
-    case .styled(let dateStyle, let timeStyle):
-      let formatter = DateFormatter()
-      formatter.locale = Locale(identifier: options.localeIdentifier)
-      formatter.dateStyle = dateFormatterStyle(for: dateStyle)
-      formatter.timeStyle = dateFormatterStyle(for: timeStyle)
-      formatter.timeZone = userTimeZone(for: options) ?? TimeZone(secondsFromGMT: 0)
-      return formatter.string(from: value)
-    case .pattern(let pattern):
-      let formatter = DateFormatter()
-      formatter.locale = Locale(identifier: options.localeIdentifier)
-      formatter.timeZone = userTimeZone(for: options) ?? TimeZone(secondsFromGMT: 0)
-      formatter.dateFormat =
-        pattern.isEmpty ? "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX" : pattern
+    case .styled, .pattern:
+      let formatter = cachedDateFormatter(mode: mode, options: options, timeZone: resolvedTimeZone)
       return formatter.string(from: value)
     }
+  }
+
+  private static func cachedNumberFormatter(
+    mode: ReadNumberFormatMode,
+    options: ReadFormattingOptions
+  ) -> NumberFormatter {
+    let key = numberFormatterCacheKey(mode: mode, options: options)
+    let cache = Thread.current.threadDictionary
+    if let formatter = cache[key] as? NumberFormatter {
+      return formatter
+    }
+
+    let formatter = NumberFormatter()
+    formatter.locale = Locale(identifier: options.localeIdentifier)
+    formatter.usesGroupingSeparator = options.usesGroupingSeparator
+    formatter.minimumFractionDigits = max(options.minimumFractionDigits, 0)
+    formatter.maximumFractionDigits = max(
+      options.maximumFractionDigits,
+      formatter.minimumFractionDigits
+    )
+
+    switch mode {
+    case .decimal:
+      formatter.numberStyle = .decimal
+    case .currency(let code):
+      formatter.numberStyle = .currency
+      if let code, !code.isEmpty {
+        formatter.currencyCode = code
+      }
+    case .percent:
+      formatter.numberStyle = .percent
+    case .scientific:
+      formatter.numberStyle = .scientific
+    case .pattern(let pattern):
+      formatter.numberStyle = .decimal
+      formatter.positiveFormat = pattern
+    case .fraction, .base:
+      formatter.numberStyle = .decimal
+    }
+
+    cache[key] = formatter
+    return formatter
+  }
+
+  private static func cachedISO8601DateFormatter(
+    options: ReadFormattingOptions,
+    timeZone: TimeZone
+  ) -> ISO8601DateFormatter {
+    let key =
+      "swiftnumbers.iso8601.\(options.includeFractionalSeconds ? 1 : 0).\(timeZone.identifier)"
+    let cache = Thread.current.threadDictionary
+    if let formatter = cache[key] as? ISO8601DateFormatter {
+      return formatter
+    }
+
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions =
+      options.includeFractionalSeconds
+      ? [.withInternetDateTime, .withFractionalSeconds]
+      : [.withInternetDateTime]
+    formatter.timeZone = timeZone
+    cache[key] = formatter
+    return formatter
+  }
+
+  private static func cachedDateFormatter(
+    mode: ReadDateFormatMode,
+    options: ReadFormattingOptions,
+    timeZone: TimeZone
+  ) -> DateFormatter {
+    let key = dateFormatterCacheKey(mode: mode, options: options, timeZone: timeZone)
+    let cache = Thread.current.threadDictionary
+    if let formatter = cache[key] as? DateFormatter {
+      return formatter
+    }
+
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: options.localeIdentifier)
+    formatter.timeZone = timeZone
+
+    switch mode {
+    case .styled(let dateStyle, let timeStyle):
+      formatter.dateStyle = dateFormatterStyle(for: dateStyle)
+      formatter.timeStyle = dateFormatterStyle(for: timeStyle)
+    case .pattern(let pattern):
+      formatter.dateStyle = .none
+      formatter.timeStyle = .none
+      formatter.dateFormat =
+        pattern.isEmpty ? "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX" : pattern
+    case .iso8601:
+      formatter.dateStyle = .none
+      formatter.timeStyle = .none
+      formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX"
+    }
+
+    cache[key] = formatter
+    return formatter
+  }
+
+  private static func numberFormatterCacheKey(
+    mode: ReadNumberFormatMode,
+    options: ReadFormattingOptions
+  ) -> String {
+    let modeSignature: String
+    switch mode {
+    case .decimal:
+      modeSignature = "decimal"
+    case .currency(let code):
+      modeSignature = "currency:\(code ?? "")"
+    case .percent:
+      modeSignature = "percent"
+    case .scientific:
+      modeSignature = "scientific"
+    case .pattern(let pattern):
+      modeSignature = "pattern:\(pattern)"
+    case .fraction(let maxDenominator):
+      modeSignature = "fraction:\(maxDenominator)"
+    case .base(let radix, let uppercase):
+      modeSignature = "base:\(radix):\(uppercase ? 1 : 0)"
+    }
+
+    return
+      "swiftnumbers.number.\(options.localeIdentifier).\(options.usesGroupingSeparator ? 1 : 0).\(max(options.minimumFractionDigits, 0)).\(max(options.maximumFractionDigits, 0)).\(modeSignature)"
+  }
+
+  private static func dateFormatterCacheKey(
+    mode: ReadDateFormatMode,
+    options: ReadFormattingOptions,
+    timeZone: TimeZone
+  ) -> String {
+    let modeSignature: String
+    switch mode {
+    case .styled(let dateStyle, let timeStyle):
+      modeSignature = "styled:\(dateStyle.rawValue):\(timeStyle.rawValue)"
+    case .pattern(let pattern):
+      modeSignature = "pattern:\(pattern)"
+    case .iso8601:
+      modeSignature = "iso8601"
+    }
+
+    return "swiftnumbers.date.\(options.localeIdentifier).\(timeZone.identifier).\(modeSignature)"
   }
 
   private static func durationString(
@@ -1778,7 +1887,9 @@ public struct Table: Hashable, Sendable {
       return []
     }
 
-    let punctuation = Set<Character>(["(", ")", ",", ":", "+", "-", "*", "/", "^", "&", "=", "<", ">"])
+    let punctuation = Set<Character>([
+      "(", ")", ",", ":", "+", "-", "*", "/", "^", "&", "=", "<", ">",
+    ])
     var tokens: [String] = []
     var current = ""
     var inString = false
@@ -1915,7 +2026,7 @@ public struct Table: Hashable, Sendable {
     case .date(let value) where type == Date.self:
       return value as! T
     case .number(let value)
-      where type == TimeInterval.self && (readCell.kind == .duration || readCell.kind == .number):
+    where type == TimeInterval.self && (readCell.kind == .duration || readCell.kind == .number):
       return value as! T
     case .empty:
       throw TableReadError.missingValue(readCell.address)

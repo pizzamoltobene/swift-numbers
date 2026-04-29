@@ -1,3 +1,4 @@
+import Dispatch
 import Foundation
 import SwiftNumbersContainer
 import SwiftNumbersIWA
@@ -122,7 +123,173 @@ private struct ReadStyleRegistryStylePayload: Decodable {
   }
 }
 
+private struct NumbersReadTrace {
+  private let enabled: Bool
+  private let operation: String
+  private let startedAt: DispatchTime
+  private var lastMark: DispatchTime
+  private var events: [(name: String, milliseconds: Double)] = []
+
+  init(operation: String) {
+    self.enabled = ProcessInfo.processInfo.environment["SWIFTNUMBERS_PERF_TRACE"] == "1"
+    self.operation = operation
+    self.startedAt = DispatchTime.now()
+    self.lastMark = startedAt
+  }
+
+  mutating func mark(_ name: String) {
+    guard enabled else { return }
+    let now = DispatchTime.now()
+    events.append((name: name, milliseconds: Self.milliseconds(from: lastMark, to: now)))
+    lastMark = now
+  }
+
+  func finish(sourcePath: String) {
+    guard enabled else { return }
+    let total = Self.milliseconds(from: startedAt, to: DispatchTime.now())
+    let eventObjects = events.map { event -> [String: Any] in
+      ["name": event.name, "milliseconds": event.milliseconds]
+    }
+    let payload: [String: Any] = [
+      "operation": operation,
+      "sourcePath": sourcePath,
+      "totalMilliseconds": total,
+      "events": eventObjects,
+    ]
+    guard
+      JSONSerialization.isValidJSONObject(payload),
+      let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+      let line = String(data: data, encoding: .utf8)
+    else {
+      return
+    }
+    FileHandle.standardError.write(Data((line + "\n").utf8))
+  }
+
+  private static func milliseconds(from start: DispatchTime, to end: DispatchTime) -> Double {
+    Double(end.uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000.0
+  }
+}
+
 public struct NumbersDocument: Sendable {
+  public struct SheetSummary: Hashable, Sendable {
+    public let id: String
+    public let name: String
+    public let tableCount: Int
+
+    public init(id: String, name: String, tableCount: Int) {
+      self.id = id
+      self.name = name
+      self.tableCount = tableCount
+    }
+  }
+
+  public struct TableSummary: Hashable, Sendable {
+    public let sheetID: String
+    public let sheetName: String
+    public let sheetIndex: Int
+    public let tableID: String
+    public let tableName: String
+    public let tableIndex: Int
+    public let tableInfoObjectID: UInt64
+    public let tableModelObjectID: UInt64
+    public let rowCount: Int
+    public let columnCount: Int
+    public let headerRowCount: Int
+    public let headerColumnCount: Int
+    public let tableNameVisible: Bool?
+    public let captionVisible: Bool?
+    public let captionText: String?
+    public let captionTextSupported: Bool
+
+    public init(
+      sheetID: String,
+      sheetName: String,
+      sheetIndex: Int,
+      tableID: String,
+      tableName: String,
+      tableIndex: Int,
+      tableInfoObjectID: UInt64,
+      tableModelObjectID: UInt64,
+      rowCount: Int,
+      columnCount: Int,
+      headerRowCount: Int,
+      headerColumnCount: Int,
+      tableNameVisible: Bool?,
+      captionVisible: Bool?,
+      captionText: String?,
+      captionTextSupported: Bool
+    ) {
+      self.sheetID = sheetID
+      self.sheetName = sheetName
+      self.sheetIndex = sheetIndex
+      self.tableID = tableID
+      self.tableName = tableName
+      self.tableIndex = tableIndex
+      self.tableInfoObjectID = tableInfoObjectID
+      self.tableModelObjectID = tableModelObjectID
+      self.rowCount = rowCount
+      self.columnCount = columnCount
+      self.headerRowCount = headerRowCount
+      self.headerColumnCount = headerColumnCount
+      self.tableNameVisible = tableNameVisible
+      self.captionVisible = captionVisible
+      self.captionText = captionText
+      self.captionTextSupported = captionTextSupported
+    }
+  }
+
+  public struct TableSelector: Hashable, Sendable {
+    public let sheetName: String?
+    public let sheetIndex: Int?
+    public let tableName: String?
+    public let tableIndex: Int?
+
+    public init(
+      sheetName: String? = nil,
+      sheetIndex: Int? = nil,
+      tableName: String? = nil,
+      tableIndex: Int? = nil
+    ) {
+      self.sheetName = sheetName
+      self.sheetIndex = sheetIndex
+      self.tableName = tableName
+      self.tableIndex = tableIndex
+    }
+  }
+
+  public struct CellWindow: Hashable, Sendable {
+    public let startRow: Int
+    public let endRow: Int
+    public let startColumn: Int
+    public let endColumn: Int
+
+    public init(startRow: Int, endRow: Int, startColumn: Int, endColumn: Int) {
+      self.startRow = min(startRow, endRow)
+      self.endRow = max(startRow, endRow)
+      self.startColumn = min(startColumn, endColumn)
+      self.endColumn = max(startColumn, endColumn)
+    }
+  }
+
+  public struct TargetedTableRead: Sendable {
+    public let sourceURL: URL
+    public let sheet: Sheet
+    public let table: Table
+
+    public init(sourceURL: URL, sheet: Sheet, table: Table) {
+      self.sourceURL = sourceURL
+      self.sheet = sheet
+      self.table = table
+    }
+  }
+
+  public enum CSVExportMode: Hashable, Sendable {
+    case value
+    case formatted
+    case formula
+  }
+
   public let sourceURL: URL
   public let sheets: [Sheet]
 
@@ -132,16 +299,278 @@ public struct NumbersDocument: Sendable {
   private static let editableFormulaMarkerPrefix = "__SWIFTNUMBERS_FORMULA__:"
   private static let styleRegistryMetadataFilename = "SwiftNumbersStyleRegistry.json"
 
-  public static func open(at url: URL) throws -> NumbersDocument {
+  public static func sheetSummaries(at url: URL) throws -> [SheetSummary] {
+    var trace = NumbersReadTrace(operation: "sheetSummaries")
+    defer { trace.finish(sourcePath: url.path) }
     let container = try NumbersContainer.open(at: url)
+    trace.mark("container")
+    if try container.isLikelyEncryptedDocument() {
+      throw NumbersDocumentError.encryptedDocumentUnsupported
+    }
+
+    let documentVersion = NumbersDocumentVersion.read(from: container)
+    let blobs = try container.loadIndexBlobs()
+    trace.mark("loadIndexBlobs")
+    let inventory = try IWAInventoryBuilder.buildSheetSummaryInventory(from: blobs)
+    trace.mark("inventory")
+    let summaryResult = IWARealDocumentReader.readSheetSummaries(
+      from: inventory,
+      documentVersion: documentVersion
+    )
+    trace.mark("resolve")
+
+    guard !summaryResult.sheets.isEmpty else {
+      let reason =
+        summaryResult.structuredDiagnostics
+        .first(where: { $0.severity == .error || $0.severity == .warning })?
+        .rendered
+        ?? summaryResult.diagnostics.first
+        ?? "Real-read summary path returned no sheets."
+      throw NumbersDocumentError.realReadFailed(reason)
+    }
+
+    return summaryResult.sheets.map {
+      SheetSummary(id: $0.id, name: $0.name, tableCount: $0.tableCount)
+    }
+  }
+
+  public static func tableSummaries(at url: URL) throws -> [TableSummary] {
+    var trace = NumbersReadTrace(operation: "tableSummaries")
+    defer { trace.finish(sourcePath: url.path) }
+    let container = try NumbersContainer.open(at: url)
+    trace.mark("container")
+    if try container.isLikelyEncryptedDocument() {
+      throw NumbersDocumentError.encryptedDocumentUnsupported
+    }
+
+    let documentVersion = NumbersDocumentVersion.read(from: container)
+    let blobs = try container.loadIndexBlobs()
+    trace.mark("loadIndexBlobs")
+    let inventory = try IWAInventoryBuilder.buildTableSummaryInventory(from: blobs)
+    trace.mark("inventory")
+    let summaryResult = IWARealDocumentReader.readTableSummaries(
+      from: inventory,
+      documentVersion: documentVersion
+    )
+    trace.mark("resolve")
+
+    guard !summaryResult.tables.isEmpty else {
+      let reason =
+        summaryResult.structuredDiagnostics
+        .first(where: { $0.severity == .error || $0.severity == .warning })?
+        .rendered
+        ?? "Real-read table summary path returned no tables."
+      throw NumbersDocumentError.realReadFailed(reason)
+    }
+
+    return summaryResult.tables.map(mapResolvedTableSummary)
+  }
+
+  public static func readCell(
+    at url: URL,
+    selector: TableSelector = TableSelector(),
+    cell reference: String,
+    includeFormulas: Bool = true,
+    includeFormatting: Bool = true
+  ) throws -> TargetedTableRead {
+    let parsed = try CellReference(reference)
+    let window = CellWindow(
+      startRow: parsed.address.row,
+      endRow: parsed.address.row,
+      startColumn: parsed.address.column,
+      endColumn: parsed.address.column
+    )
+    return try readTable(
+      at: url,
+      selector: selector,
+      window: window,
+      includeFormulas: includeFormulas,
+      includeFormatting: includeFormatting,
+      includeRichText: true,
+      includeStyles: true,
+      includeMerges: true,
+      includeCaptions: true
+    )
+  }
+
+  public static func readColumn(
+    at url: URL,
+    selector: TableSelector = TableSelector(),
+    column: Int,
+    fromRow: Int = 0,
+    includeFormulas: Bool = false,
+    includeFormatting: Bool = false
+  ) throws -> TargetedTableRead {
+    let safeFromRow = max(0, fromRow)
+    let window = CellWindow(
+      startRow: safeFromRow,
+      endRow: Int.max / 4,
+      startColumn: column,
+      endColumn: column
+    )
+    return try readTable(
+      at: url,
+      selector: selector,
+      window: window,
+      includeFormulas: includeFormulas,
+      includeFormatting: includeFormatting
+    )
+  }
+
+  public static func readRange(
+    at url: URL,
+    selector: TableSelector = TableSelector(),
+    range: CellRange,
+    includeFormulas: Bool = false,
+    includeFormatting: Bool = false
+  ) throws -> TargetedTableRead {
+    try readTable(
+      at: url,
+      selector: selector,
+      window: CellWindow(
+        startRow: range.start.row,
+        endRow: range.end.row,
+        startColumn: range.start.column,
+        endColumn: range.end.column
+      ),
+      includeFormulas: includeFormulas,
+      includeFormatting: includeFormatting
+    )
+  }
+
+  public static func readTable(
+    at url: URL,
+    selector: TableSelector = TableSelector(),
+    window: CellWindow? = nil,
+    includeFormulas: Bool = false,
+    includeFormatting: Bool = false,
+    includeRichText: Bool = false,
+    includeStyles: Bool = false,
+    includeMerges: Bool = true,
+    includeCaptions: Bool = true
+  ) throws -> TargetedTableRead {
+    var trace = NumbersReadTrace(operation: "readTableTargeted")
+    defer { trace.finish(sourcePath: url.path) }
+    let container = try NumbersContainer.open(at: url)
+    trace.mark("container")
+    if try container.isLikelyEncryptedDocument() {
+      throw NumbersDocumentError.encryptedDocumentUnsupported
+    }
+
+    let documentVersion = NumbersDocumentVersion.read(from: container)
+    let blobs = try container.loadIndexBlobs()
+    trace.mark("loadIndexBlobs")
+    let features = iwaFeatures(
+      includeFormulas: includeFormulas,
+      includeFormatting: includeFormatting,
+      includeRichText: includeRichText,
+      includeStyles: includeStyles,
+      includeMerges: includeMerges,
+      includeCaptions: includeCaptions
+    )
+    let inventory = try IWAInventoryBuilder.buildSelectedReadInventory(
+      from: blobs,
+      features: features
+    )
+    trace.mark("inventory")
+    let result = IWARealDocumentReader.readSelectedTable(
+      from: inventory,
+      documentVersion: documentVersion,
+      selector: IWATableSelector(
+        sheetName: selector.sheetName,
+        sheetIndex: selector.sheetIndex,
+        tableName: selector.tableName,
+        tableIndex: selector.tableIndex
+      ),
+      cellWindow: window.map {
+        IWACellWindow(
+          startRow: $0.startRow,
+          endRow: $0.endRow,
+          startColumn: $0.startColumn,
+          endColumn: $0.endColumn
+        )
+      },
+      features: features
+    )
+    trace.mark("resolve")
+
+    guard let resolvedSheet = result.sheets.first, let resolvedTable = resolvedSheet.tables.first
+    else {
+      let reason =
+        result.structuredDiagnostics
+        .first(where: { $0.severity == .error || $0.severity == .warning })?
+        .rendered
+        ?? "Real-read selected table path returned no table."
+      throw NumbersDocumentError.realReadFailed(reason)
+    }
+
+    let mappedSheets = mapResolvedSheets([
+      IWAResolvedSheet(id: resolvedSheet.id, name: resolvedSheet.name, tables: [resolvedTable])
+    ])
+    trace.mark("map")
+    guard let sheet = mappedSheets.first, let table = sheet.tables.first else {
+      throw NumbersDocumentError.realReadFailed("Selected table mapping returned no table.")
+    }
+    return TargetedTableRead(sourceURL: url, sheet: sheet, table: table)
+  }
+
+  public static func formulas(
+    at url: URL,
+    selector: TableSelector = TableSelector()
+  ) throws -> TargetedTableRead {
+    try readTable(
+      at: url,
+      selector: selector,
+      window: nil,
+      includeFormulas: true,
+      includeFormatting: true,
+      includeRichText: false,
+      includeStyles: false,
+      includeMerges: true,
+      includeCaptions: true
+    )
+  }
+
+  public static func exportCSV(
+    at url: URL,
+    selector: TableSelector = TableSelector(),
+    mode: CSVExportMode = .value,
+    to outputURL: URL? = nil
+  ) throws -> String {
+    let targeted = try readTable(
+      at: url,
+      selector: selector,
+      window: nil,
+      includeFormulas: mode == .formula,
+      includeFormatting: mode == .formatted,
+      includeRichText: false,
+      includeStyles: false,
+      includeMerges: false,
+      includeCaptions: false
+    )
+    let csv = renderCSV(table: targeted.table, mode: mode)
+    if let outputURL {
+      try Data(csv.utf8).write(to: outputURL, options: .atomic)
+    }
+    return csv
+  }
+
+  public static func open(at url: URL) throws -> NumbersDocument {
+    var trace = NumbersReadTrace(operation: "open")
+    defer { trace.finish(sourcePath: url.path) }
+    let container = try NumbersContainer.open(at: url)
+    trace.mark("container")
     if try container.isLikelyEncryptedDocument() {
       throw NumbersDocumentError.encryptedDocumentUnsupported
     }
     let documentVersion = NumbersDocumentVersion.read(from: container)
     let blobs = try container.loadIndexBlobs()
+    trace.mark("loadIndexBlobs")
     let inventory = try IWAInventoryBuilder.build(from: blobs)
+    trace.mark("inventory")
 
     let realRead = IWARealDocumentReader.read(from: inventory, documentVersion: documentVersion)
+    trace.mark("resolve")
     guard !realRead.sheets.isEmpty else {
       let reason =
         realRead.structuredDiagnostics
@@ -152,7 +581,9 @@ public struct NumbersDocument: Sendable {
       throw NumbersDocumentError.realReadFailed(reason)
     }
     let mappedSheets = mapResolvedSheets(realRead.sheets)
+    trace.mark("map")
     let sheets = try applyStyleRegistryOverlayIfPresent(to: mappedSheets, from: container)
+    trace.mark("overlay")
     let diagnostics = realRead.diagnostics
     let structuredDiagnostics = realRead.structuredDiagnostics.map(mapReadDiagnostic)
 
@@ -273,6 +704,146 @@ public struct NumbersDocument: Sendable {
     return lines.joined(separator: "\n")
   }
 
+  private static func mapResolvedTableSummary(_ summary: IWAResolvedTableSummary) -> TableSummary {
+    TableSummary(
+      sheetID: summary.sheetID,
+      sheetName: summary.sheetName,
+      sheetIndex: summary.sheetIndex,
+      tableID: summary.tableID,
+      tableName: summary.tableName,
+      tableIndex: summary.tableIndex,
+      tableInfoObjectID: summary.tableInfoObjectID,
+      tableModelObjectID: summary.tableModelObjectID,
+      rowCount: summary.rowCount,
+      columnCount: summary.columnCount,
+      headerRowCount: summary.headerRowCount,
+      headerColumnCount: summary.headerColumnCount,
+      tableNameVisible: summary.tableNameVisible,
+      captionVisible: summary.captionVisible,
+      captionText: summary.captionText,
+      captionTextSupported: summary.captionTextSupported
+    )
+  }
+
+  private static func iwaFeatures(
+    includeFormulas: Bool,
+    includeFormatting: Bool,
+    includeRichText: Bool,
+    includeStyles: Bool,
+    includeMerges: Bool,
+    includeCaptions: Bool
+  ) -> IWAReadFeatures {
+    var features: IWAReadFeatures = [.values]
+    if includeFormatting {
+      features.insert(.formatted)
+    }
+    if includeStyles {
+      features.insert(.styles)
+    }
+    if includeFormulas {
+      features.insert(.formulas)
+    }
+    if includeRichText {
+      features.insert(.richText)
+    }
+    if includeMerges {
+      features.insert(.merges)
+    }
+    if includeCaptions {
+      features.insert(.captions)
+    }
+    return features
+  }
+
+  private static func renderCSV(table: Table, mode: CSVExportMode) -> String {
+    var lines: [String] = []
+    lines.reserveCapacity(table.rowCount)
+    for row in 0..<table.rowCount {
+      var fields: [String] = []
+      fields.reserveCapacity(table.columnCount)
+      for column in 0..<table.columnCount {
+        let address = CellAddress(row: row, column: column)
+        let readCell =
+          table.readCell(at: address)
+          ?? ReadCell(address: address, value: .empty, kind: .empty, formatted: "")
+        fields.append(csvEscape(csvCellString(readCell: readCell, table: table, mode: mode)))
+      }
+      lines.append(fields.joined(separator: ","))
+    }
+    return lines.joined(separator: "\n") + "\n"
+  }
+
+  private static func csvCellString(readCell: ReadCell, table: Table, mode: CSVExportMode) -> String {
+    switch mode {
+    case .value:
+      return csvCellString(from: readCell.readValue)
+    case .formatted:
+      return readCell.formatted
+    case .formula:
+      if let formula = table.formula(at: readCell.address)?.rawFormula {
+        return formula
+      }
+      return csvCellString(from: readCell.readValue)
+    }
+  }
+
+  private static func csvCellString(from value: ReadCellValue) -> String {
+    switch value {
+    case .empty:
+      return ""
+    case .string(let string):
+      return string
+    case .number(let number):
+      return csvNumberString(number)
+    case .bool(let bool):
+      return bool ? "TRUE" : "FALSE"
+    case .date(let date):
+      return ISO8601DateFormatter().string(from: date)
+    case .duration(let seconds):
+      return csvNumberString(seconds)
+    case .error(let message):
+      return message
+    case .richText(let richText):
+      return richText.text
+    case .formulaResult(let result):
+      return csvCellString(from: result.computedValue)
+    }
+  }
+
+  private static func csvCellString(from value: CellValue) -> String {
+    switch value {
+    case .empty:
+      return ""
+    case .string(let string), .formula(let string):
+      return string
+    case .number(let number):
+      return csvNumberString(number)
+    case .bool(let bool):
+      return bool ? "TRUE" : "FALSE"
+    case .date(let date):
+      return ISO8601DateFormatter().string(from: date)
+    }
+  }
+
+  private static func csvEscape(_ field: String) -> String {
+    guard
+      field.contains(",") || field.contains("\"") || field.contains("\n") || field.contains("\r")
+    else {
+      return field
+    }
+    return "\"\(field.replacingOccurrences(of: "\"", with: "\"\""))\""
+  }
+
+  private static func csvNumberString(_ value: Double) -> String {
+    let formatter = NumberFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.numberStyle = .decimal
+    formatter.usesGroupingSeparator = false
+    formatter.minimumFractionDigits = 0
+    formatter.maximumFractionDigits = 15
+    return formatter.string(from: NSNumber(value: value)) ?? String(value)
+  }
+
   private static func applyStyleRegistryOverlayIfPresent(
     to sheets: [Sheet],
     from container: NumbersContainer
@@ -338,7 +909,8 @@ public struct NumbersDocument: Sendable {
     }
 
     let populatedReadCells = table.populatedCells(sorted: false)
-    var readCellsByAddress = Dictionary(uniqueKeysWithValues: populatedReadCells.map { ($0.address, $0) })
+    var readCellsByAddress = Dictionary(
+      uniqueKeysWithValues: populatedReadCells.map { ($0.address, $0) })
     var didMutate = false
 
     for (address, style) in styleAssignments {
@@ -373,16 +945,15 @@ public struct NumbersDocument: Sendable {
       return table
     }
 
-    let cellsByAddress = Dictionary(uniqueKeysWithValues: populatedReadCells.map { ($0.address, $0.value) })
-    let formulasByAddress = Dictionary(uniqueKeysWithValues: table.formulas().map { ($0.address, $0) })
+    let cellsByAddress = Dictionary(
+      uniqueKeysWithValues: populatedReadCells.map { ($0.address, $0.value) })
 
     return Table(
       id: table.id,
       name: table.name,
       metadata: table.metadata,
       cells: cellsByAddress,
-      readCells: readCellsByAddress,
-      formulas: formulasByAddress
+      readCells: readCellsByAddress
     )
   }
 
@@ -410,18 +981,16 @@ public struct NumbersDocument: Sendable {
   }
 
   private static func mapResolvedSheets(_ sheets: [IWAResolvedSheet]) -> [Sheet] {
-    sheets.map { sheet in
+    let formatter = ReadValueFormatter()
+    return sheets.map { sheet in
       let tables = sheet.tables.map { table in
         var cells: [CellAddress: CellValue] = [:]
         var readCells: [CellAddress: ReadCell] = [:]
-        var formulas: [CellAddress: FormulaRead] = [:]
         cells.reserveCapacity(table.cells.count)
         readCells.reserveCapacity(table.cells.count)
-        formulas.reserveCapacity(table.cells.count)
 
         for cell in table.cells {
           let address = CellAddress(row: cell.row, column: cell.column)
-          let reference = CellReference(address: address).a1
           let value: CellValue
           switch cell.value {
           case .empty:
@@ -456,7 +1025,7 @@ public struct NumbersDocument: Sendable {
           } else {
             mappedKind = mapResolvedCellKind(cell.kind)
           }
-          let formattedValue = formatReadValue(value)
+          let formattedValue = formatter.string(from: value)
           let mappedRichText = mapResolvedRichText(cell.richText)
           let mappedStyle = mapResolvedCellStyle(cell.style)
           let formulaResult: FormulaResultRead?
@@ -484,17 +1053,6 @@ public struct NumbersDocument: Sendable {
               astSummary: astSummary,
               computedValue: value,
               computedFormatted: formattedValue
-            )
-
-            formulas[address] = FormulaRead(
-              address: address,
-              reference: reference,
-              formulaID: cell.formulaID,
-              rawFormula: rawFormula,
-              parsedTokens: tokens,
-              astSummary: astSummary,
-              result: value,
-              resultFormatted: formattedValue
             )
           } else {
             formulaResult = nil
@@ -572,8 +1130,7 @@ public struct NumbersDocument: Sendable {
             pivotLinks: pivotLinks
           ),
           cells: cells,
-          readCells: readCells,
-          formulas: formulas
+          readCells: readCells
         )
       }
 
@@ -810,27 +1367,43 @@ public struct NumbersDocument: Sendable {
   }
 
   private static func formatReadValue(_ value: CellValue) -> String {
-    switch value {
-    case .empty:
-      return ""
-    case .string(let string):
-      return string
-    case .formula(let formula):
-      return formula
-    case .number(let number):
-      let formatter = NumberFormatter()
-      formatter.locale = Locale(identifier: "en_US_POSIX")
-      formatter.numberStyle = .decimal
-      formatter.usesGroupingSeparator = false
-      formatter.maximumFractionDigits = 15
-      formatter.minimumFractionDigits = 0
-      return formatter.string(from: NSNumber(value: number)) ?? String(number)
-    case .bool(let bool):
-      return bool ? "TRUE" : "FALSE"
-    case .date(let date):
-      let formatter = ISO8601DateFormatter()
-      formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-      return formatter.string(from: date)
+    let formatter = ReadValueFormatter()
+    return formatter.string(from: value)
+  }
+
+  private struct ReadValueFormatter {
+    private let numberFormatter: NumberFormatter
+    private let dateFormatter: ISO8601DateFormatter
+
+    init() {
+      let numberFormatter = NumberFormatter()
+      numberFormatter.locale = Locale(identifier: "en_US_POSIX")
+      numberFormatter.numberStyle = .decimal
+      numberFormatter.usesGroupingSeparator = false
+      numberFormatter.maximumFractionDigits = 15
+      numberFormatter.minimumFractionDigits = 0
+      self.numberFormatter = numberFormatter
+
+      let dateFormatter = ISO8601DateFormatter()
+      dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+      self.dateFormatter = dateFormatter
+    }
+
+    func string(from value: CellValue) -> String {
+      switch value {
+      case .empty:
+        return ""
+      case .string(let string):
+        return string
+      case .formula(let formula):
+        return formula
+      case .number(let number):
+        return numberFormatter.string(from: NSNumber(value: number)) ?? String(number)
+      case .bool(let bool):
+        return bool ? "TRUE" : "FALSE"
+      case .date(let date):
+        return dateFormatter.string(from: date)
+      }
     }
   }
 
@@ -839,7 +1412,9 @@ public struct NumbersDocument: Sendable {
       return []
     }
 
-    let punctuation = Set<Character>(["(", ")", ",", ":", "+", "-", "*", "/", "^", "&", "=", "<", ">"])
+    let punctuation = Set<Character>([
+      "(", ")", ",", ":", "+", "-", "*", "/", "^", "&", "=", "<", ">",
+    ])
     var tokens: [String] = []
     var current = ""
     var inString = false

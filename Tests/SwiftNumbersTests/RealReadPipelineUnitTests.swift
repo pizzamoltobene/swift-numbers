@@ -1,8 +1,8 @@
 import Foundation
+import SwiftNumbersProto
 import XCTest
 
 @testable import SwiftNumbersIWA
-import SwiftNumbersProto
 
 final class RealReadPipelineUnitTests: XCTestCase {
   func testDecodeSignedInt16Array() {
@@ -378,6 +378,46 @@ final class RealReadPipelineUnitTests: XCTestCase {
     XCTAssertEqual(deduplicated.count, 2)
   }
 
+  func testDeduplicateUnsupportedDecodeDiagnosticsUsesContextObjectWhenPathMissing() {
+    let diagnostics: [IWAReadDiagnostic] = [
+      IWAReadDiagnostic(
+        code: "decode.cell.unsupportedTypeDropped",
+        severity: .warning,
+        message: "table 100 first",
+        context: ["tableID": " 100 ", "cellType": "37"]
+      ),
+      IWAReadDiagnostic(
+        code: "decode.cell.unsupportedTypeDropped",
+        severity: .warning,
+        message: "table 100 duplicate",
+        context: ["tableID": "100", "cellType": " 37 "]
+      ),
+      IWAReadDiagnostic(
+        code: "decode.cell.unsupportedTypeDropped",
+        severity: .warning,
+        message: "table 101 distinct",
+        context: ["tableID": "101", "cellType": "37"]
+      ),
+      IWAReadDiagnostic(
+        code: "decode.formula.unsupportedAstNodes",
+        severity: .warning,
+        message: "table 100 formula distinct",
+        context: ["tableID": "100", "unsupportedNodeType": "call"]
+      ),
+    ]
+
+    let deduplicated = IWARealDocumentReader.deduplicateUnsupportedDecodeDiagnostics(diagnostics)
+    XCTAssertEqual(
+      deduplicated.map(\.message),
+      [
+        "table 100 first",
+        "table 101 distinct",
+        "table 100 formula distinct",
+      ]
+    )
+    XCTAssertEqual(deduplicated.count, 3)
+  }
+
   func testResolverChoosesDeterministicDocumentCandidate() {
     let records = [
       IWAObjectRecord(objectID: 20, typeID: 1, payloadSize: 0, sourceBlobPath: "A.iwa"),
@@ -522,7 +562,9 @@ final class RealReadPipelineUnitTests: XCTestCase {
     XCTAssertEqual(pivotLink.linkedTableInfoCount, 1)
     XCTAssertEqual(pivotLink.linkedTableModelObjectIDs, [400])
     XCTAssertEqual(pivotLink.linkedTableModelCount, 1)
-    let diagnostic = result.structuredDiagnostics.first { $0.code == "resolver.pivot.candidateDetected" }
+    let diagnostic = result.structuredDiagnostics.first {
+      $0.code == "resolver.pivot.candidateDetected"
+    }
     XCTAssertNotNil(diagnostic)
     XCTAssertEqual(diagnostic?.severity, .info)
     XCTAssertEqual(diagnostic?.context["drawableObjectID"], "300")
@@ -533,7 +575,9 @@ final class RealReadPipelineUnitTests: XCTestCase {
     XCTAssertEqual(diagnostic?.context["linkedTableInfoCount"], "1")
     XCTAssertEqual(diagnostic?.context["linkedTableModelObjectIDs"], "400")
     XCTAssertEqual(diagnostic?.context["linkedTableModelCount"], "1")
-    let summary = result.structuredDiagnostics.first { $0.code == "resolver.pivot.candidateSummary" }
+    let summary = result.structuredDiagnostics.first {
+      $0.code == "resolver.pivot.candidateSummary"
+    }
     XCTAssertNotNil(summary)
     XCTAssertEqual(summary?.severity, .info)
     XCTAssertEqual(summary?.context["candidateObjectIDs"], "300")
@@ -779,7 +823,9 @@ final class RealReadPipelineUnitTests: XCTestCase {
     var sheet = TN_SheetArchive()
     sheet.name = "Main"
     // Includes zero + non-table drawable references that should not perturb table traversal order.
-    sheet.drawableInfos = [reference(900), reference(301), reference(0), reference(300), reference(900), reference(301)]
+    sheet.drawableInfos = [
+      reference(900), reference(301), reference(0), reference(300), reference(900), reference(301),
+    ]
 
     var tableInfo300 = TST_TableInfoArchive()
     var drawable300 = TSD_DrawableArchive()
@@ -906,7 +952,8 @@ final class RealReadPipelineUnitTests: XCTestCase {
       let resolvedSheet = try XCTUnwrap(result.sheets.first)
       XCTAssertEqual(resolvedSheet.tables.count, 3)
       XCTAssertEqual(resolvedSheet.tables.map(\.tableInfoObjectID), [300, 301, 302])
-      XCTAssertEqual(Set(resolvedSheet.tables.map(\.tableInfoObjectID)).count, resolvedSheet.tables.count)
+      XCTAssertEqual(
+        Set(resolvedSheet.tables.map(\.tableInfoObjectID)).count, resolvedSheet.tables.count)
 
       let pivotCandidate = result.structuredDiagnostics.first {
         $0.code == "resolver.pivot.candidateDetected" && $0.context["drawableObjectID"] == "900"
@@ -978,6 +1025,7 @@ final class RealReadPipelineUnitTests: XCTestCase {
     let tableModel401Payload = try tableModel401.serializedData()
     let tableModel402Payload = try tableModel402.serializedData()
     let corruptTableInfoPayload = Data(repeating: 0x80, count: tableInfo301Payload.count + 8)
+    let corruptTableModelPayload = Data(repeating: 0x80, count: tableModel401Payload.count + 8)
 
     let baselineRecords = [
       IWAObjectRecord(
@@ -1043,16 +1091,24 @@ final class RealReadPipelineUnitTests: XCTestCase {
       ),
     ]
 
-    let withCorruptDuplicate = [
-      IWAObjectRecord(
-        objectID: 301,
-        typeID: 6000,
-        payloadSize: corruptTableInfoPayload.count,
-        payloadData: corruptTableInfoPayload,
-        sourceBlobPath: "TableBCorrupt.iwa",
-        objectReferences: [200, 401]
-      )
-    ] + baselineRecords
+    let withCorruptDuplicate =
+      [
+        IWAObjectRecord(
+          objectID: 301,
+          typeID: 6000,
+          payloadSize: corruptTableInfoPayload.count,
+          payloadData: corruptTableInfoPayload,
+          sourceBlobPath: "TableBCorrupt.iwa",
+          objectReferences: [200, 401]
+        ),
+        IWAObjectRecord(
+          objectID: 401,
+          typeID: 6001,
+          payloadSize: corruptTableModelPayload.count,
+          payloadData: corruptTableModelPayload,
+          sourceBlobPath: "TableBModelCorrupt.iwa"
+        ),
+      ] + baselineRecords
 
     let variants: [[IWAObjectRecord]] = [
       baselineRecords,
@@ -1069,7 +1125,8 @@ final class RealReadPipelineUnitTests: XCTestCase {
         "\($0.tableInfoObjectID):\($0.tableModelObjectID):\($0.name)"
       }.joined(separator: "|")
       XCTAssertEqual(snapshot, expectedSnapshot)
-      XCTAssertEqual(Set(resolvedSheet.tables.map(\.tableInfoObjectID)).count, resolvedSheet.tables.count)
+      XCTAssertEqual(
+        Set(resolvedSheet.tables.map(\.tableInfoObjectID)).count, resolvedSheet.tables.count)
     }
   }
 

@@ -16,6 +16,8 @@ public struct NumbersContainer: Sendable {
   ) throws {
     let source = sourceURL.standardizedFileURL
     let destination = destinationURL.standardizedFileURL
+    let sanitizedMetadataFiles = try sanitizeMetadataReplacementFiles(metadataFiles)
+    let sanitizedIndexBlobs = try sanitizeIndexBlobReplacementPaths(indexBlobs)
 
     guard FileManager.default.fileExists(atPath: source.path) else {
       throw NumbersContainerError.pathDoesNotExist(source)
@@ -30,17 +32,20 @@ public struct NumbersContainer: Sendable {
       }
       try FileManager.default.copyItem(at: source, to: destination)
 
-      if !metadataFiles.isEmpty {
+      if !sanitizedMetadataFiles.isEmpty {
         let metadataURL = destination.appendingPathComponent("Metadata", isDirectory: true)
         try FileManager.default.createDirectory(at: metadataURL, withIntermediateDirectories: true)
-        for filename in metadataFiles.keys.sorted() {
+        for filename in sanitizedMetadataFiles.keys.sorted() {
           let target = metadataURL.appendingPathComponent(filename, isDirectory: false)
-          try metadataFiles[filename]?.write(to: target)
+          guard isPathWithinDirectory(target: target, directory: metadataURL) else {
+            throw NumbersContainerError.invalidReplacementPath(filename)
+          }
+          try sanitizedMetadataFiles[filename]?.write(to: target)
         }
       }
 
-      if !indexBlobs.isEmpty {
-        try replaceIndexBlobsInPackage(packageURL: destination, blobs: indexBlobs)
+      if !sanitizedIndexBlobs.isEmpty {
+        try replaceIndexBlobsInPackage(packageURL: destination, blobs: sanitizedIndexBlobs)
       }
       return
     }
@@ -48,8 +53,8 @@ public struct NumbersContainer: Sendable {
     try rewriteArchiveContainer(
       source: source,
       destination: destination,
-      replacingMetadataFiles: metadataFiles,
-      replacingIndexBlobs: indexBlobs
+      replacingMetadataFiles: sanitizedMetadataFiles,
+      replacingIndexBlobs: sanitizedIndexBlobs
     )
   }
 
@@ -384,6 +389,9 @@ public struct NumbersContainer: Sendable {
         continue
       }
       let target = packageURL.appendingPathComponent(key, isDirectory: false)
+      guard isPathWithinDirectory(target: target, directory: packageURL) else {
+        throw NumbersContainerError.invalidReplacementPath(key)
+      }
       try FileManager.default.createDirectory(
         at: target.deletingLastPathComponent(),
         withIntermediateDirectories: true
@@ -467,5 +475,85 @@ public struct NumbersContainer: Sendable {
     } else {
       try fileManager.moveItem(at: tempURL, to: zipURL)
     }
+  }
+
+  private static func sanitizeMetadataReplacementFiles(_ files: [String: Data]) throws -> [String: Data] {
+    if files.isEmpty {
+      return files
+    }
+
+    var sanitized: [String: Data] = [:]
+    sanitized.reserveCapacity(files.count)
+    for (rawFilename, data) in files {
+      let filename = try sanitizeMetadataFilename(rawFilename)
+      if sanitized[filename] != nil {
+        throw NumbersContainerError.invalidReplacementPath(rawFilename)
+      }
+      sanitized[filename] = data
+    }
+    return sanitized
+  }
+
+  private static func sanitizeIndexBlobReplacementPaths(_ blobs: [String: Data]) throws
+    -> [String: Data]
+  {
+    if blobs.isEmpty {
+      return blobs
+    }
+
+    var sanitized: [String: Data] = [:]
+    sanitized.reserveCapacity(blobs.count)
+    for (rawPath, data) in blobs {
+      let path = try sanitizeContainerRelativePath(rawPath)
+      if sanitized[path] != nil {
+        throw NumbersContainerError.invalidReplacementPath(rawPath)
+      }
+      sanitized[path] = data
+    }
+    return sanitized
+  }
+
+  private static func sanitizeMetadataFilename(_ filename: String) throws -> String {
+    guard !filename.isEmpty else {
+      throw NumbersContainerError.invalidReplacementPath(filename)
+    }
+    guard !filename.contains("/") && !filename.contains("\\") else {
+      throw NumbersContainerError.invalidReplacementPath(filename)
+    }
+    guard filename != "." && filename != ".." else {
+      throw NumbersContainerError.invalidReplacementPath(filename)
+    }
+    return filename
+  }
+
+  private static func sanitizeContainerRelativePath(_ rawPath: String) throws -> String {
+    guard !rawPath.isEmpty else {
+      throw NumbersContainerError.invalidReplacementPath(rawPath)
+    }
+
+    let normalized = rawPath.replacingOccurrences(of: "\\", with: "/")
+    guard !normalized.hasPrefix("/") else {
+      throw NumbersContainerError.invalidReplacementPath(rawPath)
+    }
+
+    let parts = normalized.split(separator: "/", omittingEmptySubsequences: false)
+    guard !parts.isEmpty else {
+      throw NumbersContainerError.invalidReplacementPath(rawPath)
+    }
+
+    for part in parts {
+      let token = String(part)
+      if token.isEmpty || token == "." || token == ".." {
+        throw NumbersContainerError.invalidReplacementPath(rawPath)
+      }
+    }
+
+    return parts.map(String.init).joined(separator: "/")
+  }
+
+  private static func isPathWithinDirectory(target: URL, directory: URL) -> Bool {
+    let basePath = directory.standardizedFileURL.path
+    let targetPath = target.standardizedFileURL.path
+    return targetPath == basePath || targetPath.hasPrefix(basePath + "/")
   }
 }

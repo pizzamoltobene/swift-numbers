@@ -93,7 +93,8 @@ final class EditableNumbersDocumentTests: XCTestCase {
     var result: [CellValue] = []
     for row in 0..<table.metadata.rowCount {
       for column in 0..<table.metadata.columnCount {
-        guard let value = table.cell(at: CellAddress(row: row, column: column)), value != .empty else {
+        guard let value = table.cell(at: CellAddress(row: row, column: column)), value != .empty
+        else {
           continue
         }
         result.append(value)
@@ -235,12 +236,14 @@ final class EditableNumbersDocumentTests: XCTestCase {
     XCTAssertTrue(values.contains(.string("Done")))
     XCTAssertTrue(values.contains(.number(1499.99)))
     XCTAssertTrue(values.contains(.bool(false)))
-    guard let date = values.compactMap({ value -> Date? in
-      guard case .date(let date) = value else {
-        return nil
-      }
-      return date
-    }).first else {
+    guard
+      let date = values.compactMap({ value -> Date? in
+        guard case .date(let date) = value else {
+          return nil
+        }
+        return date
+      }).first
+    else {
       return XCTFail("Expected at least one date cell after round-trip")
     }
     XCTAssertEqual(date.timeIntervalSince1970, 1_714_764_800, accuracy: 0.001)
@@ -781,14 +784,16 @@ final class EditableNumbersDocumentTests: XCTestCase {
     let table = try XCTUnwrap(editable.firstSheet?.firstTable)
 
     _ = try editable.registerCustomFormat(named: "Finance", formatID: 5001)
-    XCTAssertThrowsError(try editable.registerCustomFormat(named: "Finance", formatID: 5002)) { error in
+    XCTAssertThrowsError(try editable.registerCustomFormat(named: "Finance", formatID: 5002)) {
+      error in
       guard case .duplicateCustomFormatName(let name) = error as? EditableNumbersError else {
         return XCTFail("Unexpected error: \(error)")
       }
       XCTAssertEqual(name, "Finance")
     }
 
-    XCTAssertThrowsError(try table.applyCustomFormat(id: "missing-custom-format", at: "A1")) { error in
+    XCTAssertThrowsError(try table.applyCustomFormat(id: "missing-custom-format", at: "A1")) {
+      error in
       guard case .customFormatNotFound(let identifier) = error as? EditableNumbersError else {
         return XCTFail("Unexpected error: \(error)")
       }
@@ -857,12 +862,31 @@ final class EditableNumbersDocumentTests: XCTestCase {
 
     let output = temporaryArchiveOutputURL("editable-formula-unsafe-range-output.numbers")
     XCTAssertThrowsError(try editable.save(to: output)) { error in
-      guard case let EditableNumbersError.nativeWriteFailed(details) = error else {
+      guard case EditableNumbersError.nativeWriteFailed(let details) = error else {
         return XCTFail("Unexpected error: \(error)")
       }
       XCTAssertEqual(
         details,
         "IWA writer: unsafe self-referential formula at Sheet 1/Table 1 B2 via range A1:B2."
+      )
+    }
+  }
+
+  func testSaveOnSingleFileArchiveRejectsInvalidFormulaRangeToken() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    try table.setValue(.formula("=SUM(A1:A99999999999999999999999999)"), at: "B2")
+
+    let output = temporaryArchiveOutputURL("editable-formula-invalid-range-token-output.numbers")
+    XCTAssertThrowsError(try editable.save(to: output)) { error in
+      guard case EditableNumbersError.nativeWriteFailed(let details) = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(
+        details,
+        "IWA writer: unsafe formula reference at Sheet 1/Table 1 B2. Invalid range token A1:A99999999999999999999999999."
       )
     }
   }
@@ -876,7 +900,7 @@ final class EditableNumbersDocumentTests: XCTestCase {
 
     let output = temporaryArchiveOutputURL("editable-formula-sheet-qualified-output.numbers")
     XCTAssertThrowsError(try editable.save(to: output)) { error in
-      guard case let EditableNumbersError.nativeWriteFailed(details) = error else {
+      guard case EditableNumbersError.nativeWriteFailed(let details) = error else {
         return XCTFail("Unexpected error: \(error)")
       }
       XCTAssertEqual(
@@ -895,7 +919,7 @@ final class EditableNumbersDocumentTests: XCTestCase {
 
     let output = temporaryArchiveOutputURL("editable-formula-unsafe-self-reference-output.numbers")
     XCTAssertThrowsError(try editable.save(to: output)) { error in
-      guard case let EditableNumbersError.nativeWriteFailed(details) = error else {
+      guard case EditableNumbersError.nativeWriteFailed(let details) = error else {
         return XCTFail("Unexpected error: \(error)")
       }
       XCTAssertEqual(
@@ -915,7 +939,7 @@ final class EditableNumbersDocumentTests: XCTestCase {
     let output = temporaryArchiveOutputURL(
       "editable-formula-unsafe-self-reference-absolute-output.numbers")
     XCTAssertThrowsError(try editable.save(to: output)) { error in
-      guard case let EditableNumbersError.nativeWriteFailed(details) = error else {
+      guard case EditableNumbersError.nativeWriteFailed(let details) = error else {
         return XCTFail("Unexpected error: \(error)")
       }
       XCTAssertEqual(
@@ -986,7 +1010,8 @@ final class EditableNumbersDocumentTests: XCTestCase {
     var observedValues: [String] = []
     for row in 0..<reopenedTable.metadata.rowCount {
       for column in 0..<reopenedTable.metadata.columnCount {
-        guard case .string(let value) = reopenedTable.cell(at: CellAddress(row: row, column: column))
+        guard
+          case .string(let value) = reopenedTable.cell(at: CellAddress(row: row, column: column))
         else {
           continue
         }
@@ -1739,7 +1764,8 @@ final class EditableNumbersDocumentTests: XCTestCase {
     )
   }
 
-  func testPivotLinkedTableMutationUnsupportedErrorMessageHandlesEmptyIdentifiersDeterministically() {
+  func testPivotLinkedTableMutationUnsupportedErrorMessageHandlesEmptyIdentifiersDeterministically()
+  {
     let error = EditableNumbersError.pivotLinkedTableMutationUnsupported(
       sheet: "Sheet 1",
       table: "Table 1",
@@ -1775,6 +1801,20 @@ final class EditableNumbersDocumentTests: XCTestCase {
     XCTAssertEqual(
       error.errorDescription,
       "Unsafe pivot-linked mutation blocked for Sheet 1/Table 1 during deleteRow(rowIndex: 3). Linked object identifiers: [300,400]. This table is linked to a non-table analytical drawable (pivot-like structure) and is currently read-only for native writes. Remove pivot linkage in Apple Numbers and retry."
+    )
+  }
+
+  func testPivotLinkedDeleteColumnMutationUnsupportedErrorMessageIncludesColumnIndexAndSortedIDs()
+  {
+    let error = EditableNumbersError.pivotLinkedTableMutationUnsupported(
+      sheet: "Sheet 1",
+      table: "Table 1",
+      operation: "deleteColumn(columnIndex: 2)",
+      linkedObjectIDs: [400, 300]
+    )
+    XCTAssertEqual(
+      error.errorDescription,
+      "Unsafe pivot-linked mutation blocked for Sheet 1/Table 1 during deleteColumn(columnIndex: 2). Linked object identifiers: [300,400]. This table is linked to a non-table analytical drawable (pivot-like structure) and is currently read-only for native writes. Remove pivot linkage in Apple Numbers and retry."
     )
   }
 }
@@ -1979,6 +2019,18 @@ final class IWASetCellWriterTests: XCTestCase {
         for: .deleteRow(sheetName: "S", tableName: "T", rowIndex: 3)
       ),
       "deleteRow(rowIndex: 3)"
+    )
+  }
+
+  func testGroupedTableMutationOperationNameForDeleteRowPreservesOutOfBoundsIndices() {
+    let operationNames = [-1, 0, 4].map { rowIndex in
+      IWASetCellWriter.groupedMutationOperationName(
+        for: .deleteRow(sheetName: "S", tableName: "T", rowIndex: rowIndex)
+      )
+    }
+    XCTAssertEqual(
+      operationNames,
+      ["deleteRow(rowIndex: -1)", "deleteRow(rowIndex: 0)", "deleteRow(rowIndex: 4)"]
     )
   }
 

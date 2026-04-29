@@ -307,6 +307,18 @@ public struct IWAResolvedSheet: Hashable, Sendable {
   }
 }
 
+public struct IWAResolvedSheetSummary: Hashable, Sendable {
+  public let id: String
+  public let name: String
+  public let tableCount: Int
+
+  public init(id: String, name: String, tableCount: Int) {
+    self.id = id
+    self.name = name
+    self.tableCount = tableCount
+  }
+}
+
 public enum IWAReadDiagnosticSeverity: String, Sendable {
   case info
   case warning
@@ -369,6 +381,143 @@ public struct IWARealReadResult: Sendable {
   }
 
   public init(sheets: [IWAResolvedSheet], structuredDiagnostics: [IWAReadDiagnostic]) {
+    self.sheets = sheets
+    self.structuredDiagnostics = structuredDiagnostics
+  }
+}
+
+public struct IWAResolvedTableSummary: Hashable, Sendable {
+  public let sheetObjectID: UInt64
+  public let sheetID: String
+  public let sheetName: String
+  public let sheetIndex: Int
+  public let tableInfoObjectID: UInt64
+  public let tableModelObjectID: UInt64
+  public let tableID: String
+  public let tableName: String
+  public let tableIndex: Int
+  public let rowCount: Int
+  public let columnCount: Int
+  public let headerRowCount: Int
+  public let headerColumnCount: Int
+  public let tableNameVisible: Bool?
+  public let captionVisible: Bool?
+  public let captionText: String?
+  public let captionTextSupported: Bool
+
+  public init(
+    sheetObjectID: UInt64,
+    sheetID: String,
+    sheetName: String,
+    sheetIndex: Int,
+    tableInfoObjectID: UInt64,
+    tableModelObjectID: UInt64,
+    tableID: String,
+    tableName: String,
+    tableIndex: Int,
+    rowCount: Int,
+    columnCount: Int,
+    headerRowCount: Int,
+    headerColumnCount: Int,
+    tableNameVisible: Bool?,
+    captionVisible: Bool?,
+    captionText: String?,
+    captionTextSupported: Bool
+  ) {
+    self.sheetObjectID = sheetObjectID
+    self.sheetID = sheetID
+    self.sheetName = sheetName
+    self.sheetIndex = sheetIndex
+    self.tableInfoObjectID = tableInfoObjectID
+    self.tableModelObjectID = tableModelObjectID
+    self.tableID = tableID
+    self.tableName = tableName
+    self.tableIndex = tableIndex
+    self.rowCount = rowCount
+    self.columnCount = columnCount
+    self.headerRowCount = headerRowCount
+    self.headerColumnCount = headerColumnCount
+    self.tableNameVisible = tableNameVisible
+    self.captionVisible = captionVisible
+    self.captionText = captionText
+    self.captionTextSupported = captionTextSupported
+  }
+}
+
+public struct IWATableSelector: Hashable, Sendable {
+  public let sheetName: String?
+  public let sheetIndex: Int?
+  public let tableName: String?
+  public let tableIndex: Int?
+
+  public init(
+    sheetName: String? = nil,
+    sheetIndex: Int? = nil,
+    tableName: String? = nil,
+    tableIndex: Int? = nil
+  ) {
+    self.sheetName = sheetName
+    self.sheetIndex = sheetIndex
+    self.tableName = tableName
+    self.tableIndex = tableIndex
+  }
+}
+
+public struct IWACellWindow: Hashable, Sendable {
+  public let startRow: Int
+  public let endRow: Int
+  public let startColumn: Int
+  public let endColumn: Int
+
+  public init(startRow: Int, endRow: Int, startColumn: Int, endColumn: Int) {
+    self.startRow = min(startRow, endRow)
+    self.endRow = max(startRow, endRow)
+    self.startColumn = min(startColumn, endColumn)
+    self.endColumn = max(startColumn, endColumn)
+  }
+
+  public func contains(row: Int, column: Int) -> Bool {
+    row >= startRow && row <= endRow && column >= startColumn && column <= endColumn
+  }
+}
+
+public struct IWAReadFeatures: OptionSet, Hashable, Sendable {
+  public let rawValue: Int
+
+  public init(rawValue: Int) {
+    self.rawValue = rawValue
+  }
+
+  public static let values = IWAReadFeatures(rawValue: 1 << 0)
+  public static let formatted = IWAReadFeatures(rawValue: 1 << 1)
+  public static let styles = IWAReadFeatures(rawValue: 1 << 2)
+  public static let formulas = IWAReadFeatures(rawValue: 1 << 3)
+  public static let richText = IWAReadFeatures(rawValue: 1 << 4)
+  public static let merges = IWAReadFeatures(rawValue: 1 << 5)
+  public static let captions = IWAReadFeatures(rawValue: 1 << 6)
+
+  public static let valueOnly: IWAReadFeatures = [.values]
+  public static let full: IWAReadFeatures = [
+    .values, .formatted, .styles, .formulas, .richText, .merges, .captions,
+  ]
+}
+
+public struct IWARealSheetSummaryResult: Sendable {
+  public let sheets: [IWAResolvedSheetSummary]
+  public let structuredDiagnostics: [IWAReadDiagnostic]
+  public var diagnostics: [String] {
+    structuredDiagnostics.map(\.rendered)
+  }
+
+  public init(sheets: [IWAResolvedSheetSummary], diagnostics: [String]) {
+    self.init(
+      sheets: sheets,
+      structuredDiagnostics: diagnostics.map {
+        IWAReadDiagnostic(code: "legacy", severity: .info, message: $0)
+      })
+  }
+
+  public init(sheets: [IWAResolvedSheetSummary], structuredDiagnostics: [IWAReadDiagnostic]) {
     self.sheets = sheets
     self.structuredDiagnostics = structuredDiagnostics
   }
@@ -452,6 +601,16 @@ public enum NumbersDocumentVersion {
   }
 }
 
+public struct IWARealTableSummaryResult: Sendable {
+  public let tables: [IWAResolvedTableSummary]
+  public let structuredDiagnostics: [IWAReadDiagnostic]
+
+  public init(tables: [IWAResolvedTableSummary], structuredDiagnostics: [IWAReadDiagnostic]) {
+    self.tables = tables
+    self.structuredDiagnostics = structuredDiagnostics
+  }
+}
+
 public enum IWARealDocumentReader {
   private enum TypeID {
     static let documentArchive: UInt32 = 1
@@ -515,6 +674,78 @@ public enum IWARealDocumentReader {
     )
   }
 
+  public static func readSheetSummaries(from inventory: IWAInventory, documentVersion: String?)
+    -> IWARealSheetSummaryResult
+  {
+    var diagnostics: [IWAReadDiagnostic] = []
+    if let warning = NumbersDocumentVersion.unsupportedVersionDiagnostic(for: documentVersion) {
+      diagnostics.append(
+        IWAReadDiagnostic(
+          code: DiagnosticCode.unsupportedVersion.rawValue,
+          severity: .warning,
+          message: warning
+        ))
+    }
+
+    var resolver = Resolver(inventory: inventory, diagnostics: diagnostics)
+    let resolved = resolver.resolveSheetSummaries()
+    return IWARealSheetSummaryResult(
+      sheets: resolved.sheets,
+      structuredDiagnostics: deduplicateUnsupportedDecodeDiagnostics(resolved.structuredDiagnostics)
+    )
+  }
+
+  public static func readTableSummaries(from inventory: IWAInventory, documentVersion: String?)
+    -> IWARealTableSummaryResult
+  {
+    var diagnostics: [IWAReadDiagnostic] = []
+    if let warning = NumbersDocumentVersion.unsupportedVersionDiagnostic(for: documentVersion) {
+      diagnostics.append(
+        IWAReadDiagnostic(
+          code: DiagnosticCode.unsupportedVersion.rawValue,
+          severity: .warning,
+          message: warning
+        ))
+    }
+
+    var resolver = Resolver(inventory: inventory, diagnostics: diagnostics)
+    let resolved = resolver.resolveTableSummaries()
+    return IWARealTableSummaryResult(
+      tables: resolved.tables,
+      structuredDiagnostics: deduplicateUnsupportedDecodeDiagnostics(resolved.structuredDiagnostics)
+    )
+  }
+
+  public static func readSelectedTable(
+    from inventory: IWAInventory,
+    documentVersion: String?,
+    selector: IWATableSelector,
+    cellWindow: IWACellWindow?,
+    features: IWAReadFeatures
+  ) -> IWARealReadResult {
+    var diagnostics: [IWAReadDiagnostic] = []
+    if let warning = NumbersDocumentVersion.unsupportedVersionDiagnostic(for: documentVersion) {
+      diagnostics.append(
+        IWAReadDiagnostic(
+          code: DiagnosticCode.unsupportedVersion.rawValue,
+          severity: .warning,
+          message: warning
+        ))
+    }
+
+    var resolver = Resolver(
+      inventory: inventory,
+      diagnostics: diagnostics,
+      cellWindow: cellWindow,
+      features: features
+    )
+    let resolved = resolver.resolveSelectedTable(selector: selector)
+    return IWARealReadResult(
+      sheets: resolved.sheets,
+      structuredDiagnostics: deduplicateUnsupportedDecodeDiagnostics(resolved.structuredDiagnostics)
+    )
+  }
+
   static func deduplicateUnsupportedDecodeDiagnostics(_ diagnostics: [IWAReadDiagnostic])
     -> [IWAReadDiagnostic]
   {
@@ -533,8 +764,8 @@ public enum IWARealDocumentReader {
         continue
       }
 
-      let objectPath = normalizedObjectPath(diagnostic.objectPath)
-      let key = "\(diagnostic.code)|\(objectPath)|\(nodeType)"
+      let objectKey = normalizedDiagnosticObjectKey(diagnostic)
+      let key = "\(diagnostic.code)|\(objectKey)|\(nodeType)"
       if seenUnsupportedKeys.insert(key).inserted {
         deduplicated.append(diagnostic)
       }
@@ -578,8 +809,30 @@ public enum IWARealDocumentReader {
     objectPath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   }
 
+  private static func normalizedDiagnosticObjectKey(_ diagnostic: IWAReadDiagnostic) -> String {
+    let objectPath = normalizedObjectPath(diagnostic.objectPath)
+    if !objectPath.isEmpty {
+      return "path:\(objectPath)"
+    }
+
+    for contextKey in ["tableID", "objectID", "tableInfoObjectID", "tableModelObjectID"] {
+      if let value = normalizeDiagnosticContextValue(diagnostic.context[contextKey]) {
+        return "\(contextKey):\(value)"
+      }
+    }
+
+    return "path:"
+  }
+
+  private static func normalizeDiagnosticContextValue(_ value: String?) -> String? {
+    guard let value else { return nil }
+    let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    return normalized.isEmpty ? nil : normalized
+  }
+
   private static func normalizeUnsupportedNodeTypeToken(_ rawValue: String) -> String? {
-    let collapsed = rawValue
+    let collapsed =
+      rawValue
       .split(whereSeparator: \.isWhitespace)
       .map(String.init)
       .joined(separator: " ")
@@ -600,15 +853,24 @@ public enum IWARealDocumentReader {
   private struct Resolver {
     let inventory: IWAInventory
     private var diagnostics: [IWAReadDiagnostic]
+    private let cellWindow: IWACellWindow?
+    private let features: IWAReadFeatures
     private let recordsByObjectID: [UInt64: [IWAObjectRecord]]
     private var resolvedTableCache: [UInt64: IWAResolvedTable]
     private var unresolvedTableObjectIDs: Set<UInt64>
     private var pivotDiagnosticDrawableObjectIDs: Set<UInt64>
     private var pivotLinksByTableInfoObjectID: [UInt64: [IWAResolvedPivotLink]]
 
-    init(inventory: IWAInventory, diagnostics: [IWAReadDiagnostic]) {
+    init(
+      inventory: IWAInventory,
+      diagnostics: [IWAReadDiagnostic],
+      cellWindow: IWACellWindow? = nil,
+      features: IWAReadFeatures = .full
+    ) {
       self.inventory = inventory
       self.diagnostics = diagnostics
+      self.cellWindow = cellWindow
+      self.features = features
       self.resolvedTableCache = [:]
       self.unresolvedTableObjectIDs = []
       self.pivotDiagnosticDrawableObjectIDs = []
@@ -742,6 +1004,379 @@ public enum IWARealDocumentReader {
       return IWARealReadResult(sheets: sheets, structuredDiagnostics: diagnostics)
     }
 
+    mutating func resolveSheetSummaries() -> IWARealSheetSummaryResult {
+      guard let documentObjectID = selectDocumentObjectID() else {
+        addDiagnostic(
+          .documentRootMissing,
+          severity: .error,
+          message: "TN.DocumentArchive root not found in IWA inventory.")
+        return IWARealSheetSummaryResult(sheets: [], structuredDiagnostics: diagnostics)
+      }
+
+      guard
+        let document: TN_DocumentArchive = decode(
+          objectID: documentObjectID,
+          typeID: TypeID.documentArchive,
+          as: TN_DocumentArchive.self
+        )
+      else {
+        addDiagnostic(
+          .documentDecodeFailed,
+          severity: .error,
+          message: "Failed to decode TN.DocumentArchive.",
+          context: ["objectID": String(documentObjectID)]
+        )
+        return IWARealSheetSummaryResult(sheets: [], structuredDiagnostics: diagnostics)
+      }
+
+      var summaries: [IWAResolvedSheetSummary] = []
+      summaries.reserveCapacity(document.sheets.count)
+
+      var seenSheetObjectIDs = Set<UInt64>()
+      for (sheetIndex, sheetReference) in document.sheets.enumerated() {
+        let sheetObjectID = sheetReference.identifier
+        guard sheetObjectID > 0 else {
+          addDiagnostic(
+            .invalidSheetReference,
+            severity: .warning,
+            message: "Skipping sheet reference with invalid object identifier.",
+            context: ["sheetIndex": String(sheetIndex)]
+          )
+          continue
+        }
+        if seenSheetObjectIDs.contains(sheetObjectID) {
+          addDiagnostic(
+            .duplicateSheetReference,
+            severity: .info,
+            message: "Skipping duplicate sheet reference.",
+            context: ["objectID": String(sheetObjectID), "sheetIndex": String(sheetIndex)]
+          )
+          continue
+        }
+        seenSheetObjectIDs.insert(sheetObjectID)
+
+        let decodedSheet: TN_SheetArchive? = decode(
+          objectID: sheetObjectID,
+          typeID: TypeID.sheetArchive,
+          as: TN_SheetArchive.self
+        )
+        if decodedSheet == nil {
+          addDiagnostic(
+            .sheetDecodeMissing,
+            severity: .warning,
+            message: "Sheet metadata missing; using fallback name and parent traversal.",
+            context: ["objectID": String(sheetObjectID), "sheetIndex": String(sheetIndex)]
+          )
+        }
+
+        let sheetName =
+          decodedSheet?.name.isEmpty == false ? decodedSheet!.name : "Sheet \(sheetIndex + 1)"
+        let drawableRefs = decodedSheet?.drawableInfos ?? []
+        let (tableInfoObjectIDs, _) = mergedTableInfoObjectIDs(
+          sheetObjectID: sheetObjectID,
+          drawableRefs: drawableRefs
+        )
+
+        summaries.append(
+          IWAResolvedSheetSummary(
+            id: "sheet-\(sheetObjectID)",
+            name: sheetName,
+            tableCount: tableInfoObjectIDs.count
+          )
+        )
+      }
+
+      emitPivotCandidateSummaryDiagnosticIfNeeded()
+
+      if summaries.isEmpty {
+        addDiagnostic(
+          .noSheetsResolved,
+          severity: .warning,
+          message: "No sheets were resolved from TN.DocumentArchive.",
+          context: ["objectID": String(documentObjectID)]
+        )
+      }
+
+      return IWARealSheetSummaryResult(sheets: summaries, structuredDiagnostics: diagnostics)
+    }
+
+    mutating func resolveTableSummaries() -> IWARealTableSummaryResult {
+      guard let documentObjectID = selectDocumentObjectID() else {
+        addDiagnostic(
+          .documentRootMissing,
+          severity: .error,
+          message: "TN.DocumentArchive root not found in IWA inventory.")
+        return IWARealTableSummaryResult(tables: [], structuredDiagnostics: diagnostics)
+      }
+
+      guard
+        let document: TN_DocumentArchive = decode(
+          objectID: documentObjectID,
+          typeID: TypeID.documentArchive,
+          as: TN_DocumentArchive.self
+        )
+      else {
+        addDiagnostic(
+          .documentDecodeFailed,
+          severity: .error,
+          message: "Failed to decode TN.DocumentArchive.",
+          context: ["objectID": String(documentObjectID)]
+        )
+        return IWARealTableSummaryResult(tables: [], structuredDiagnostics: diagnostics)
+      }
+
+      var summaries: [IWAResolvedTableSummary] = []
+
+      var seenSheetObjectIDs = Set<UInt64>()
+      for (sheetIndex, sheetReference) in document.sheets.enumerated() {
+        let sheetObjectID = sheetReference.identifier
+        guard sheetObjectID > 0 else {
+          addDiagnostic(
+            .invalidSheetReference,
+            severity: .warning,
+            message: "Skipping sheet reference with invalid object identifier.",
+            context: ["sheetIndex": String(sheetIndex)]
+          )
+          continue
+        }
+        guard seenSheetObjectIDs.insert(sheetObjectID).inserted else {
+          addDiagnostic(
+            .duplicateSheetReference,
+            severity: .info,
+            message: "Skipping duplicate sheet reference.",
+            context: ["objectID": String(sheetObjectID), "sheetIndex": String(sheetIndex)]
+          )
+          continue
+        }
+
+        let decodedSheet: TN_SheetArchive? = decode(
+          objectID: sheetObjectID,
+          typeID: TypeID.sheetArchive,
+          as: TN_SheetArchive.self
+        )
+        if decodedSheet == nil {
+          addDiagnostic(
+            .sheetDecodeMissing,
+            severity: .warning,
+            message: "Sheet metadata missing; using fallback name and parent traversal.",
+            context: ["objectID": String(sheetObjectID), "sheetIndex": String(sheetIndex)]
+          )
+        }
+
+        let sheetName =
+          decodedSheet?.name.isEmpty == false ? decodedSheet!.name : "Sheet \(sheetIndex + 1)"
+        let drawableRefs = decodedSheet?.drawableInfos ?? []
+        let (tableInfoObjectIDs, _) = mergedTableInfoObjectIDs(
+          sheetObjectID: sheetObjectID,
+          drawableRefs: drawableRefs
+        )
+
+        summaries.reserveCapacity(summaries.count + tableInfoObjectIDs.count)
+        for (tableIndex, tableInfoObjectID) in tableInfoObjectIDs.enumerated() {
+          if let summary = resolveTableSummary(
+            sheetObjectID: sheetObjectID,
+            sheetID: "sheet-\(sheetObjectID)",
+            sheetName: sheetName,
+            sheetIndex: sheetIndex,
+            tableInfoObjectID: tableInfoObjectID,
+            tableIndex: tableIndex
+          ) {
+            summaries.append(summary)
+          }
+        }
+      }
+
+      emitPivotCandidateSummaryDiagnosticIfNeeded()
+
+      if summaries.isEmpty {
+        addDiagnostic(
+          .noSheetsResolved,
+          severity: .warning,
+          message: "No tables were resolved from TN.DocumentArchive.",
+          context: ["objectID": String(documentObjectID)]
+        )
+      }
+
+      return IWARealTableSummaryResult(tables: summaries, structuredDiagnostics: diagnostics)
+    }
+
+    mutating func resolveSelectedTable(selector: IWATableSelector) -> IWARealReadResult {
+      guard let documentObjectID = selectDocumentObjectID() else {
+        addDiagnostic(
+          .documentRootMissing,
+          severity: .error,
+          message: "TN.DocumentArchive root not found in IWA inventory.")
+        return IWARealReadResult(sheets: [], structuredDiagnostics: diagnostics)
+      }
+
+      guard
+        let document: TN_DocumentArchive = decode(
+          objectID: documentObjectID,
+          typeID: TypeID.documentArchive,
+          as: TN_DocumentArchive.self
+        )
+      else {
+        addDiagnostic(
+          .documentDecodeFailed,
+          severity: .error,
+          message: "Failed to decode TN.DocumentArchive.",
+          context: ["objectID": String(documentObjectID)]
+        )
+        return IWARealReadResult(sheets: [], structuredDiagnostics: diagnostics)
+      }
+
+      if let requestedSheetIndex = selector.sheetIndex,
+        (requestedSheetIndex < 0 || requestedSheetIndex >= document.sheets.count)
+      {
+        addDiagnostic(
+          .noSheetsResolved,
+          severity: .warning,
+          message:
+            "Sheet index \(requestedSheetIndex) is out of bounds (document has \(document.sheets.count) sheets)."
+        )
+        return IWARealReadResult(sheets: [], structuredDiagnostics: diagnostics)
+      }
+
+      var matchedSheet = false
+      var seenSheetObjectIDs = Set<UInt64>()
+      for (sheetIndex, sheetReference) in document.sheets.enumerated() {
+        let sheetObjectID = sheetReference.identifier
+        guard sheetObjectID > 0, seenSheetObjectIDs.insert(sheetObjectID).inserted else {
+          continue
+        }
+
+        let decodedSheet: TN_SheetArchive? = decode(
+          objectID: sheetObjectID,
+          typeID: TypeID.sheetArchive,
+          as: TN_SheetArchive.self
+        )
+        let sheetName =
+          decodedSheet?.name.isEmpty == false ? decodedSheet!.name : "Sheet \(sheetIndex + 1)"
+
+        guard matchesSheet(selector: selector, sheetName: sheetName, sheetIndex: sheetIndex) else {
+          continue
+        }
+        matchedSheet = true
+
+        let drawableRefs = decodedSheet?.drawableInfos ?? []
+        let (tableInfoObjectIDs, _) = mergedTableInfoObjectIDs(
+          sheetObjectID: sheetObjectID,
+          drawableRefs: drawableRefs
+        )
+
+        if let requestedTableIndex = selector.tableIndex,
+          (requestedTableIndex < 0 || requestedTableIndex >= tableInfoObjectIDs.count)
+        {
+          addDiagnostic(
+            .noSheetsResolved,
+            severity: .warning,
+            message:
+              "Table index \(requestedTableIndex) is out of bounds for sheet '\(sheetName)' (sheet has \(tableInfoObjectIDs.count) tables)."
+          )
+          return IWARealReadResult(sheets: [], structuredDiagnostics: diagnostics)
+        }
+
+        guard
+          let tableInfoObjectID = selectedTableInfoObjectID(
+            from: tableInfoObjectIDs,
+            selector: selector
+          )
+        else {
+          if let requestedTableName = selector.tableName {
+            addDiagnostic(
+              .noSheetsResolved,
+              severity: .warning,
+              message: "Table '\(requestedTableName)' not found in sheet '\(sheetName)'."
+            )
+          }
+          return IWARealReadResult(sheets: [], structuredDiagnostics: diagnostics)
+        }
+
+        guard let table = resolveTable(tableInfoObjectID: tableInfoObjectID) else {
+          addDiagnostic(
+            .tableResolveFailed,
+            severity: .warning,
+            message: "Failed to resolve selected table.",
+            context: ["objectID": String(tableInfoObjectID)]
+          )
+          break
+        }
+
+        emitPivotCandidateSummaryDiagnosticIfNeeded()
+        return IWARealReadResult(
+          sheets: [
+            IWAResolvedSheet(id: "sheet-\(sheetObjectID)", name: sheetName, tables: [table])
+          ],
+          structuredDiagnostics: diagnostics
+        )
+      }
+
+      if let requestedSheetName = selector.sheetName, !matchedSheet {
+        addDiagnostic(
+          .noSheetsResolved,
+          severity: .warning,
+          message: "Sheet '\(requestedSheetName)' not found."
+        )
+        return IWARealReadResult(sheets: [], structuredDiagnostics: diagnostics)
+      }
+
+      addDiagnostic(
+        .noSheetsResolved,
+        severity: .warning,
+        message: "No table matched the selected sheet/table constraints."
+      )
+      return IWARealReadResult(sheets: [], structuredDiagnostics: diagnostics)
+    }
+
+    private func matchesSheet(
+      selector: IWATableSelector,
+      sheetName: String,
+      sheetIndex: Int
+    ) -> Bool {
+      if let requestedIndex = selector.sheetIndex {
+        return requestedIndex == sheetIndex
+      }
+      if let requestedName = selector.sheetName {
+        return requestedName == sheetName
+      }
+      return sheetIndex == 0
+    }
+
+    private mutating func selectedTableInfoObjectID(
+      from tableInfoObjectIDs: [UInt64],
+      selector: IWATableSelector
+    ) -> UInt64? {
+      if let requestedIndex = selector.tableIndex {
+        guard requestedIndex >= 0, requestedIndex < tableInfoObjectIDs.count else {
+          return nil
+        }
+        return tableInfoObjectIDs[requestedIndex]
+      }
+
+      if let requestedName = selector.tableName {
+        for tableInfoObjectID in tableInfoObjectIDs {
+          guard
+            let summary = resolveTableSummary(
+              sheetObjectID: 0,
+              sheetID: "",
+              sheetName: "",
+              sheetIndex: 0,
+              tableInfoObjectID: tableInfoObjectID,
+              tableIndex: 0
+            )
+          else {
+            continue
+          }
+          if summary.tableName == requestedName {
+            return tableInfoObjectID
+          }
+        }
+        return nil
+      }
+
+      return tableInfoObjectIDs.first
+    }
+
     private mutating func selectDocumentObjectID() -> UInt64? {
       let candidateIDs = Set(
         inventory.records.filter { $0.typeID == TypeID.documentArchive }.map(\.objectID))
@@ -873,7 +1508,8 @@ public enum IWARealDocumentReader {
         return
       }
 
-      guard let drawableRecords = recordsByObjectID[drawableObjectID], !drawableRecords.isEmpty else {
+      guard let drawableRecords = recordsByObjectID[drawableObjectID], !drawableRecords.isEmpty
+      else {
         return
       }
 
@@ -884,10 +1520,12 @@ public enum IWARealDocumentReader {
         return
       }
 
-      let linkedTableInfoObjectIDs = referencedObjectIDs
+      let linkedTableInfoObjectIDs =
+        referencedObjectIDs
         .filter { hasRecord(objectID: $0, typeID: TypeID.tableInfoArchive) }
         .sorted()
-      let linkedTableModelObjectIDs = referencedObjectIDs
+      let linkedTableModelObjectIDs =
+        referencedObjectIDs
         .filter { hasRecord(objectID: $0, typeID: TypeID.tableModelArchive) }
         .sorted()
 
@@ -901,9 +1539,11 @@ public enum IWARealDocumentReader {
         "drawableTypeIDs": drawableTypeIDs.map(String.init).joined(separator: ","),
         "drawableTypeCount": String(drawableTypeIDs.count),
         "referencedObjectCount": String(referencedObjectIDs.count),
-        "linkedTableInfoObjectIDs": linkedTableInfoObjectIDs.map(String.init).joined(separator: ","),
+        "linkedTableInfoObjectIDs": linkedTableInfoObjectIDs.map(String.init).joined(
+          separator: ","),
         "linkedTableInfoCount": String(linkedTableInfoObjectIDs.count),
-        "linkedTableModelObjectIDs": linkedTableModelObjectIDs.map(String.init).joined(separator: ","),
+        "linkedTableModelObjectIDs": linkedTableModelObjectIDs.map(String.init).joined(
+          separator: ","),
         "linkedTableModelCount": String(linkedTableModelObjectIDs.count),
       ]
 
@@ -951,8 +1591,10 @@ public enum IWARealDocumentReader {
         {
           candidateObjectIDs.insert(objectID)
         }
-        linkedTableInfoObjectIDs.formUnion(parseObjectIDs(diagnostic.context["linkedTableInfoObjectIDs"]))
-        linkedTableModelObjectIDs.formUnion(parseObjectIDs(diagnostic.context["linkedTableModelObjectIDs"]))
+        linkedTableInfoObjectIDs.formUnion(
+          parseObjectIDs(diagnostic.context["linkedTableInfoObjectIDs"]))
+        linkedTableModelObjectIDs.formUnion(
+          parseObjectIDs(diagnostic.context["linkedTableModelObjectIDs"]))
       }
 
       let sortedCandidateObjectIDs = candidateObjectIDs.sorted()
@@ -968,7 +1610,8 @@ public enum IWARealDocumentReader {
         context: [
           "candidateObjectIDs": sortedCandidateObjectIDs.map(String.init).joined(separator: ","),
           "candidateCount": String(sortedCandidateObjectIDs.count),
-          "linkedTableInfoObjectIDs": sortedLinkedTableInfoObjectIDs.map(String.init).joined(separator: ","),
+          "linkedTableInfoObjectIDs": sortedLinkedTableInfoObjectIDs.map(String.init).joined(
+            separator: ","),
           "linkedTableInfoCount": String(sortedLinkedTableInfoObjectIDs.count),
           "linkedTableModelObjectIDs": sortedLinkedTableModelObjectIDs.map(String.init).joined(
             separator: ","),
@@ -1023,6 +1666,69 @@ public enum IWARealDocumentReader {
       }
 
       return tableInfoObjectIDs
+    }
+
+    private func resolveTableSummary(
+      sheetObjectID: UInt64,
+      sheetID: String,
+      sheetName: String,
+      sheetIndex: Int,
+      tableInfoObjectID: UInt64,
+      tableIndex: Int
+    ) -> IWAResolvedTableSummary? {
+      guard tableInfoObjectID > 0 else {
+        return nil
+      }
+
+      guard
+        let tableInfo: TST_TableInfoArchive = decode(
+          objectID: tableInfoObjectID,
+          typeID: TypeID.tableInfoArchive,
+          as: TST_TableInfoArchive.self
+        ),
+        tableInfo.hasTableModel
+      else {
+        return nil
+      }
+
+      let tableModelObjectID = tableInfo.tableModel.identifier
+      guard tableModelObjectID > 0 else {
+        return nil
+      }
+
+      guard
+        let tableModel: TST_TableModelArchive = decode(
+          objectID: tableModelObjectID,
+          typeID: TypeID.tableModelArchive,
+          as: TST_TableModelArchive.self
+        )
+      else {
+        return nil
+      }
+
+      let tableID = tableModel.tableID.isEmpty ? String(tableModelObjectID) : tableModel.tableID
+      let tableName = tableModel.tableName.isEmpty ? "Table \(tableID)" : tableModel.tableName
+      let caption = resolveCaptionMetadata(drawable: tableInfo.super)
+
+      return IWAResolvedTableSummary(
+        sheetObjectID: sheetObjectID,
+        sheetID: sheetID,
+        sheetName: sheetName,
+        sheetIndex: sheetIndex,
+        tableInfoObjectID: tableInfoObjectID,
+        tableModelObjectID: tableModelObjectID,
+        tableID: tableID,
+        tableName: tableName,
+        tableIndex: tableIndex,
+        rowCount: Int(tableModel.numberOfRows),
+        columnCount: Int(tableModel.numberOfColumns),
+        headerRowCount: Int(tableModel.numberOfHeaderRows),
+        headerColumnCount: Int(tableModel.numberOfHeaderColumns),
+        tableNameVisible: tableModel.hasTableNameEnabled ? tableModel.tableNameEnabled : nil,
+        captionVisible: tableInfo.super.hasCaptionHidden ? !tableInfo.super.captionHidden : nil,
+        captionText: caption.text,
+        captionTextSupported: caption.isSupported
+      )
     }
 
     private mutating func resolveTable(tableInfoObjectID: UInt64) -> IWAResolvedTable? {
@@ -1082,13 +1788,22 @@ public enum IWARealDocumentReader {
         columnCount: columnCount
       )
       let tableNameVisible = tableModel.hasTableNameEnabled ? tableModel.tableNameEnabled : nil
-      let captionVisible = tableInfo.super.hasCaptionHidden ? !tableInfo.super.captionHidden : nil
-      let caption = resolveCaptionMetadata(drawable: tableInfo.super)
+      let captionVisible =
+        features.contains(.captions)
+        ? (tableInfo.super.hasCaptionHidden ? !tableInfo.super.captionHidden : nil)
+        : nil
+      let caption =
+        features.contains(.captions)
+        ? resolveCaptionMetadata(drawable: tableInfo.super)
+        : ResolvedCaptionMetadata(text: nil, isSupported: false)
 
       let stringLookup = decodeStringTable(dataStore.stringTable)
-      let formulaLookup = decodeFormulaTable(dataStore.formulaTable)
-      let styleObjectByID = decodeStyleTable(dataStore.styleTable)
-      let richTextPayloadByID = decodeRichTextPayloadTable(dataStore.richTextTable)
+      let formulaLookup =
+        features.contains(.formulas) ? decodeFormulaTable(dataStore.formulaTable) : [:]
+      let styleObjectByID =
+        features.contains(.styles) ? decodeStyleTable(dataStore.styleTable) : [:]
+      let richTextPayloadByID =
+        features.contains(.richText) ? decodeRichTextPayloadTable(dataStore.richTextTable) : [:]
       let styleDefaults = TableStyleDefaults(
         rowCount: rowCount,
         headerRows: Int(tableModel.numberOfHeaderRows),
@@ -1122,10 +1837,13 @@ public enum IWARealDocumentReader {
         formulaLookup: formulaLookup,
         styleObjectByID: styleObjectByID,
         richTextPayloadByID: richTextPayloadByID,
-        styleDefaults: styleDefaults
+        styleDefaults: styleDefaults,
+        cellWindow: cellWindow,
+        features: features
       )
       if !decodeResult.droppedCellTypeCounts.isEmpty {
-        for (cellType, count) in decodeResult.droppedCellTypeCounts.sorted(by: { $0.key < $1.key }) {
+        for (cellType, count) in decodeResult.droppedCellTypeCounts.sorted(by: { $0.key < $1.key })
+        {
           addDiagnostic(
             .unsupportedCellTypeDropped,
             severity: .warning,
@@ -1146,7 +1864,8 @@ public enum IWARealDocumentReader {
           addDiagnostic(
             .formulaUnsupportedAstNodes,
             severity: .warning,
-            message: "Encountered unsupported formula AST nodes; using best-effort fallback rendering.",
+            message:
+              "Encountered unsupported formula AST nodes; using best-effort fallback rendering.",
             objectPath: "table/\(tableID)",
             suggestion: "Extend TSCE AST decode for full formula fidelity on advanced functions.",
             context: [
@@ -1155,13 +1874,15 @@ public enum IWARealDocumentReader {
               "affectedFormulaCells": String(decodeResult.formulasWithUnsupportedNodes),
               "fallbackFormulaCells": String(decodeResult.formulasUsingFallback),
               "unsupportedNodeType": nodeType,
-              "unsupportedNodeCount": String(decodeResult.formulaUnsupportedNodeCounts[nodeType] ?? 0),
+              "unsupportedNodeCount": String(
+                decodeResult.formulaUnsupportedNodeCounts[nodeType] ?? 0),
             ]
           )
         }
       }
       let cells = decodeResult.cells
-      let merges = decodeMergeRanges(dataStore.mergeRegionMap)
+      let merges =
+        features.contains(.merges) ? decodeMergeRanges(dataStore.mergeRegionMap) : []
 
       let resolved = IWAResolvedTable(
         id: tableID,
@@ -1201,7 +1922,8 @@ public enum IWARealDocumentReader {
         return ResolvedCaptionMetadata(text: nil, isSupported: false)
       }
 
-      guard let storageObjectID = resolveCaptionStorageObjectID(captionObjectID: captionObjectID) else {
+      guard let storageObjectID = resolveCaptionStorageObjectID(captionObjectID: captionObjectID)
+      else {
         return ResolvedCaptionMetadata(text: nil, isSupported: false)
       }
 
@@ -1219,22 +1941,19 @@ public enum IWARealDocumentReader {
     }
 
     private func resolveCaptionStorageObjectID(captionObjectID: UInt64) -> UInt64? {
-      if
-        decodeAnyType(
-          objectID: captionObjectID,
-          typeIDs: [TypeID.wpStorageArchive, TypeID.wpStorageArchiveAlt],
-          as: TSWP_StorageArchive.self
-        ) != nil
-      {
+      if decodeAnyType(
+        objectID: captionObjectID,
+        typeIDs: [TypeID.wpStorageArchive, TypeID.wpStorageArchiveAlt],
+        as: TSWP_StorageArchive.self
+      ) != nil {
         return captionObjectID
       }
 
-      if
-        let captionInfo: TSWP_CaptionInfoArchiveProxy = decode(
-          objectID: captionObjectID,
-          typeID: TypeID.captionInfoArchive,
-          as: TSWP_CaptionInfoArchiveProxy.self
-        ),
+      if let captionInfo: TSWP_CaptionInfoArchiveProxy = decode(
+        objectID: captionObjectID,
+        typeID: TypeID.captionInfoArchive,
+        as: TSWP_CaptionInfoArchiveProxy.self
+      ),
         captionInfo.hasSuper,
         captionInfo.super.hasOwnedStorage
       {
@@ -1476,7 +2195,8 @@ public enum IWARealDocumentReader {
       }
 
       let nodeNames = nodes.map { IWARealDocumentReader.nodeTypeName($0.nodeType) }
-      let astSummary = "Decoded TSCE AST (\(nodes.count) nodes): \(nodeNames.joined(separator: " -> "))"
+      let astSummary =
+        "Decoded TSCE AST (\(nodes.count) nodes): \(nodeNames.joined(separator: " -> "))"
       let render = IWARealDocumentReader.renderFormulaDetailed(
         nodes: nodes,
         hostRow: hostRow,
@@ -1877,23 +2597,21 @@ public enum IWARealDocumentReader {
         return nil
       }
 
-      if
-        let link: TSWP_HyperlinkFieldArchive = decode(
-          objectID: objectID,
-          typeID: TypeID.wpHyperlinkFieldArchive,
-          as: TSWP_HyperlinkFieldArchive.self
-        ),
+      if let link: TSWP_HyperlinkFieldArchive = decode(
+        objectID: objectID,
+        typeID: TypeID.wpHyperlinkFieldArchive,
+        as: TSWP_HyperlinkFieldArchive.self
+      ),
         !link.urlRef.isEmpty
       {
         return link.urlRef
       }
 
-      if
-        let link: TSWP_UnsupportedHyperlinkFieldArchive = decode(
-          objectID: objectID,
-          typeID: TypeID.wpUnsupportedHyperlinkFieldArchive,
-          as: TSWP_UnsupportedHyperlinkFieldArchive.self
-        ),
+      if let link: TSWP_UnsupportedHyperlinkFieldArchive = decode(
+        objectID: objectID,
+        typeID: TypeID.wpUnsupportedHyperlinkFieldArchive,
+        as: TSWP_UnsupportedHyperlinkFieldArchive.self
+      ),
         !link.urlRef.isEmpty
       {
         return link.urlRef
@@ -2032,7 +2750,8 @@ public enum IWARealDocumentReader {
       return IWAResolvedRichText(text: mergedText, runs: runs)
     }
 
-    private func resolvedNumberFormat(from decoded: DecodedCellStorage) -> IWAResolvedNumberFormat? {
+    private func resolvedNumberFormat(from decoded: DecodedCellStorage) -> IWAResolvedNumberFormat?
+    {
       if let formatID = decoded.textFormatID {
         return IWAResolvedNumberFormat(kind: .text, formatID: formatID)
       }
@@ -2079,7 +2798,9 @@ public enum IWARealDocumentReader {
       formulaLookup: [Int32: TSCE_FormulaArchive],
       styleObjectByID: [Int32: UInt64],
       richTextPayloadByID: [Int32: UInt64],
-      styleDefaults: TableStyleDefaults
+      styleDefaults: TableStyleDefaults,
+      cellWindow: IWACellWindow?,
+      features: IWAReadFeatures
     ) -> DecodedCellsResult {
       guard rowCount > 0, columnCount > 0 else {
         return DecodedCellsResult(
@@ -2102,6 +2823,9 @@ public enum IWARealDocumentReader {
       var richTextCache: [Int32: IWAResolvedRichText?] = [:]
 
       for row in 0..<min(rowCount, rowStorageMap.count) {
+        if let cellWindow, (row < cellWindow.startRow || row > cellWindow.endRow) {
+          continue
+        }
         guard let storageIndex = rowStorageMap[row], storageIndex >= 0,
           storageIndex < rowBuffers.count
         else {
@@ -2112,6 +2836,9 @@ public enum IWARealDocumentReader {
         let maxColumn = min(columnCount, storageRow.count)
 
         for column in 0..<maxColumn {
+          if let cellWindow, !cellWindow.contains(row: row, column: column) {
+            continue
+          }
           guard let buffer = storageRow[column] else {
             continue
           }
@@ -2131,7 +2858,8 @@ public enum IWARealDocumentReader {
           var formulaTokens: [String] = []
           var formulaASTSummary: String?
 
-          if decoded.kind == .formula,
+          if features.contains(.formulas),
+            decoded.kind == .formula,
             let formulaID = decoded.formulaID,
             let formulaArchive = formulaLookup[formulaID]
           {
@@ -2155,6 +2883,9 @@ public enum IWARealDocumentReader {
           }
 
           let richText: IWAResolvedRichText? = {
+            guard features.contains(.richText) else {
+              return nil
+            }
             guard let richTextID = decoded.richTextID, richTextID >= 0 else {
               return nil
             }
@@ -2170,14 +2901,24 @@ public enum IWARealDocumentReader {
           }()
 
           let resolvedCellStyleObjectID: UInt64? = {
-            if let styleID = decoded.cellStyleID, let objectID = styleObjectByID[styleID], objectID > 0 {
+            guard features.contains(.styles) else {
+              return nil
+            }
+            if let styleID = decoded.cellStyleID, let objectID = styleObjectByID[styleID],
+              objectID > 0
+            {
               return objectID
             }
             return styleDefaults.defaultCellStyleObjectID(row: row, column: column)
           }()
 
           let resolvedTextStyleObjectID: UInt64? = {
-            if let styleID = decoded.textStyleID, let objectID = styleObjectByID[styleID], objectID > 0 {
+            guard features.contains(.styles) else {
+              return nil
+            }
+            if let styleID = decoded.textStyleID, let objectID = styleObjectByID[styleID],
+              objectID > 0
+            {
               return objectID
             }
             return styleDefaults.defaultTextStyleObjectID(row: row, column: column)
@@ -2202,7 +2943,8 @@ public enum IWARealDocumentReader {
             if let cached = textStyleCache[objectID] {
               return cached
             }
-            let resolved = decodeParagraphTextStyleObject(objectID) ?? decodeCharacterStyleObject(objectID)
+            let resolved =
+              decodeParagraphTextStyleObject(objectID) ?? decodeCharacterStyleObject(objectID)
             textStyleCache[objectID] = resolved
             return resolved
           }()
@@ -2900,7 +3642,9 @@ public enum IWARealDocumentReader {
         }()
         push("\(renderedFunctionName)(\(orderedArgs))")
       case .number:
-        push(formattedNumber(node.numberValue, decimalLow: node.decimalLow, decimalHigh: node.decimalHigh))
+        push(
+          formattedNumber(
+            node.numberValue, decimalLow: node.decimalLow, decimalHigh: node.decimalHigh))
       case .bool:
         push(node.boolValue ? "TRUE" : "FALSE")
       case .token:
@@ -2996,7 +3740,8 @@ public enum IWARealDocumentReader {
       case .beginThunk, .endThunk:
         continue
       case .uidRef, .letBind, .var, .endScope, .lambda, .beginLambdaThunk,
-        .endLambdaThunk, .linkedCellRef, .linkedColumnRef, .linkedRowRef, .categoryRef, .viewTractRef,
+        .endLambdaThunk, .linkedCellRef, .linkedColumnRef, .linkedRowRef, .categoryRef,
+        .viewTractRef,
         .intersection, .spillRange, .unknown:
         markUnsupported(node.nodeType)
         continue
@@ -3153,7 +3898,9 @@ public enum IWARealDocumentReader {
       return []
     }
 
-    let punctuation = Set<Character>(["(", ")", ",", ":", "+", "-", "*", "/", "^", "&", "=", "<", ">"])
+    let punctuation = Set<Character>([
+      "(", ")", ",", ":", "+", "-", "*", "/", "^", "&", "=", "<", ">",
+    ])
     var tokens: [String] = []
     var current = ""
     var inString = false

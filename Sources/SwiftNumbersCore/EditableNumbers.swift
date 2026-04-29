@@ -56,7 +56,8 @@ public enum EditableNumbersError: LocalizedError {
     case .groupedTableMutationUnsupported(let sheet, let table, let operation):
       return
         "Unsafe grouped-table mutation blocked for \(sheet)/\(table) during \(operation). Grouped tables are currently read-only for structural edits. Remove grouping in Apple Numbers and retry."
-    case .pivotLinkedTableMutationUnsupported(let sheet, let table, let operation, let linkedObjectIDs):
+    case .pivotLinkedTableMutationUnsupported(
+      let sheet, let table, let operation, let linkedObjectIDs):
       let renderedLinkedObjectIDs: String
       if linkedObjectIDs.isEmpty {
         renderedLinkedObjectIDs = "none"
@@ -663,7 +664,8 @@ public final class EditableNumbersDocument {
         continue
       }
       let style = styleRecord.style.toReadCellStyle()
-      let definition = RegisteredDocumentStyle(id: styleRecord.id, name: normalizedName, style: style)
+      let definition = RegisteredDocumentStyle(
+        id: styleRecord.id, name: normalizedName, style: style)
       registeredStylesByID[styleRecord.id] = definition
       styleIDsByName[normalizedName] = styleRecord.id
       styleOrder.append(styleRecord.id)
@@ -678,7 +680,8 @@ public final class EditableNumbersDocument {
     nextStyleOrdinal = max(maxObservedOrdinal + 1, max(overlay.nextStyleOrdinal, 1))
 
     for assignment in overlay.assignments {
-      guard let table = table(named: assignment.tableName, onSheetNamed: assignment.sheetName) else {
+      guard let table = table(named: assignment.tableName, onSheetNamed: assignment.sheetName)
+      else {
         continue
       }
       guard let style = registeredStyleValue(for: assignment.styleID) else {
@@ -736,7 +739,8 @@ public final class EditableNumbersDocument {
     nextCustomFormatOrdinal = max(maxObservedOrdinal + 1, max(overlay.nextCustomFormatOrdinal, 1))
 
     for assignment in overlay.assignments {
-      guard let table = table(named: assignment.tableName, onSheetNamed: assignment.sheetName) else {
+      guard let table = table(named: assignment.tableName, onSheetNamed: assignment.sheetName)
+      else {
         continue
       }
       guard let formatID = registeredCustomFormatValue(for: assignment.customFormatID) else {
@@ -899,7 +903,8 @@ public final class EditableNumbersDocument {
   }
 
   private func buildCustomFormatRegistryOverlay() -> CustomFormatRegistryOverlay {
-    let records: [CustomFormatRegistryFormatRecord] = customFormatOrder.compactMap { customFormatID in
+    let records: [CustomFormatRegistryFormatRecord] = customFormatOrder.compactMap {
+      customFormatID in
       guard let definition = registeredCustomFormatsByID[customFormatID] else {
         return nil
       }
@@ -1023,7 +1028,9 @@ private struct CustomFormatRegistryOverlay: Codable {
     version = try container.decode(Int.self, forKey: .version)
     nextCustomFormatOrdinal = try container.decode(Int.self, forKey: .nextCustomFormatOrdinal)
     formats = try container.decode([CustomFormatRegistryFormatRecord].self, forKey: .formats)
-    assignments = try container.decodeIfPresent([CustomFormatRegistryAssignmentRecord].self, forKey: .assignments) ?? []
+    assignments =
+      try container.decodeIfPresent(
+        [CustomFormatRegistryAssignmentRecord].self, forKey: .assignments) ?? []
   }
 }
 
@@ -2082,7 +2089,8 @@ public final class EditableTable {
     return normalizedMergeRange(from: start.address, to: end.address)
   }
 
-  private static func normalizedMergeRange(from start: CellAddress, to end: CellAddress) -> MergeRange
+  private static func normalizedMergeRange(from start: CellAddress, to end: CellAddress)
+    -> MergeRange
   {
     MergeRange(
       startRow: min(start.row, end.row),
@@ -2384,8 +2392,8 @@ public final class EditableCell {
   }
 }
 
-private extension EditableCellFormat {
-  var readNumberFormat: ReadNumberFormat {
+extension EditableCellFormat {
+  fileprivate var readNumberFormat: ReadNumberFormat {
     switch self {
     case .number(let formatID):
       return ReadNumberFormat(kind: .number, formatID: formatID)
@@ -2416,7 +2424,7 @@ private extension EditableCellFormat {
     }
   }
 
-  init(numberFormat: ReadNumberFormat) {
+  fileprivate init(numberFormat: ReadNumberFormat) {
     switch numberFormat.kind {
     case .number:
       self = .number(formatID: numberFormat.formatID)

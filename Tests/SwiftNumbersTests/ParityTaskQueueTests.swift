@@ -12,7 +12,8 @@ final class ParityTaskQueueTests: XCTestCase {
       "10",
     ])
 
-    let lines = output
+    let lines =
+      output
       .split(separator: "\n")
       .map(String.init)
     XCTAssertEqual(lines.first, "NEXT_TASK=SN-R71")
@@ -35,7 +36,8 @@ final class ParityTaskQueueTests: XCTestCase {
       "10",
     ])
 
-    let lines = output
+    let lines =
+      output
       .split(separator: "\n")
       .map(String.init)
     XCTAssertEqual(lines.first, "NEXT_TASK=SN-R71")
@@ -47,11 +49,42 @@ final class ParityTaskQueueTests: XCTestCase {
     XCTAssertEqual(queueTaskIDs, ["SN-R71", "SN-R82", "SN-R85"])
   }
 
+  func testParityQueuePrefersAppleScriptCapabilityGapsOverHistoricalCodeMap() throws {
+    let output = try runParityQueueScript(arguments: [
+      "--roadmap",
+      FixtureLocator.fileFixtureURL(named: "autopilot-apple-parity-roadmap-sim.md").path,
+      "--code-map",
+      FixtureLocator.fileFixtureURL(named: "autopilot-parity-map-sim.md").path,
+      "--apple-map",
+      FixtureLocator.fileFixtureURL(named: "autopilot-apple-parity-map-sim.md").path,
+      "--max",
+      "10",
+    ])
+
+    let lines =
+      output
+      .split(separator: "\n")
+      .map(String.init)
+    XCTAssertEqual(lines.first, "NEXT_TASK=SN-OSA05")
+    XCTAssertEqual(lines.dropFirst().first, "QUEUE_SIZE=3")
+
+    let queueTaskIDs = lines.dropFirst(2).compactMap { line -> String? in
+      line.split(separator: "|", maxSplits: 1).first.map(String.init)
+    }
+    XCTAssertEqual(queueTaskIDs, ["SN-OSA05", "SN-OSA04", "SN-R71"])
+
+    let firstFields = lines[2].split(separator: "|").map(String.init)
+    XCTAssertEqual(firstFields[8], "apple")
+    XCTAssertEqual(firstFields[9], "missing")
+  }
+
   private func runParityQueueScript(arguments: [String]) throws -> String {
     let process = Process()
     process.currentDirectoryURL = FixtureLocator.repoRoot
     process.executableURL = URL(fileURLWithPath: "/bin/bash")
-    process.arguments = [FixtureLocator.repoRoot.appendingPathComponent("scripts/parity_task_queue.sh").path] + arguments
+    process.arguments =
+      [FixtureLocator.repoRoot.appendingPathComponent("scripts/parity_task_queue.sh").path]
+      + arguments
 
     let stdoutPipe = Pipe()
     let stderrPipe = Pipe()

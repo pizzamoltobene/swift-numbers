@@ -62,7 +62,7 @@ Core internal modules:
 | Open single-file archive `.numbers` | Supported | Reads embedded `Index`/`Index.zip` |
 | Read sheets/tables/cells | Supported | Real-read first with deterministic merged table traversal across package/single-file archives; metadata fallback as needed |
 | Read merge ranges | Supported | Exposed via `Table.metadata.mergeRanges` |
-| CLI `dump`, `inspect`, `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, `read-range`, `export-csv`, and `import-csv` | Supported | Text/JSON modes for introspection commands (`read-column/read-table/read-range` also support `--jsonl`); `inspect` supports `--redact/--compact`; CSV export/import via `export-csv` / `import-csv` |
+| CLI `dump`, `inspect`, `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, `read-range`, `export-csv`, `import-csv`, and `refresh-apple-numbers-map` | Supported | Text/JSON modes for introspection commands (`read-column/read-table/read-range` also support `--jsonl`); `inspect` supports `--redact/--compact`; CSV export/import via `export-csv` / `import-csv`; AppleScript parity map refresh via `refresh-apple-numbers-map`, including read-probe rows for sheet/table/range/row/column/cell semantics |
 | Edit cell values | Supported | `string`, `formula`, `number`, `bool`, `empty`, `date` |
 | Append/insert rows | Supported | Low-level IWA path; grouped-table unsafe structural edits fail fast with deterministic guidance |
 | Append columns | Supported | Low-level IWA path; grouped-table unsafe structural edits fail fast with deterministic guidance |
@@ -170,7 +170,7 @@ This section gives operation-by-operation examples with:
 | Editable mutation | `setValue`, `setStyle`, `setBorder`, `applyStyle(id:at:)`, `setFormat`, `applyCustomFormat(id:at:)`, `setHeaderRowCount`, `setHeaderColumnCount`, `setRowHeight`, `setColumnWidth`, `setTableNameVisible`, `setCaptionVisible`, `setCaptionText`, `appendRow`, `insertRow`, `appendColumn`, `deleteRow`, `deleteColumn`, `mergeCells`, `unmergeCells`, `addTable`, `addSheet` |
 | Save | `save(to:)`, `saveInPlace()` |
 | Runtime capability/state | `canSaveEditableDocuments`, `hasChanges`, `dirtyState`, `firstSheet`, `firstTable` |
-| CLI | `swiftnumbers list-sheets`, `swiftnumbers list-tables`, `swiftnumbers list-formulas`, `swiftnumbers read-column`, `swiftnumbers read-table`, `swiftnumbers read-cell`, `swiftnumbers read-range`, `swiftnumbers export-csv`, `swiftnumbers import-csv`, `swiftnumbers inspect`, `swiftnumbers dump` |
+| CLI | `swiftnumbers list-sheets`, `swiftnumbers list-tables`, `swiftnumbers list-formulas`, `swiftnumbers read-column`, `swiftnumbers read-table`, `swiftnumbers read-cell`, `swiftnumbers read-range`, `swiftnumbers export-csv`, `swiftnumbers import-csv`, `swiftnumbers refresh-apple-numbers-map`, `swiftnumbers inspect`, `swiftnumbers dump` |
 
 ### Task-to-Operation Cheat Sheet
 
@@ -1674,7 +1674,39 @@ swiftnumbers import-csv <file.numbers> <file.csv> (--sheet "<Sheet Name>" | --sh
 
 ---
 
-### 5.18.9 `swiftnumbers inspect`
+### 5.18.9 `swiftnumbers refresh-apple-numbers-map`
+
+**Purpose**
+
+Refresh `docs/apple-numbers-applescript-capability-map.md` from the Apple Numbers scripting
+dictionary for roadmap parity planning.
+
+**Command**
+
+```bash
+swiftnumbers refresh-apple-numbers-map [--output docs/apple-numbers-applescript-capability-map.md] [--dry-run] [--skip-oracle]
+```
+
+**Attributes**
+
+| Attribute | Type | Required | Notes |
+|---|---|---|---|
+| `--output` | path | No | Markdown output path |
+| `--dry-run` | flag | No | Print generated Markdown without writing |
+| `--skip-oracle` | flag | No | Emit deterministic skipped oracle metadata without probing Numbers.app |
+
+**Behavior**
+
+- Discovers Numbers through LaunchServices/AppleScript, never by assuming `/Applications/Numbers.app`.
+- Reads the scripting dictionary with Apple `sdef` when Numbers.app is available.
+- Normalizes dictionary suites, commands, classes, capability rows, and read-semantics probe rows into stable Markdown.
+- Read probe rows map AppleScript sheet/table/range/row/column/cell evidence to the matching SwiftNumbers public read surfaces.
+- Omits timestamps and redacts local app paths to avoid noisy or machine-specific diffs.
+- Does not add a Numbers.app dependency to the shipped SwiftNumbers library.
+
+---
+
+### 5.18.10 `swiftnumbers inspect`
 
 **Purpose**
 
@@ -2088,7 +2120,7 @@ Representative diagnostic codes:
 - `decode.cell.unsupportedTypeDropped`
 - `decode.formula.unsupportedAstNodes`
 
-Unsupported decode warnings are deduplicated deterministically by normalized object path + node type key (first occurrence order is preserved). Node-type normalization trims/collapses whitespace, lowercases values, and canonicalizes list payloads (for example `unsupportedNodeTypes`) into stable sorted keys.
+Unsupported decode warnings are deduplicated deterministically by normalized object identity + node type key (first occurrence order is preserved). Object identity prefers `objectPath` and falls back to stable diagnostic context identifiers such as `tableID`; node-type normalization trims/collapses whitespace, lowercases values, and canonicalizes list payloads (for example `unsupportedNodeTypes`) into stable sorted keys.
 
 Pivot candidate diagnostics include deterministic cardinality summaries:
 - Per-candidate (`resolver.pivot.candidateDetected`) context keys:
@@ -2208,5 +2240,6 @@ Private real-world corpus:
 - [API Reference](api-reference.md)
 - [Cookbook](cookbook.md)
 - [CLI Reference](cli-reference.md)
+- [Apple Numbers AppleScript Capability Map](apple-numbers-applescript-capability-map.md)
 - [Troubleshooting](troubleshooting.md)
 - [Architecture](architecture.md)

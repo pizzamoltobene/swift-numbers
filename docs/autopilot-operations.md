@@ -9,20 +9,48 @@ Use this document to operate Autopilot safely when tasks are in progress, blocke
 ## Execution Model
 
 - The loop is roadmap-driven: always pick the first applicable `[TODO]` task.
+- Each run uses the five-role process from [Autopilot Team Process](autopilot-team-process.md):
+  Product / Roadmap Owner -> Apple Numbers Oracle Analyst -> Swift Core Developer -> QA / Compatibility Engineer -> Docs / Release Engineer.
 - The delivery focus is bugfix-first (reliability/correctness before expansion).
 - One task is advanced per run.
 - If no `[TODO]` remains, regenerate backlog first:
   - `./scripts/autopilot_backlog_synthesis.sh`
+- When Apple Numbers parity tasks are active, discover Numbers through AppleScript/LaunchServices:
+  - `swift run swiftnumbers refresh-apple-numbers-map`
+  - deterministic skipped validation: `swift run swiftnumbers refresh-apple-numbers-map --skip-oracle --dry-run`
+  - do not assume `/Applications/Numbers.app`
+- When AppleScript/OSAScript oracle probes cannot run, record a deterministic skipped oracle status and continue from checked-in roadmap signals.
 - When M7 code-parity tasks are active, refresh parity baseline first:
   - `./scripts/refresh_numbers_parser_code_map.sh`
 - Compute parity queue ordering from roadmap + capability map before selecting new parity work:
-  - `./scripts/parity_task_queue.sh --roadmap ./docs/autopilot-roadmap.md --code-map ./docs/numbers-parser-code-capability-map.md`
+  - `./scripts/parity_task_queue.sh --roadmap ./docs/autopilot-roadmap.md --apple-map ./docs/apple-numbers-applescript-capability-map.md --code-map ./docs/numbers-parser-code-capability-map.md`
 - Required validation gates per run:
   - `swift build`
   - `swift test`
 - Release is gated by changelog batch size:
   - `./scripts/release_batch_count.sh --changelog ./CHANGELOG.md`
   - release when batch count is `>= 5`
+- Monthly release train:
+  - target at least one GitHub release per calendar month when validated unreleased work exists
+  - month-end release may proceed below batch count `5` when build/test gates pass and the release is not empty
+
+## Role Handoff Checklist
+
+Before implementation:
+
+1. Product / Roadmap Owner confirms first `[TODO]`, task type, and definition of done.
+2. Apple Numbers Oracle Analyst checks whether AppleScript parity evidence is relevant.
+
+During implementation:
+
+1. Swift Core Developer makes the smallest scoped diff.
+2. QA / Compatibility Engineer adds focused tests for changed behavior.
+
+Before ending the run:
+
+1. QA / Compatibility Engineer confirms `swift build` and `swift test`.
+2. Docs / Release Engineer updates docs/changelog when required.
+3. Docs / Release Engineer reports release decision and next task.
 
 ## Task State Contract
 
@@ -76,4 +104,5 @@ Before ending a run:
 1. Task status is correct (`[DONE]` or `[BLOCKED]` with root cause).
 2. Lock is released.
 3. Batch count is reported.
-4. Release decision is explicit (`published` or `deferred-threshold-not-met`).
+4. AppleScript oracle status is reported when parity work is relevant.
+5. Release decision is explicit (`published`, `deferred-threshold-not-met`, `deferred-monthly-window`, or `blocked`).

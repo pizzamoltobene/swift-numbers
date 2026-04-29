@@ -19,6 +19,7 @@ Documentation hub for the current `SwiftNumbers` release line.
 | Full feature and behavior matrix | [Capabilities](capabilities.md) |
 | Exact library API signatures/types | [API Reference](api-reference.md) |
 | CLI command usage and JSON contracts | [CLI Reference](cli-reference.md) |
+| Apple Numbers parity oracle snapshot | [AppleScript Capability Map](apple-numbers-applescript-capability-map.md) |
 | Failure triage | [Troubleshooting](troubleshooting.md) |
 | Internal architecture | [Architecture](architecture.md) |
 | One page per operation | [Operations Index](operations/README.md) |
@@ -28,6 +29,7 @@ Documentation hub for the current `SwiftNumbers` release line.
 | If you need... | Open |
 |---|---|
 | Infinite improvement rules for Autopilot | [Autopilot Policy](autopilot-policy.md) |
+| Five-role automated team process | [Autopilot Team Process](autopilot-team-process.md) |
 | Roadmap-driven autonomous loop | [Autopilot Roadmap](autopilot-roadmap.md) |
 | Pause/resume + unblock runbook for Autopilot | [Autopilot Operations](autopilot-operations.md) |
 | Test-only autonomous growth policy | [Testing Autopilot Policy](testing-autopilot-policy.md) |
@@ -44,6 +46,7 @@ Documentation hub for the current `SwiftNumbers` release line.
 | If you need... | Open |
 |---|---|
 | Capability-gap baseline and priorities | [Capability Gap Baseline](capability-gap-baseline.md) |
+| Apple Numbers AppleScript dictionary capability map | [AppleScript Capability Map](apple-numbers-applescript-capability-map.md) |
 | Growth and distribution campaign plan | [Growth Campaign Playbook](growth-campaign-playbook-2026Q2.md) |
 | Full generated test inventory/report | [Detailed Test Report](testing-detailed-report.md) |
 
@@ -53,7 +56,7 @@ Supported:
 - Real `.numbers` read path (with diagnostics and fallback safety path)
 - Read sheets/tables/cells/formulas/rich read model
 - Editable tabular mutations + save (`save(to:)`, `saveInPlace()`)
-- CLI: `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, `read-range`, `export-csv`, `import-csv`, `dump`, `inspect`
+- CLI: `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, `read-range`, `export-csv`, `import-csv`, `refresh-apple-numbers-map`, `dump`, `inspect`
 - CLI outputs and switches: `--format text|json`, `--jsonl` (column/table/range), parity switches `--formulas`/`--formatting` (column/table/range), `dump --cells --formatting`, `inspect --redact --compact`
 - CSV import pipeline stages: `--rename`, `--delete-column`, `--transform`, `--parse-dates`, `--date-column`, `--day-first`, `--date-format`
 - Scoped commands use explicit selectors: one of `--sheet`/`--sheet-index` and one of `--table`/`--table-index`

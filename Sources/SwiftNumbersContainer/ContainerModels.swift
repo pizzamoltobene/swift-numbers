@@ -17,6 +17,7 @@ public enum NumbersContainerError: LocalizedError {
   case metadataNotFound(URL)
   case cannotReadEntry(String)
   case invalidZipArchive(URL)
+  case invalidReplacementPath(String)
 
   public var errorDescription: String? {
     switch self {
@@ -32,6 +33,8 @@ public enum NumbersContainerError: LocalizedError {
       return "Cannot read archive entry: \(path)"
     case .invalidZipArchive(let url):
       return "Cannot open zip archive: \(url.path)"
+    case .invalidReplacementPath(let path):
+      return "Invalid replacement path: \(path)"
     }
   }
 }

@@ -82,9 +82,11 @@ public struct IWAInventory: Sendable {
     let adjacency = objectReferenceAdjacency
     var visited = Set<UInt64>()
     var queue: [(objectID: UInt64, depth: Int)] = roots.map { ($0, 0) }
+    var nextIndex = 0
 
-    while !queue.isEmpty {
-      let current = queue.removeFirst()
+    while nextIndex < queue.count {
+      let current = queue[nextIndex]
+      nextIndex += 1
       if visited.contains(current.objectID) {
         continue
       }
@@ -120,15 +122,74 @@ public enum IWAInventoryError: LocalizedError {
 
 public enum IWAInventoryBuilder {
   private static let magic = Data("SNIWA1\0".utf8)
+  private static let sheetSummaryPayloadTypeIDs: Set<UInt32> = [
+    1,  // TN.DocumentArchive
+    2,  // TN.SheetArchive
+    6000,  // TST.TableInfoArchive
+  ]
+  private static let tableSummaryPayloadTypeIDs: Set<UInt32> = [
+    1,  // TN.DocumentArchive
+    2,  // TN.SheetArchive
+    633,  // TSWP.CaptionInfoArchive
+    2001,  // TSWP.StorageArchive
+    2005,  // TSWP.StorageArchive alternative
+    3097,  // TSD.StandinCaptionArchive
+    6000,  // TST.TableInfoArchive
+    6001,  // TST.TableModelArchive
+  ]
+  private static let selectedValuePayloadTypeIDs: Set<UInt32> = [
+    1,  // TN.DocumentArchive
+    2,  // TN.SheetArchive
+    6000,  // TST.TableInfoArchive
+    6001,  // TST.TableModelArchive
+    6002,  // TST.TileArchive
+    6005,  // TST.TableDataList
+    6006,  // TST.HeaderStorageBucket
+    6011,  // TST.TableDataListSegment
+  ]
+  private static let captionPayloadTypeIDs: Set<UInt32> = [
+    633,  // TSWP.CaptionInfoArchive
+    2001,  // TSWP.StorageArchive
+    2005,  // TSWP.StorageArchive alternative
+    3097,  // TSD.StandinCaptionArchive
+  ]
+  private static let stylePayloadTypeIDs: Set<UInt32> = [
+    2021,  // TSWP.CharacterStyleArchive
+    2022,  // TSWP.ParagraphStyleArchive
+    6004,  // TST.CellStyleArchive
+  ]
+  private static let richTextPayloadTypeIDs: Set<UInt32> = [
+    2001,  // TSWP.StorageArchive
+    2005,  // TSWP.StorageArchive alternative
+    2032,  // TSWP.HyperlinkFieldArchive
+    2039,  // TSWP.UnsupportedHyperlinkFieldArchive
+    6218,  // TST.RichTextPayloadArchive
+  ]
+  private static let mergePayloadTypeIDs: Set<UInt32> = [
+    6144  // TST.MergeRegionMapArchive
+  ]
 
   public static func build(from blobs: [ContainerBlob]) throws -> IWAInventory {
+    try build(from: blobs, includingPayloadForTypeIDs: nil)
+  }
+
+  public static func build(
+    from blobs: [ContainerBlob],
+    includingPayloadForTypeIDs payloadTypeIDs: Set<UInt32>?
+  ) throws -> IWAInventory {
     var records: [IWAObjectRecord] = []
     var unparsed: [String] = []
+    let includePayloadForType: (UInt32) -> Bool = { typeID in
+      guard let payloadTypeIDs else {
+        return true
+      }
+      return payloadTypeIDs.contains(typeID)
+    }
 
     for blob in blobs {
-      if let parsed = try parseIWAArchiveBlob(blob) {
+      if let parsed = try parseIWAArchiveBlob(blob, includePayloadForType: includePayloadForType) {
         records.append(contentsOf: parsed)
-      } else if let parsed = try parseCustomBlob(blob) {
+      } else if let parsed = try parseCustomBlob(blob, includePayloadForType: includePayloadForType) {
         records.append(contentsOf: parsed)
       } else {
         unparsed.append(blob.path)
@@ -138,7 +199,38 @@ public enum IWAInventoryBuilder {
     return IWAInventory(records: records, unparsedBlobPaths: unparsed.sorted())
   }
 
-  private static func parseIWAArchiveBlob(_ blob: ContainerBlob) throws -> [IWAObjectRecord]? {
+  public static func buildSheetSummaryInventory(from blobs: [ContainerBlob]) throws -> IWAInventory {
+    try build(from: blobs, includingPayloadForTypeIDs: sheetSummaryPayloadTypeIDs)
+  }
+
+  public static func buildTableSummaryInventory(from blobs: [ContainerBlob]) throws -> IWAInventory {
+    try build(from: blobs, includingPayloadForTypeIDs: tableSummaryPayloadTypeIDs)
+  }
+
+  public static func buildSelectedReadInventory(
+    from blobs: [ContainerBlob],
+    features: IWAReadFeatures
+  ) throws -> IWAInventory {
+    var typeIDs = selectedValuePayloadTypeIDs
+    if features.contains(.captions) {
+      typeIDs.formUnion(captionPayloadTypeIDs)
+    }
+    if features.contains(.styles) {
+      typeIDs.formUnion(stylePayloadTypeIDs)
+    }
+    if features.contains(.richText) {
+      typeIDs.formUnion(richTextPayloadTypeIDs)
+    }
+    if features.contains(.merges) {
+      typeIDs.formUnion(mergePayloadTypeIDs)
+    }
+    return try build(from: blobs, includingPayloadForTypeIDs: typeIDs)
+  }
+
+  private static func parseIWAArchiveBlob(
+    _ blob: ContainerBlob,
+    includePayloadForType: (UInt32) -> Bool
+  ) throws -> [IWAObjectRecord]? {
     guard let decompressed = try decompressIWAChunks(blob.data, blobPath: blob.path) else {
       return nil
     }
@@ -175,7 +267,12 @@ public enum IWAInventoryBuilder {
         guard cursor + payloadLength <= decompressed.count else {
           throw IWAInventoryError.truncatedBlob(blob.path)
         }
-        let payload = Data(decompressed[cursor..<(cursor + payloadLength)])
+        let payload: Data
+        if includePayloadForType(messageInfo.type) {
+          payload = Data(decompressed[cursor..<(cursor + payloadLength)])
+        } else {
+          payload = Data()
+        }
 
         records.append(
           IWAObjectRecord(
@@ -195,7 +292,10 @@ public enum IWAInventoryBuilder {
     return records
   }
 
-  private static func parseCustomBlob(_ blob: ContainerBlob) throws -> [IWAObjectRecord]? {
+  private static func parseCustomBlob(
+    _ blob: ContainerBlob,
+    includePayloadForType: (UInt32) -> Bool
+  ) throws -> [IWAObjectRecord]? {
     let data = blob.data
     guard data.count >= magic.count, data.prefix(magic.count) == magic else {
       return nil
@@ -216,7 +316,12 @@ public enum IWAInventoryBuilder {
       guard cursor + payloadSize <= data.count else {
         throw IWAInventoryError.truncatedBlob(blob.path)
       }
-      let payload = Data(data[cursor..<(cursor + payloadSize)])
+      let payload: Data
+      if includePayloadForType(typeID) {
+        payload = Data(data[cursor..<(cursor + payloadSize)])
+      } else {
+        payload = Data()
+      }
       cursor += payloadSize
 
       records.append(

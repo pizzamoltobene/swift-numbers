@@ -13,7 +13,7 @@ It is built as a native stack with a small dependency surface and Swift-first im
 - Read real `.numbers` files (package + single-file archive)
 - Deterministic merged table traversal across package and single-file archives
 - Edit tabular data and save valid `.numbers` output
-- CLI for inspection and automation (`list-sheets`, `list-tables`, `read-cell`, `read-range`, `export-csv`, `import-csv`, `dump`, `inspect`)
+- CLI for inspection and automation (`list-sheets`, `list-tables`, `read-cell`, `read-range`, `export-csv`, `import-csv`, `refresh-apple-numbers-map`, `dump`, `inspect`)
 - Structured diagnostics for safer debugging
 - Table presentation metadata surfaced in CLI JSON (`tableNameVisible`, `captionVisible`, `captionText`, `captionTextSupported`)
 
@@ -26,6 +26,7 @@ Start here: [Docs Hub](docs/index.md)
 - Exact signatures/types: [API Reference](docs/api-reference.md)
 - Practical workflows: [Cookbook](docs/cookbook.md)
 - CLI usage: [CLI Reference](docs/cli-reference.md)
+- Apple Numbers parity oracle map: [AppleScript Capability Map](docs/apple-numbers-applescript-capability-map.md)
 - Prebuilt CLI distribution via Homebrew tap: [Homebrew Distribution](docs/homebrew-distribution.md)
 - Failure handling: [Troubleshooting](docs/troubleshooting.md)
 - Internal design: [Architecture](docs/architecture.md)
@@ -114,6 +115,7 @@ try editable.save(to: outputURL)
 | Document registries | `registerStyle`, `registeredStyles`, `registerCustomFormat`, `registeredCustomFormats` | Supported | Reusable style/custom-format registry APIs |
 | CLI inspection | `list-sheets`, `list-tables`, `list-formulas`, `read-cell`, `read-column`, `read-table`, `read-range`, `dump`, `inspect` | Supported | `text/json`, `--jsonl` on column/table/range reads, parity switches `--formulas` / `--formatting` on read-column/read-table/read-range, low-level inspection (`--redact`, `--compact`) |
 | CLI data transfer | `export-csv`, `import-csv` | Supported | Sheet/table selectors, header mode, date parsing |
+| CLI parity tooling | `refresh-apple-numbers-map` | Supported | LaunchServices/AppleScript discovery plus `sdef` dictionary parsing; generated read-probe rows for sheet/table/range/row/column/cell semantics; deterministic skipped output for CI/offline runs |
 | Safety guards | Grouped/pivot-linked mutation protection (`groupedTableMutationUnsupported`, `pivotLinkedTableMutationUnsupported`) + formula write safety validation | Supported | Unsafe structural writes are blocked with clear errors; grouped delete diagnostics include operation index context; pivot-linked guard errors include linked object identifiers for triage; unsafe formula references (sheet-qualified/self-referential single-cell or range references) are rejected deterministically |
 
 ### On Roadmap
@@ -124,8 +126,8 @@ try editable.save(to: outputURL)
 | Pivot tables | Deeper pivot read coverage and safer, broader pivot-related write semantics |
 | Formatting/layout parity | Wider fidelity for complex layout/styling scenarios |
 | Non-tabular objects | Incremental support around charts/comments/filters/sorts |
-| Interop and tooling | Expanded diagnostics and interoperability workflows |
-| Autonomous parity queueing | Deterministic roadmap queue scoring from code capability map signals |
+| Interop and tooling | Expanded diagnostics, AppleScript oracle refresh, and interoperability workflows |
+| Parity queueing | Deterministic roadmap queue scoring from AppleScript capability signals first, historical code maps second |
 
 For the exact matrix, use [Capabilities](docs/capabilities.md).
 

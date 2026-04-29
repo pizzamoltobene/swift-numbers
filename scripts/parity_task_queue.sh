@@ -7,6 +7,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd)"
 
 ROADMAP_PATH="$REPO_ROOT/docs/autopilot-roadmap.md"
 CODE_MAP_PATH="$REPO_ROOT/docs/numbers-parser-code-capability-map.md"
+APPLE_MAP_PATH="$REPO_ROOT/docs/apple-numbers-applescript-capability-map.md"
 MAX_TASKS=20
 INCLUDE_IN_PROGRESS=1
 
@@ -17,6 +18,7 @@ Usage: ./scripts/parity_task_queue.sh [options]
 Options:
   --roadmap <path>               Roadmap path (default: docs/autopilot-roadmap.md)
   --code-map <path>              Code capability map path (default: docs/numbers-parser-code-capability-map.md)
+  --apple-map <path>             AppleScript capability map path (default: docs/apple-numbers-applescript-capability-map.md)
   --max <n>                      Maximum queue items to print (default: 20)
   --exclude-in-progress          Only include [TODO] parity tasks
   -h, --help                     Show help
@@ -24,10 +26,11 @@ Options:
 Output:
   NEXT_TASK=<task-id-or-empty>
   QUEUE_SIZE=<n>
-  taskId|status|score|theme|capabilityArea|swiftEvidence|numbersParserEvidence|matrixRow
+  taskId|status|score|theme|capabilityArea|swiftEvidence|numbersParserEvidence|matrixRow|source|appleStatus|appleEvidence
 
 Notes:
   - Queue is deterministic: sorted by score DESC, then matrix row ASC, then task ID ASC.
+  - AppleScript/OSAScript capability rows outrank historical code-map rows when both produce candidates.
   - Score favors policy themes (read > write > formula > pivot > cli) and open parity gaps
     (where Swift evidence is `not-found` in the capability matrix).
 USAGE
@@ -41,6 +44,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --code-map)
       CODE_MAP_PATH="${2:-}"
+      shift 2
+      ;;
+    --apple-map)
+      APPLE_MAP_PATH="${2:-}"
       shift 2
       ;;
     --max)
@@ -71,6 +78,10 @@ if [[ ! -f "$CODE_MAP_PATH" ]]; then
   echo "Code map not found: $CODE_MAP_PATH" >&2
   exit 1
 fi
+if [[ -n "$APPLE_MAP_PATH" && ! -f "$APPLE_MAP_PATH" ]]; then
+  echo "AppleScript capability map not found: $APPLE_MAP_PATH" >&2
+  exit 1
+fi
 if ! [[ "$MAX_TASKS" =~ ^[0-9]+$ ]] || [[ "$MAX_TASKS" -lt 1 ]]; then
   echo "--max must be a positive integer" >&2
   exit 1
@@ -78,13 +89,30 @@ fi
 
 status_file="$(mktemp "${TMPDIR:-/tmp}/sn-parity-status.XXXXXX")"
 queue_raw="$(mktemp "${TMPDIR:-/tmp}/sn-parity-queue-raw.XXXXXX")"
+apple_queue_raw="$(mktemp "${TMPDIR:-/tmp}/sn-parity-apple-raw.XXXXXX")"
+queue_deduped="$(mktemp "${TMPDIR:-/tmp}/sn-parity-queue-deduped.XXXXXX")"
 queue_sorted="$(mktemp "${TMPDIR:-/tmp}/sn-parity-queue-sorted.XXXXXX")"
 cleanup() {
-  rm -f "$status_file" "$queue_raw" "$queue_sorted"
+  rm -f "$status_file" "$queue_raw" "$apple_queue_raw" "$queue_deduped" "$queue_sorted"
 }
 trap cleanup EXIT
 
-sed -n -E 's/^- \[(TODO|IN_PROGRESS|DONE|BLOCKED)\] `([^`]+)`.*/\2|\1/p' "$ROADMAP_PATH" > "$status_file"
+awk '
+  /^- \[(TODO|IN_PROGRESS|DONE|BLOCKED)\]/ {
+    line = $0
+    status = line
+    sub(/^- \[/, "", status)
+    sub(/\].*/, "", status)
+
+    rest = line
+    sub(/^- \[[^]]+\]( \([^)]+\))? /, "", rest)
+    if (match(rest, /`[^`]+`/)) {
+      taskID = substr(rest, RSTART + 1, RLENGTH - 2)
+      title = substr(rest, RSTART + RLENGTH + 1)
+      print taskID "|" status "|" title
+    }
+  }
+' "$ROADMAP_PATH" > "$status_file"
 
 awk -F'|' -v include_in_progress="$INCLUDE_IN_PROGRESS" '
   function trim(s) {
@@ -126,6 +154,7 @@ awk -F'|' -v include_in_progress="$INCLUDE_IN_PROGRESS" '
     split($0, parts, "|")
     if (length(parts) >= 2) {
       roadmap_status[parts[1]] = parts[2]
+      roadmap_title[parts[1]] = parts[3]
     }
     next
   }
@@ -189,18 +218,150 @@ awk -F'|' -v include_in_progress="$INCLUDE_IN_PROGRESS" '
 
   END {
     for (taskID in bestScore) {
-      printf "%s|%s|%d|%s|%s|%s|%s|%d\n", taskID, bestStatus[taskID], bestScore[taskID], bestTheme[taskID], bestArea[taskID], bestSwift[taskID], bestNP[taskID], bestRow[taskID]
+      printf "%s|%s|%d|%s|%s|%s|%s|%d|code||\n", taskID, bestStatus[taskID], bestScore[taskID], bestTheme[taskID], bestArea[taskID], bestSwift[taskID], bestNP[taskID], bestRow[taskID]
     }
   }
 ' "$status_file" "$CODE_MAP_PATH" > "$queue_raw"
 
-if [[ ! -s "$queue_raw" ]]; then
+if [[ -n "$APPLE_MAP_PATH" ]]; then
+  awk -F'|' -v include_in_progress="$INCLUDE_IN_PROGRESS" '
+    function trim(s) {
+      gsub(/^[ \t]+|[ \t]+$/, "", s)
+      gsub(/`/, "", s)
+      return s
+    }
+
+    function derive_theme(area, target, lower) {
+      lower = tolower(area " " target)
+      if (index(lower, "formula") > 0) {
+        return "formula"
+      }
+      if (index(lower, "pivot") > 0 || index(lower, "chart") > 0 || index(lower, "media") > 0 || index(lower, "shape") > 0) {
+        return "pivot"
+      }
+      if (index(lower, "mutation") > 0 || index(lower, "lifecycle") > 0 || index(lower, "formatting") > 0 || index(lower, "style") > 0 || index(lower, "write") > 0) {
+        return "write"
+      }
+      if (index(lower, "read") > 0 || index(lower, "sheet") > 0 || index(lower, "table") > 0 || index(lower, "cell") > 0 || index(lower, "range") > 0) {
+        return "read"
+      }
+      return "other"
+    }
+
+    function theme_weight(theme) {
+      if (theme == "read") return 500
+      if (theme == "write") return 450
+      if (theme == "formula") return 400
+      if (theme == "pivot") return 350
+      if (theme == "cli") return 300
+      return 200
+    }
+
+    function task_matches(area, target, title, lower_area, lower_title) {
+      lower_area = tolower(area " " target)
+      lower_title = tolower(title)
+
+      if (index(lower_area, "formula") > 0) {
+        return index(lower_title, "formula") > 0
+      }
+      if (index(lower_area, "mutation") > 0 || index(lower_area, "lifecycle") > 0) {
+        return index(lower_title, "mutation") > 0 || index(lower_title, "row") > 0 || index(lower_title, "column") > 0
+      }
+      if (index(lower_area, "pivot") > 0 || index(lower_area, "chart") > 0 || index(lower_area, "media") > 0 || index(lower_area, "shape") > 0 || index(lower_area, "formatting") > 0 || index(lower_area, "style") > 0) {
+        return index(lower_title, "advanced") > 0 || index(lower_title, "pivot") > 0 || index(lower_title, "chart") > 0 || index(lower_title, "style") > 0 || index(lower_title, "media") > 0 || index(lower_title, "format") > 0
+      }
+      if (index(lower_area, "read") > 0 || index(lower_area, "sheet") > 0 || index(lower_area, "table") > 0 || index(lower_area, "cell") > 0 || index(lower_area, "range") > 0) {
+        if (index(lower_title, "formula") > 0 || index(lower_title, "mutation") > 0 || index(lower_title, "advanced") > 0) {
+          return 0
+        }
+        return index(lower_title, "read") > 0 || index(lower_title, "sheet") > 0 || index(lower_title, "table") > 0 || index(lower_title, "cell") > 0
+      }
+      return 0
+    }
+
+    NR == FNR {
+      split($0, parts, "|")
+      if (length(parts) >= 3) {
+        roadmap_status[parts[1]] = parts[2]
+        roadmap_title[parts[1]] = parts[3]
+      }
+      next
+    }
+
+    /^\|/ {
+      area = trim($2)
+      appleStatus = trim($3)
+      appleEvidence = trim($4)
+      planningTarget = trim($5)
+
+      if (area == "" || area == "Area" || area ~ /^---/) {
+        next
+      }
+      if (appleStatus == "skipped") {
+        next
+      }
+
+      row += 1
+      theme = derive_theme(area, planningTarget)
+      areaWeight = theme_weight(theme)
+      appleWeight = 1000
+      gapWeight = (appleStatus == "missing") ? 260 : 160
+      rowWeight = 100 - row
+      if (rowWeight < 0) {
+        rowWeight = 0
+      }
+
+      for (taskID in roadmap_status) {
+        status = roadmap_status[taskID]
+        if (status == "DONE" || status == "BLOCKED" || status == "UNKNOWN") {
+          continue
+        }
+        if (status == "IN_PROGRESS" && include_in_progress != 1) {
+          continue
+        }
+        if (taskID !~ /^SN-OSA/ && index(tolower(roadmap_title[taskID]), "applescript") == 0 && index(tolower(roadmap_title[taskID]), "osascript") == 0) {
+          continue
+        }
+        if (!task_matches(area, planningTarget, roadmap_title[taskID])) {
+          continue
+        }
+
+        statusWeight = (status == "TODO") ? 30 : 20
+        score = appleWeight + areaWeight + gapWeight + statusWeight + rowWeight
+        printf "%s|%s|%d|%s|%s|apple-oracle|secondary|%d|apple|%s|%s\n", taskID, status, score, theme, area, row, appleStatus, appleEvidence
+      }
+    }
+  ' "$status_file" "$APPLE_MAP_PATH" > "$apple_queue_raw"
+  cat "$apple_queue_raw" >> "$queue_raw"
+fi
+
+if [[ -s "$queue_raw" ]]; then
+  awk -F'|' '
+    {
+      taskID = $1
+      score = $3 + 0
+      row = $8 + 0
+      if (!(taskID in bestScore) || score > bestScore[taskID] || (score == bestScore[taskID] && row < bestRow[taskID])) {
+        bestScore[taskID] = score
+        bestRow[taskID] = row
+        bestLine[taskID] = $0
+      }
+    }
+    END {
+      for (taskID in bestLine) {
+        print bestLine[taskID]
+      }
+    }
+  ' "$queue_raw" > "$queue_deduped"
+fi
+
+if [[ ! -s "$queue_deduped" ]]; then
   echo "NEXT_TASK="
   echo "QUEUE_SIZE=0"
   exit 0
 fi
 
-sort -t'|' -k3,3nr -k8,8n -k1,1 "$queue_raw" > "$queue_sorted"
+sort -t'|' -k3,3nr -k8,8n -k1,1 "$queue_deduped" > "$queue_sorted"
 
 queue_size="$(wc -l < "$queue_sorted" | tr -d ' ')"
 next_task="$(head -n 1 "$queue_sorted" | cut -d'|' -f1)"

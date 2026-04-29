@@ -6,10 +6,39 @@ All notable changes to this project are documented in this file.
 
 ### Summary
 
+- Pending.
+
+### Breaking Changes
+
+- None.
+
+### Rollback Hint
+
+- Revert to the previous stable tag and redeploy package artifacts.
+
+## [0.4.1] - 2026-04-29
+
+### Summary
+
 - Added aggregate pivot-link diagnostics summary on real-read path:
   `resolver.pivot.candidateSummary` now emits deterministic candidate/table cardinality and ID sets
   across all detected pivot-like drawables, complementing per-candidate
   `resolver.pivot.candidateDetected` diagnostics.
+- Hardened unsupported decode warning deduplication: diagnostics without an `objectPath`
+  now use stable object identifiers from diagnostic context before deduplicating by
+  unsupported node/cell type, preserving distinct table warnings while still removing
+  duplicate noise.
+- Added Apple Numbers AppleScript parity map refresh workflow:
+  `swiftnumbers refresh-apple-numbers-map` discovers Numbers through LaunchServices/AppleScript,
+  parses `sdef`, writes `docs/apple-numbers-applescript-capability-map.md`, and supports
+  deterministic skipped oracle output for CI/offline runs.
+- Fed AppleScript capability evidence into the autonomous parity conveyor: `parity_task_queue.sh`
+  now scores AppleScript/OSAScript capability rows ahead of the historical third-party code map,
+  and backlog synthesis includes AppleScript-derived read/write/formula/advanced-object candidates
+  when oracle signals exist.
+- Added AppleScript read parity probe rows to the generated capability map, covering sheet,
+  table, range, row, column, cell-value, and table selection-range read semantics with matching
+  SwiftNumbers public read-surface regression coverage.
 
 ### Breaking Changes
 

@@ -6,6 +6,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd)"
 
 ROADMAP_PATH="$REPO_ROOT/docs/autopilot-roadmap.md"
 POLICY_PATH="$REPO_ROOT/docs/autopilot-policy.md"
+APPLE_MAP_PATH="$REPO_ROOT/docs/apple-numbers-applescript-capability-map.md"
 DATE_UTC="$(date -u +%Y%m%d)"
 FORCE=0
 DRY_RUN=0
@@ -17,6 +18,7 @@ Usage: ./scripts/autopilot_backlog_synthesis.sh [options]
 Options:
   --roadmap <path>   Roadmap file path (default: docs/autopilot-roadmap.md)
   --policy <path>    Policy file path (default: docs/autopilot-policy.md)
+  --apple-map <path> AppleScript capability map path (default: docs/apple-numbers-applescript-capability-map.md)
   --date <YYYYMMDD>  Deterministic ID date override (default: UTC today)
   --force            Run synthesis even if TODO tasks are present
   --dry-run          Print generated milestone block instead of appending
@@ -28,6 +30,7 @@ Behavior:
       priorityScore = (Impact * Confidence) - (Risk + Effort)
   - Selects top 6 with mandatory area coverage:
       read, write, formula, pivot
+  - Scores AppleScript/OSAScript capability-map signals ahead of historical code-parity signals
   - Appends a new roadmap milestone with deterministic IDs:
       SN-AUTO-YYYYMMDD-XX
 USAGE
@@ -41,6 +44,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --policy)
       POLICY_PATH="$2"
+      shift 2
+      ;;
+    --apple-map)
+      APPLE_MAP_PATH="$2"
       shift 2
       ;;
     --date)
@@ -75,6 +82,10 @@ if [[ ! -f "$POLICY_PATH" ]]; then
   echo "Policy not found: $POLICY_PATH" >&2
   exit 1
 fi
+if [[ -n "$APPLE_MAP_PATH" && ! -f "$APPLE_MAP_PATH" ]]; then
+  echo "AppleScript capability map not found: $APPLE_MAP_PATH" >&2
+  exit 1
+fi
 if ! [[ "$DATE_UTC" =~ ^[0-9]{8}$ ]]; then
   echo "--date must be YYYYMMDD" >&2
   exit 1
@@ -90,6 +101,32 @@ todo_fixme_count="$(rg -n 'TODO|FIXME' "$REPO_ROOT/Sources" "$REPO_ROOT/Tests" "
 unsupported_marker_count="$(rg -n 'unsupported|fallback|diagnostic' "$REPO_ROOT/Sources" "$REPO_ROOT/docs" \
   2>/dev/null | wc -l | tr -d ' ')"
 release_tag_count="$(git -C "$REPO_ROOT" tag --list 'v*' | wc -l | tr -d ' ')"
+apple_available_count=0
+apple_missing_count=0
+apple_signal_count=0
+if [[ -n "$APPLE_MAP_PATH" ]]; then
+  apple_available_count="$(
+    awk -F'|' '
+      function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); gsub(/`/, "", s); return s }
+      /^\|/ {
+        status = trim($3)
+        if (status == "available") count += 1
+      }
+      END { print count + 0 }
+    ' "$APPLE_MAP_PATH"
+  )"
+  apple_missing_count="$(
+    awk -F'|' '
+      function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); gsub(/`/, "", s); return s }
+      /^\|/ {
+        status = trim($3)
+        if (status == "missing") count += 1
+      }
+      END { print count + 0 }
+    ' "$APPLE_MAP_PATH"
+  )"
+  apple_signal_count=$((apple_available_count + apple_missing_count))
+fi
 
 candidates_file="$(mktemp "${TMPDIR:-/tmp}/autopilot-candidates.XXXXXX")"
 scored_file="$(mktemp "${TMPDIR:-/tmp}/autopilot-scored.XXXXXX")"
@@ -117,6 +154,15 @@ C10|pivot|Harden pivot-linked write guard message specificity|4|1|2|5|pivot writ
 C11|cli|Add deterministic parity report subcommand for roadmap sync|3|2|2|4|CLI can print stable parity report used by automation triage|golden CLI output tests for parity report command
 C12|perf|Add bounded memory guard for large row iteration|4|3|3|4|row iteration avoids unbounded temporary allocations under large sheets|performance smoke test tracks allocation budget threshold
 EOF
+
+if [[ "$apple_signal_count" -gt 0 ]]; then
+  cat >>"$candidates_file" <<'EOF'
+AS01|read|Add AppleScript sheet table cell read parity probes|5|2|2|5|AppleScript sheet/table/cell read surfaces are normalized into parity evidence rows|simulated AppleScript capability map yields deterministic read-priority queue entries
+AS02|write|Add AppleScript mutation parity probes for document and table operations|5|2|3|5|AppleScript document/sheet/table/row/column mutation surfaces map to SwiftNumbers write gaps|simulated AppleScript capability map yields deterministic mutation-priority queue entries
+AS03|formula|Add AppleScript formula parity evidence scoring|5|2|2|5|AppleScript formula text/result surfaces create first-class formula backlog candidates|simulated AppleScript capability map yields deterministic formula-priority queue entries
+AS04|pivot|Add AppleScript advanced object parity evidence scoring|5|2|2|5|AppleScript chart/pivot/style/media surfaces create first-class advanced-object backlog candidates|simulated AppleScript capability map yields deterministic advanced-object queue entries
+EOF
+fi
 
 candidate_count="$(wc -l < "$candidates_file" | tr -d ' ')"
 if [[ "$candidate_count" -lt 10 ]]; then
@@ -169,6 +215,8 @@ start_index=$((existing_date_ids + 1))
   echo "- \`todoFixmeCount=${todo_fixme_count}\`"
   echo "- \`unsupportedMarkerCount=${unsupported_marker_count}\`"
   echo "- \`releaseTagCount=${release_tag_count}\`"
+  echo "- \`appleAvailableCount=${apple_available_count}\`"
+  echo "- \`appleMissingCount=${apple_missing_count}\`"
   echo "- Candidate count: \`${candidate_count}\` (policy minimum: 10)"
   echo ""
 

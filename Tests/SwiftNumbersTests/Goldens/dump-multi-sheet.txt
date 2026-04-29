@@ -5,8 +5,8 @@ Sheets: 2
 Tables: 3
 Resolved cells: 4
 Index blobs: 37
-IWA objects: 663
-Object reference edges: 1250
+IWA objects: 669
+Object reference edges: 1254
 Root objects: 3
 Type histogram:
   0: 3
@@ -19,9 +19,9 @@ Type histogram:
   222: 1
   401: 1
   601: 1
-  633: 1
+  633: 3
   634: 1
-  2001: 7
+  2001: 9
   2021: 7
   2022: 244
   2023: 5
@@ -50,7 +50,7 @@ Type histogram:
   6003: 7
   6004: 102
   6005: 26
-  6006: 6
+  6006: 8
   6008: 6
   6204: 2
   6220: 3

@@ -33,7 +33,6 @@ private func parityOutputMode(formulas: Bool, formatting: Bool) -> ParityOutputM
   return nil
 }
 
-@main
 struct SwiftNumbersCLI: ParsableCommand {
   static let configuration = CommandConfiguration(
     commandName: "swiftnumbers",
@@ -50,6 +49,7 @@ struct SwiftNumbersCLI: ParsableCommand {
       ReadRangeCommand.self,
       ExportCSVCommand.self,
       ImportCSVCommand.self,
+      RefreshAppleNumbersMapCommand.self,
     ]
   )
 }
@@ -188,21 +188,21 @@ struct ListSheets: ParsableCommand {
 
   mutating func run() throws {
     let url = URL(fileURLWithPath: file)
-    let document = try NumbersDocument.open(at: url)
+    let summaries = try NumbersDocument.sheetSummaries(at: url)
 
     switch format {
     case .text:
-      for (index, sheet) in document.sheets.enumerated() {
+      for (index, sheet) in summaries.enumerated() {
         print("\(index + 1). \(sheet.name)")
       }
     case .json:
       let payload = ListSheetsJSONPayload(
-        sheets: document.sheets.enumerated().map { offset, sheet in
+        sheets: summaries.enumerated().map { offset, sheet in
           ListSheetsJSONPayload.Sheet(
             index: offset + 1,
             id: sheet.id,
             name: sheet.name,
-            tableCount: sheet.tables.count
+            tableCount: sheet.tableCount
           )
         }
       )
@@ -228,8 +228,8 @@ struct ListTables: ParsableCommand {
 
   mutating func run() throws {
     let url = URL(fileURLWithPath: file)
-    let document = try NumbersDocument.open(at: url)
-    let entries = collectTableEntries(from: document, sheetFilter: sheet)
+    let summaries = try NumbersDocument.tableSummaries(at: url)
+    let entries = collectTableEntries(from: summaries, sheetFilter: sheet)
 
     switch format {
     case .text:
@@ -239,8 +239,11 @@ struct ListTables: ParsableCommand {
       }
       for (offset, entry) in entries.enumerated() {
         let usedRange = entry.usedRange ?? "-"
+        let populated = countLabel(entry.populatedCellCount)
+        let formulas = countLabel(entry.formulaCount)
+        let merges = countLabel(entry.mergeRangeCount)
         print(
-          "\(offset + 1). \(entry.sheetName)/\(entry.tableName) rows=\(entry.rowCount) cols=\(entry.columnCount) populated=\(entry.populatedCellCount) formulas=\(entry.formulaCount) merges=\(entry.mergeRangeCount) used=\(usedRange)"
+          "\(offset + 1). \(entry.sheetName)/\(entry.tableName) rows=\(entry.rowCount) cols=\(entry.columnCount) populated=\(populated) formulas=\(formulas) merges=\(merges) used=\(usedRange)"
         )
       }
     case .json:
@@ -345,7 +348,8 @@ struct ReadCellCommand: ParsableCommand {
   @Option(name: .long, help: "Exact table name")
   var table: String?
 
-  @Option(name: .long, help: "Zero-based table index within the selected sheet (alternative to --table)")
+  @Option(
+    name: .long, help: "Zero-based table index within the selected sheet (alternative to --table)")
   var tableIndex: Int?
 
   @Option(name: .long, help: "Output format: text or json")
@@ -353,10 +357,12 @@ struct ReadCellCommand: ParsableCommand {
 
   mutating func run() throws {
     let url = URL(fileURLWithPath: file)
-    let document = try NumbersDocument.open(at: url)
-
-    let sheetModel = try resolveSheet(in: document, sheetName: sheet, sheetIndex: sheetIndex)
-    let tableModel = try resolveTable(in: sheetModel, tableName: table, tableIndex: tableIndex)
+    let selector = try makeTableSelector(
+      sheetName: sheet,
+      sheetIndex: sheetIndex,
+      tableName: table,
+      tableIndex: tableIndex
+    )
 
     let reference: CellReference
     do {
@@ -364,6 +370,14 @@ struct ReadCellCommand: ParsableCommand {
     } catch {
       throw ValidationError("Invalid cell reference: \(cell)")
     }
+
+    let targeted = try NumbersDocument.readCell(
+      at: url,
+      selector: selector,
+      cell: reference.a1
+    )
+    let sheetModel = targeted.sheet
+    let tableModel = targeted.table
 
     guard let readCell = tableModel.readCell(at: reference.address) else {
       throw ValidationError(
@@ -419,7 +433,8 @@ struct ReadColumnCommand: ParsableCommand {
   @Option(name: .long, help: "Exact table name")
   var table: String?
 
-  @Option(name: .long, help: "Zero-based table index within the selected sheet (alternative to --table)")
+  @Option(
+    name: .long, help: "Zero-based table index within the selected sheet (alternative to --table)")
   var tableIndex: Int?
 
   @Option(name: .long, help: "Start row index (zero-based)")
@@ -446,14 +461,17 @@ struct ReadColumnCommand: ParsableCommand {
 
   mutating func run() throws {
     let url = URL(fileURLWithPath: file)
-    let document = try NumbersDocument.open(at: url)
-
-    let sheetModel = try resolveSheet(in: document, sheetName: sheet, sheetIndex: sheetIndex)
-    let tableModel = try resolveTable(in: sheetModel, tableName: table, tableIndex: tableIndex)
+    let selector = try makeTableSelector(
+      sheetName: sheet,
+      sheetIndex: sheetIndex,
+      tableName: table,
+      tableIndex: tableIndex
+    )
 
     let resolvedColumnIndex: Int
     let resolvedFromRow: Int
     let values: [CellValue]
+    let targeted: NumbersDocument.TargetedTableRead
 
     if let header {
       if let columnIndex {
@@ -472,6 +490,14 @@ struct ReadColumnCommand: ParsableCommand {
         throw ValidationError("Header cannot be empty.")
       }
 
+      targeted = try NumbersDocument.readTable(
+        at: url,
+        selector: selector,
+        window: nil,
+        includeFormulas: formulas,
+        includeFormatting: formatting
+      )
+      let tableModel = targeted.table
       do {
         values = try tableModel.column(
           named: normalizedHeader,
@@ -496,6 +522,15 @@ struct ReadColumnCommand: ParsableCommand {
         )
       }
 
+      targeted = try NumbersDocument.readColumn(
+        at: url,
+        selector: selector,
+        column: columnIndex,
+        fromRow: fromRow,
+        includeFormulas: formulas,
+        includeFormatting: formatting
+      )
+      let tableModel = targeted.table
       do {
         values = try tableModel.column(at: columnIndex, from: fromRow)
         resolvedColumnIndex = columnIndex
@@ -507,6 +542,8 @@ struct ReadColumnCommand: ParsableCommand {
       }
     }
 
+    let sheetModel = targeted.sheet
+    let tableModel = targeted.table
     let payload = ReadColumnJSONPayload(
       sourcePath: url.path,
       sheet: sheetModel,
@@ -554,7 +591,8 @@ struct ReadTableCommand: ParsableCommand {
   @Option(name: .long, help: "Exact table name")
   var table: String?
 
-  @Option(name: .long, help: "Zero-based table index within the selected sheet (alternative to --table)")
+  @Option(
+    name: .long, help: "Zero-based table index within the selected sheet (alternative to --table)")
   var tableIndex: Int?
 
   @Option(name: .long, help: "Start row index (zero-based)")
@@ -590,10 +628,34 @@ struct ReadTableCommand: ParsableCommand {
 
   mutating func run() throws {
     let url = URL(fileURLWithPath: file)
-    let document = try NumbersDocument.open(at: url)
+    let selector = try makeTableSelector(
+      sheetName: sheet,
+      sheetIndex: sheetIndex,
+      tableName: table,
+      tableIndex: tableIndex
+    )
 
-    let sheetModel = try resolveSheet(in: document, sheetName: sheet, sheetIndex: sheetIndex)
-    let tableModel = try resolveTable(in: sheetModel, tableName: table, tableIndex: tableIndex)
+    guard maxRows > 0 else {
+      throw ValidationError("--max-rows must be greater than 0.")
+    }
+    guard maxColumns > 0 else {
+      throw ValidationError("--max-columns must be greater than 0.")
+    }
+
+    let targeted = try NumbersDocument.readTable(
+      at: url,
+      selector: selector,
+      window: NumbersDocument.CellWindow(
+        startRow: fromRow,
+        endRow: fromRow + maxRows - 1,
+        startColumn: fromColumn,
+        endColumn: fromColumn + maxColumns - 1
+      ),
+      includeFormulas: formulas,
+      includeFormatting: formatting
+    )
+    let sheetModel = targeted.sheet
+    let tableModel = targeted.table
 
     guard fromRow >= 0, fromRow <= tableModel.rowCount else {
       throw ValidationError("Invalid fromRow=\(fromRow) for table rowCount=\(tableModel.rowCount).")
@@ -601,12 +663,6 @@ struct ReadTableCommand: ParsableCommand {
     guard fromColumn >= 0, fromColumn <= tableModel.columnCount else {
       throw ValidationError(
         "Invalid fromColumn=\(fromColumn) for table columnCount=\(tableModel.columnCount).")
-    }
-    guard maxRows > 0 else {
-      throw ValidationError("--max-rows must be greater than 0.")
-    }
-    guard maxColumns > 0 else {
-      throw ValidationError("--max-columns must be greater than 0.")
     }
 
     let resolvedRowCount = min(maxRows, max(0, tableModel.rowCount - fromRow))
@@ -664,7 +720,8 @@ struct ReadRangeCommand: ParsableCommand {
   @Option(name: .long, help: "Exact table name")
   var table: String?
 
-  @Option(name: .long, help: "Zero-based table index within the selected sheet (alternative to --table)")
+  @Option(
+    name: .long, help: "Zero-based table index within the selected sheet (alternative to --table)")
   var tableIndex: Int?
 
   @Option(name: .long, help: "Output format: text or json")
@@ -688,10 +745,12 @@ struct ReadRangeCommand: ParsableCommand {
 
   mutating func run() throws {
     let url = URL(fileURLWithPath: file)
-    let document = try NumbersDocument.open(at: url)
-
-    let sheetModel = try resolveSheet(in: document, sheetName: sheet, sheetIndex: sheetIndex)
-    let tableModel = try resolveTable(in: sheetModel, tableName: table, tableIndex: tableIndex)
+    let selector = try makeTableSelector(
+      sheetName: sheet,
+      sheetIndex: sheetIndex,
+      tableName: table,
+      tableIndex: tableIndex
+    )
 
     let parsedRange: CLIParsedRange
     do {
@@ -700,6 +759,15 @@ struct ReadRangeCommand: ParsableCommand {
       throw ValidationError("Invalid range reference: \(range)")
     }
 
+    let targeted = try NumbersDocument.readRange(
+      at: url,
+      selector: selector,
+      range: CellRange(start: parsedRange.start, end: parsedRange.end),
+      includeFormulas: formulas,
+      includeFormatting: formatting
+    )
+    let sheetModel = targeted.sheet
+    let tableModel = targeted.table
     let rows: [[ReadCell]]
     do {
       rows = try tableModel.readCells(in: range)
@@ -751,7 +819,8 @@ struct ExportCSVCommand: ParsableCommand {
   @Option(name: .long, help: "Exact table name")
   var table: String?
 
-  @Option(name: .long, help: "Zero-based table index within the selected sheet (alternative to --table)")
+  @Option(
+    name: .long, help: "Zero-based table index within the selected sheet (alternative to --table)")
   var tableIndex: Int?
 
   @Option(name: .long, help: "CSV output mode: value, formatted, or formula")
@@ -762,11 +831,17 @@ struct ExportCSVCommand: ParsableCommand {
 
   mutating func run() throws {
     let url = URL(fileURLWithPath: file)
-    let document = try NumbersDocument.open(at: url)
-
-    let sheetModel = try resolveSheet(in: document, sheetName: sheet, sheetIndex: sheetIndex)
-    let tableModel = try resolveTable(in: sheetModel, tableName: table, tableIndex: tableIndex)
-    let csv = renderCSV(table: tableModel, mode: mode)
+    let selector = try makeTableSelector(
+      sheetName: sheet,
+      sheetIndex: sheetIndex,
+      tableName: table,
+      tableIndex: tableIndex
+    )
+    let csv = try NumbersDocument.exportCSV(
+      at: url,
+      selector: selector,
+      mode: coreCSVExportMode(mode)
+    )
 
     if let output {
       let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -805,7 +880,8 @@ struct ImportCSVCommand: ParsableCommand {
   @Option(name: .long, help: "Exact table name")
   var table: String?
 
-  @Option(name: .long, help: "Zero-based table index within the selected sheet (alternative to --table)")
+  @Option(
+    name: .long, help: "Zero-based table index within the selected sheet (alternative to --table)")
   var tableIndex: Int?
 
   @Option(name: .long, help: "Header handling: with-header or no-header")
@@ -813,7 +889,8 @@ struct ImportCSVCommand: ParsableCommand {
 
   @Option(
     name: .long,
-    help: "Rename stage mapping OLD:NEW (repeatable). OLD accepts exact column name or zero-based index."
+    help:
+      "Rename stage mapping OLD:NEW (repeatable). OLD accepts exact column name or zero-based index."
   )
   var rename: [String] = []
 
@@ -853,7 +930,8 @@ struct ImportCSVCommand: ParsableCommand {
   )
   var dateFormat: [String] = []
 
-  @Option(name: .long, help: "Write updated .numbers document to this path instead of saving in place")
+  @Option(
+    name: .long, help: "Write updated .numbers document to this path instead of saving in place")
   var output: String?
 
   mutating func run() throws {
@@ -1267,7 +1345,9 @@ private struct InspectJSONPayload: Encodable {
     redacted.reserveCapacity(context.count)
     for (key, value) in context {
       let normalizedKey = key.lowercased()
-      if normalizedKey.contains("path") || normalizedKey.contains("file") || normalizedKey.contains("url") {
+      if normalizedKey.contains("path") || normalizedKey.contains("file")
+        || normalizedKey.contains("url")
+      {
         redacted[key] = "<redacted>"
       } else {
         redacted[key] = value
@@ -1299,9 +1379,9 @@ private struct ListTablesJSONPayload: Encodable {
     let tableName: String
     let rowCount: Int
     let columnCount: Int
-    let mergeRangeCount: Int
-    let populatedCellCount: Int
-    let formulaCount: Int
+    let mergeRangeCount: Int?
+    let populatedCellCount: Int?
+    let formulaCount: Int?
     let usedRange: String?
     let tableNameVisible: Bool?
     let captionVisible: Bool?
@@ -1771,7 +1851,8 @@ private struct ReadTableJSONPayload: Encodable {
       return (0..<resolvedColumnCount).map { columnOffset in
         let column = fromColumn + columnOffset
         let address = CellAddress(row: row, column: column)
-        let readCell = table.readCell(at: address)
+        let readCell =
+          table.readCell(at: address)
           ?? ReadCell(address: address, value: .empty, kind: .empty, formatted: "")
         let formula = table.formula(at: address)
         return Cell(
@@ -1875,14 +1956,18 @@ private struct TableEntry {
   let tableName: String
   let rowCount: Int
   let columnCount: Int
-  let mergeRangeCount: Int
-  let populatedCellCount: Int
-  let formulaCount: Int
+  let mergeRangeCount: Int?
+  let populatedCellCount: Int?
+  let formulaCount: Int?
   let usedRange: String?
   let tableNameVisible: Bool?
   let captionVisible: Bool?
   let captionText: String?
   let captionTextSupported: Bool
+}
+
+private func countLabel(_ value: Int?) -> String {
+  value.map(String.init) ?? "-"
 }
 
 private func collectFormulaEntries(
@@ -2141,6 +2226,39 @@ private func collectTableEntries(
   return entries
 }
 
+private func collectTableEntries(
+  from summaries: [NumbersDocument.TableSummary],
+  sheetFilter: String?
+) -> [TableEntry] {
+  summaries
+    .filter { summary in
+      guard let sheetFilter else {
+        return true
+      }
+      return summary.sheetName == sheetFilter
+    }
+    .map { summary in
+      TableEntry(
+        sheetIndex: summary.sheetIndex + 1,
+        sheetID: summary.sheetID,
+        sheetName: summary.sheetName,
+        tableIndexInSheet: summary.tableIndex + 1,
+        tableID: summary.tableID,
+        tableName: summary.tableName,
+        rowCount: summary.rowCount,
+        columnCount: summary.columnCount,
+        mergeRangeCount: nil,
+        populatedCellCount: nil,
+        formulaCount: nil,
+        usedRange: nil,
+        tableNameVisible: summary.tableNameVisible,
+        captionVisible: summary.captionVisible,
+        captionText: summary.captionText,
+        captionTextSupported: summary.captionTextSupported
+      )
+    }
+}
+
 private func cellValueKind(_ value: CellValue) -> String {
   switch value {
   case .empty:
@@ -2264,7 +2382,9 @@ private func richTextPayload(from richText: RichTextRead?) -> RichTextPayload? {
   )
 }
 
-private func formulaResultSummaryPayload(from result: FormulaResultRead) -> FormulaResultSummaryPayload {
+private func formulaResultSummaryPayload(from result: FormulaResultRead)
+  -> FormulaResultSummaryPayload
+{
   FormulaResultSummaryPayload(
     formulaID: result.formulaID,
     rawFormula: result.rawFormula,
@@ -2513,7 +2633,9 @@ private func renderReadCellText(_ payload: ReadCellJSONPayload) -> String {
     lines.append("Formula:")
     lines.append("  ID: \(formula.formulaID.map { String($0) } ?? "-")")
     lines.append("  Raw: \(formula.rawFormula ?? "<none>")")
-    lines.append("  Tokens: \(formula.parsedTokens.isEmpty ? "<none>" : formula.parsedTokens.joined(separator: " "))")
+    lines.append(
+      "  Tokens: \(formula.parsedTokens.isEmpty ? "<none>" : formula.parsedTokens.joined(separator: " "))"
+    )
     lines.append("  AST: \(formula.astSummary ?? "<none>")")
     lines.append("  Result: \(describeTypedValue(formula.result))")
     lines.append("  Result formatted: \(formula.resultFormatted)")
@@ -2938,7 +3060,7 @@ private func parseCSVRows(_ content: String) throws -> [[String]] {
     rows.append(currentRow)
   }
 
-  if let last = rows.last, last.count == 1, (last.first?.isEmpty ?? false) {
+  if let last = rows.last, last.count == 1, last.first?.isEmpty ?? false {
     rows.removeLast()
   }
 
@@ -3160,7 +3282,8 @@ private func resolveImportDateParsingOptions(
     var indexes = Set<Int>()
     for rawSelector in dateColumns {
       let selector = try parseImportColumnSelector(rawSelector, optionName: "--date-column")
-      let index = try resolveImportColumnIndex(in: headerRow, selector: selector, stage: "date-parse")
+      let index = try resolveImportColumnIndex(
+        in: headerRow, selector: selector, stage: "date-parse")
       indexes.insert(index)
     }
     allowedColumns = indexes
@@ -3201,7 +3324,8 @@ private func applyImportPipeline(
 
   for rawMapping in renameMappings {
     let mapping = try parseImportRenameMapping(rawMapping)
-    let index = try resolveImportColumnIndex(in: headerRow, selector: mapping.source, stage: "rename")
+    let index = try resolveImportColumnIndex(
+      in: headerRow, selector: mapping.source, stage: "rename")
     headerRow[index] = mapping.destination
   }
 
@@ -3294,7 +3418,8 @@ private func applyImportTransform(
 
   switch function {
   case .merge:
-    return values.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ?? ""
+    return values.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+      ?? ""
 
   case .pos:
     for value in values {
@@ -3481,6 +3606,47 @@ private func resolveTable(
   throw ValidationError("Missing table selector. Provide --table or --table-index.")
 }
 
+private func makeTableSelector(
+  sheetName: String?,
+  sheetIndex: Int?,
+  tableName: String?,
+  tableIndex: Int?
+) throws -> NumbersDocument.TableSelector {
+  if let sheetName, let sheetIndex {
+    throw ValidationError(
+      "Provide either --sheet or --sheet-index, not both (received name '\(sheetName)' and index \(sheetIndex))."
+    )
+  }
+  if let tableName, let tableIndex {
+    throw ValidationError(
+      "Provide either --table or --table-index, not both (received name '\(tableName)' and index \(tableIndex))."
+    )
+  }
+  guard sheetName != nil || sheetIndex != nil else {
+    throw ValidationError("Missing sheet selector. Provide --sheet or --sheet-index.")
+  }
+  guard tableName != nil || tableIndex != nil else {
+    throw ValidationError("Missing table selector. Provide --table or --table-index.")
+  }
+  return NumbersDocument.TableSelector(
+    sheetName: sheetName,
+    sheetIndex: sheetIndex,
+    tableName: tableName,
+    tableIndex: tableIndex
+  )
+}
+
+private func coreCSVExportMode(_ mode: ExportCSVMode) -> NumbersDocument.CSVExportMode {
+  switch mode {
+  case .value:
+    return .value
+  case .formatted:
+    return .formatted
+  case .formula:
+    return .formula
+  }
+}
+
 private func resolveColumnIndex(
   in table: SwiftNumbersCore.Table,
   header: String,
@@ -3608,3 +3774,5 @@ private func renderJSON<T: Encodable>(_ payload: T, pretty: Bool = true) throws 
   }
   return string
 }
+
+SwiftNumbersCLI.main()

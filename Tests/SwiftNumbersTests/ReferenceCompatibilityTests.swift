@@ -27,6 +27,31 @@ final class ReferenceCompatibilityTests: XCTestCase {
     XCTAssertFalse(reachable.isEmpty)
   }
 
+  func testReachableObjectIDsTraversesLargeLinearGraph() {
+    let nodeCount = 10_000
+    var records: [IWAObjectRecord] = []
+    records.reserveCapacity(nodeCount)
+
+    for index in 1...nodeCount {
+      let objectID = UInt64(index)
+      let next = index < nodeCount ? [UInt64(index + 1)] : []
+      records.append(
+        IWAObjectRecord(
+          objectID: objectID,
+          typeID: 6000,
+          payloadSize: 0,
+          sourceBlobPath: "Index/\(index).iwa",
+          objectReferences: next
+        ))
+    }
+
+    let inventory = IWAInventory(records: records, unparsedBlobPaths: [])
+    let reachable = inventory.reachableObjectIDs(from: [1])
+    XCTAssertEqual(reachable.count, nodeCount)
+    XCTAssertTrue(reachable.contains(1))
+    XCTAssertTrue(reachable.contains(UInt64(nodeCount)))
+  }
+
   func testSheetNamesAreStableForReferenceFixture() throws {
     let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
     let document = try NumbersDocument.open(at: fixture)
@@ -86,6 +111,50 @@ final class ReferenceCompatibilityTests: XCTestCase {
     let container = try NumbersContainer.open(at: workingCopy)
     XCTAssertNil(try container.readMetadataFile(named: "DocumentMetadata.json"))
     XCTAssertNil(try container.readMetadataFile(named: "DocumentMetadata.pb"))
+  }
+
+  func testCopyContainerRejectsMetadataTraversalReplacementFilename() throws {
+    let source = FixtureLocator.fixtureURL(named: "simple-table.numbers")
+    let output = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+      .appendingPathComponent("swift-numbers-invalid-metadata-\(UUID().uuidString).numbers")
+    defer { try? FileManager.default.removeItem(at: output) }
+
+    XCTAssertThrowsError(
+      try NumbersContainer.copyContainer(
+        from: source,
+        to: output,
+        replacingMetadataFiles: ["../escape.json": Data("{}".utf8)]
+      )
+    ) { error in
+      guard case NumbersContainerError.invalidReplacementPath(let path) = error else {
+        return XCTFail("Expected invalidReplacementPath, got \(error)")
+      }
+      XCTAssertEqual(path, "../escape.json")
+    }
+  }
+
+  func testCopyContainerRejectsIndexBlobTraversalReplacementPath() throws {
+    let archiveFixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let source = try makePackageFixture(fromSingleFileArchive: archiveFixture)
+    let output = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+      .appendingPathComponent("swift-numbers-invalid-index-\(UUID().uuidString).numbers")
+    defer {
+      try? FileManager.default.removeItem(at: source)
+      try? FileManager.default.removeItem(at: output)
+    }
+
+    XCTAssertThrowsError(
+      try NumbersContainer.copyContainer(
+        from: source,
+        to: output,
+        replacingIndexBlobs: ["Index/../escape.iwa": Data([0x00])]
+      )
+    ) { error in
+      guard case NumbersContainerError.invalidReplacementPath(let path) = error else {
+        return XCTFail("Expected invalidReplacementPath, got \(error)")
+      }
+      XCTAssertEqual(path, "Index/../escape.iwa")
+    }
   }
 
   func testReadAPIsAreConsistentBetweenPackageAndSingleFileArchive() throws {
@@ -163,7 +232,8 @@ final class ReferenceCompatibilityTests: XCTestCase {
         domain: "ReferenceCompatibilityTests",
         code: Int(process.terminationStatus),
         userInfo: [
-          NSLocalizedDescriptionKey: "ditto package conversion failed with status \(process.terminationStatus)"
+          NSLocalizedDescriptionKey:
+            "ditto package conversion failed with status \(process.terminationStatus)"
         ]
       )
     }

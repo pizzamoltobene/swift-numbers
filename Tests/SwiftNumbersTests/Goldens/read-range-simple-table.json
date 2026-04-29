@@ -15,14 +15,6 @@
         },
         "row" : 2,
         "stringID" : 8,
-        "style" : {
-          "hasBottomBorder" : false,
-          "hasLeftBorder" : false,
-          "hasRightBorder" : false,
-          "hasTopBorder" : false,
-          "horizontalAlignment" : "natural",
-          "verticalAlignment" : "top"
-        },
         "value" : {
           "kind" : "string",
           "string" : "Answer"
@@ -41,14 +33,6 @@
           "number" : 42
         },
         "row" : 2,
-        "style" : {
-          "hasBottomBorder" : false,
-          "hasLeftBorder" : false,
-          "hasRightBorder" : false,
-          "hasTopBorder" : false,
-          "horizontalAlignment" : "natural",
-          "verticalAlignment" : "top"
-        },
         "value" : {
           "kind" : "number",
           "number" : 42
@@ -70,14 +54,6 @@
         },
         "row" : 3,
         "stringID" : 9,
-        "style" : {
-          "hasBottomBorder" : false,
-          "hasLeftBorder" : false,
-          "hasRightBorder" : false,
-          "hasTopBorder" : false,
-          "horizontalAlignment" : "natural",
-          "verticalAlignment" : "top"
-        },
         "value" : {
           "kind" : "string",
           "string" : "Enabled"
@@ -96,14 +72,6 @@
           "kind" : "bool"
         },
         "row" : 3,
-        "style" : {
-          "hasBottomBorder" : false,
-          "hasLeftBorder" : false,
-          "hasRightBorder" : false,
-          "hasTopBorder" : false,
-          "horizontalAlignment" : "natural",
-          "verticalAlignment" : "top"
-        },
         "value" : {
           "bool" : true,
           "kind" : "bool"

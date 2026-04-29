@@ -148,7 +148,8 @@ final class CLIOutputFormatTests: XCTestCase {
     XCTAssertEqual(tableCount, 2)
     XCTAssertEqual(tables.count, 2)
     XCTAssertEqual(Set(tables.compactMap { $0["sheetName"] as? String }), Set(["Sheet B"]))
-    XCTAssertEqual(Set(tables.compactMap { $0["tableName"] as? String }), Set(["Table 1", "Table B2"]))
+    XCTAssertEqual(
+      Set(tables.compactMap { $0["tableName"] as? String }), Set(["Table 1", "Table B2"]))
   }
 
   func testListTablesJSONIncludesPresentationMetadata() throws {
@@ -209,7 +210,8 @@ final class CLIOutputFormatTests: XCTestCase {
   func testReadCellSupportsJSONFormat() throws {
     let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
     let output = try runCLI(arguments: [
-      "read-cell", fixture.path, "A2", "--sheet", "Sheet 1", "--table", "Table 1", "--format", "json",
+      "read-cell", fixture.path, "A2", "--sheet", "Sheet 1", "--table", "Table 1", "--format",
+      "json",
     ])
     let payload = try XCTUnwrap(output.data(using: .utf8))
     let decoded = try JSONSerialization.jsonObject(with: payload) as? [String: Any]
@@ -541,6 +543,106 @@ final class CLIOutputFormatTests: XCTestCase {
     XCTAssertFalse(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
   }
 
+  func testRefreshAppleNumbersMapSupportsDeterministicSkippedDryRun() throws {
+    let output = try runCLI(arguments: [
+      "refresh-apple-numbers-map",
+      "--skip-oracle",
+      "--dry-run",
+    ])
+
+    XCTAssertTrue(output.contains("# Apple Numbers AppleScript Capability Map"))
+    XCTAssertTrue(output.contains("- Oracle status: skipped"))
+    XCTAssertTrue(output.contains("- Discovery method: skipped by --skip-oracle"))
+    XCTAssertTrue(output.contains("| document-lifecycle | skipped | <not-probed> |"))
+    XCTAssertTrue(output.contains("swift run swiftnumbers refresh-apple-numbers-map"))
+    XCTAssertFalse(output.contains("Generated at"))
+  }
+
+  func testRefreshAppleNumbersMapDocumentsReadProbeRowsFromFixture() throws {
+    let output = try runCLI(arguments: [
+      "refresh-apple-numbers-map",
+      "--skip-oracle",
+      "--dry-run",
+    ])
+    let expected = try String(
+      contentsOf: FixtureLocator.fileFixtureURL(named: "apple-numbers-read-probe-rows-skipped.md"),
+      encoding: .utf8
+    )
+
+    for rawLine in expected.split(separator: "\n") {
+      let line = String(rawLine).trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !line.isEmpty else {
+        continue
+      }
+      XCTAssertTrue(output.contains(line), "Missing read probe row: \(line)")
+    }
+  }
+
+  func testRefreshAppleNumbersMapWritesSkippedMapToRequestedOutput() throws {
+    let outputURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("swift-numbers-apple-map-\(UUID().uuidString).md")
+    defer {
+      try? FileManager.default.removeItem(at: outputURL)
+    }
+
+    let output = try runCLI(arguments: [
+      "refresh-apple-numbers-map",
+      "--skip-oracle",
+      "--output",
+      outputURL.path,
+    ])
+
+    XCTAssertTrue(output.contains("Refreshed \(outputURL.path)"))
+
+    let markdown = try String(contentsOf: outputURL, encoding: .utf8)
+    XCTAssertTrue(markdown.contains("- Oracle status: skipped"))
+    XCTAssertTrue(markdown.contains("- sdef status: not-run"))
+    XCTAssertTrue(markdown.contains("- Timestamp policy: omitted for deterministic diffs"))
+  }
+
+  func testAppleReadParityProbePublicSurfacesResolveSimpleFixture() throws {
+    let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
+    let selector = NumbersDocument.TableSelector(sheetName: "Sheet 1", tableName: "Table 1")
+
+    let sheetSummaries = try NumbersDocument.sheetSummaries(at: fixture)
+    XCTAssertEqual(sheetSummaries.map(\.name), ["Sheet 1"])
+    XCTAssertEqual(sheetSummaries.first?.tableCount, 1)
+
+    let tableSummary = try XCTUnwrap(NumbersDocument.tableSummaries(at: fixture).first)
+    XCTAssertEqual(tableSummary.sheetName, "Sheet 1")
+    XCTAssertEqual(tableSummary.tableName, "Table 1")
+    XCTAssertEqual(tableSummary.rowCount, 4)
+    XCTAssertEqual(tableSummary.columnCount, 3)
+
+    let cellRead = try NumbersDocument.readCell(at: fixture, selector: selector, cell: "B3")
+    let cell = try XCTUnwrap(cellRead.table.readCell("B3"))
+    XCTAssertEqual(cell.kind, .number)
+    XCTAssertEqual(cell.readValue, .number(42))
+    XCTAssertEqual(cell.formatted, "42")
+
+    let rangeRead = try NumbersDocument.readRange(
+      at: fixture,
+      selector: selector,
+      range: CellRange(
+        start: CellAddress(row: 2, column: 0),
+        end: CellAddress(row: 3, column: 1)
+      )
+    )
+    let rangeCells = try rangeRead.table.readCells(in: "A3:B4")
+    XCTAssertEqual(rangeCells.count, 2)
+    XCTAssertEqual(rangeCells.first?.count, 2)
+    XCTAssertEqual(rangeCells.first?.first?.readValue, .string("Answer"))
+
+    let columnRead = try NumbersDocument.readColumn(
+      at: fixture,
+      selector: selector,
+      column: 0,
+      fromRow: 2
+    )
+    let columnCells = try columnRead.table.readColumn(at: 0, from: 2)
+    XCTAssertEqual(columnCells.map(\.readValue), [.string("Answer"), .string("Enabled")])
+  }
+
   func testReadRangeSupportsJSONFormat() throws {
     let fixture = StrictFixtureFactory.fixtureURL(named: "simple-table.numbers")
     let output = try runCLI(arguments: [
@@ -589,7 +691,8 @@ final class CLIOutputFormatTests: XCTestCase {
       "--jsonl",
     ])
 
-    let lines = output
+    let lines =
+      output
       .split(separator: "\n")
       .map(String.init)
       .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -740,7 +843,8 @@ final class CLIOutputFormatTests: XCTestCase {
       "--jsonl",
     ])
 
-    let lines = output
+    let lines =
+      output
       .split(separator: "\n")
       .map(String.init)
       .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -785,7 +889,8 @@ final class CLIOutputFormatTests: XCTestCase {
       "--jsonl",
     ])
 
-    let lines = output
+    let lines =
+      output
       .split(separator: "\n")
       .map(String.init)
       .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -847,7 +952,8 @@ final class CLIOutputFormatTests: XCTestCase {
       "--jsonl",
     ])
 
-    let lines = output
+    let lines =
+      output
       .split(separator: "\n")
       .map(String.init)
       .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -1074,7 +1180,8 @@ final class CLIOutputFormatTests: XCTestCase {
       "--jsonl",
     ])
 
-    let lines = output
+    let lines =
+      output
       .split(separator: "\n")
       .map(String.init)
       .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }

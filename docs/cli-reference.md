@@ -34,6 +34,7 @@ Selector rule used by read/export/import commands:
 - `read-range`
 - `export-csv`
 - `import-csv`
+- `refresh-apple-numbers-map`
 - `dump`
 - `inspect`
 
@@ -454,7 +455,36 @@ swiftnumbers import-csv <file.numbers> <file.csv> (--sheet "<Sheet Name>" | --sh
   - default mode: `MM/dd/yyyy`, `MM-dd-yyyy`, `MM/dd/yyyy HH:mm:ss`, `MM/dd/yyyy HH:mm`, `yyyy-MM-dd`
   - with `--day-first`: `dd/MM/yyyy`, `dd-MM-yyyy`, `dd/MM/yyyy HH:mm:ss`, `dd/MM/yyyy HH:mm`, `yyyy-MM-dd`
 
-## 10) `dump`
+## 10) `refresh-apple-numbers-map`
+
+Refresh the checked-in Apple Numbers AppleScript capability map used by the parity roadmap.
+
+This is a development/planning oracle command only. It discovers Numbers through
+LaunchServices/AppleScript, reads the scripting dictionary with `sdef`, and writes a normalized
+Markdown map with capability summary rows, read-semantics probe rows, and dictionary inventory.
+It does not add a Numbers.app dependency to the SwiftNumbers library.
+
+### Usage
+
+```bash
+swiftnumbers refresh-apple-numbers-map [--output docs/apple-numbers-applescript-capability-map.md] [--dry-run] [--skip-oracle]
+```
+
+### Arguments and options
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `--output` | path | No | `docs/apple-numbers-applescript-capability-map.md` | Markdown map output path |
+| `--dry-run` | flag | No | `false` | Print generated Markdown instead of writing it |
+| `--skip-oracle` | flag | No | `false` | Emit deterministic skipped metadata without probing Numbers.app |
+
+### Output behavior
+
+- Available oracle: records LaunchServices discovery method, `sdef` parse status, capability rows, read-probe rows, and stable dictionary inventory.
+- Unavailable oracle: records deterministic skipped metadata so CI/offline validation can still pass.
+- Timestamp metadata is intentionally omitted to avoid noisy diffs.
+
+## 11) `dump`
 
 Print structural summary and diagnostics.
 
@@ -550,7 +580,7 @@ Pivot-related observability:
 }
 ```
 
-## 11) `inspect`
+## 12) `inspect`
 
 Emit low-level object/container diagnostics in a stable machine-readable schema.
 

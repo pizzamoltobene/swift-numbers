@@ -207,13 +207,12 @@ enum IWASetCellWriter {
             tableName: tableName,
             text: text
           ))
-      case
-        .setHeaderCounts(
-          let sheetName,
-          let tableName,
-          let headerRowCount,
-          let headerColumnCount
-        ):
+      case .setHeaderCounts(
+        let sheetName,
+        let tableName,
+        let headerRowCount,
+        let headerColumnCount
+      ):
         converted.append(
           .setHeaderCounts(
             sheetName: sheetName,
@@ -364,8 +363,7 @@ enum IWASetCellWriter {
 
     for operation in operations {
       switch operation {
-      case
-        .setCell,
+      case .setCell,
         .appendRow,
         .insertRow,
         .appendColumn,
@@ -547,8 +545,7 @@ enum IWASetCellWriter {
           try bucket.serializedData()
       }
 
-      if
-        context.columnHeaderBucketDirty,
+      if context.columnHeaderBucketDirty,
         let columnHeaderBucketObjectID = context.columnHeaderBucketObjectID,
         let columnHeaderBucket = context.columnHeaderBucket
       {
@@ -607,8 +604,7 @@ enum IWASetCellWriter {
         }
       }
 
-      if
-        context.captionStorageDirty,
+      if context.captionStorageDirty,
         let captionStorageObjectID = context.captionStorageObjectID,
         let captionStorageTypeID = context.captionStorageTypeID,
         let captionStorage = context.captionStorage
@@ -870,13 +866,14 @@ enum IWASetCellWriter {
     recordsByObjectID: [UInt64: [IWAObjectRecord]]
   ) -> Set<UInt64> {
     let tableInfoCandidates = candidateTableInfoObjectIDs(
-        forSheetObjectID: sheetObjectID,
-        drawableRefs: drawableRefs,
-        recordsByObjectID: recordsByObjectID
-      )
+      forSheetObjectID: sheetObjectID,
+      drawableRefs: drawableRefs,
+      recordsByObjectID: recordsByObjectID
+    )
     let tableInfoObjectIDs = Set(
       tableInfoCandidates.filter { objectID in
-        recordsByObjectID[objectID]?.contains(where: { $0.typeID == TypeID.tableInfoArchive }) == true
+        recordsByObjectID[objectID]?.contains(where: { $0.typeID == TypeID.tableInfoArchive })
+          == true
       }
     )
     guard !tableInfoObjectIDs.isEmpty else {
@@ -909,7 +906,8 @@ enum IWASetCellWriter {
 
     var linkedTableInfoObjectIDs: Set<UInt64> = []
     for drawableObjectID in nonTableDrawableObjectIDs.sorted() {
-      guard let drawableRecords = recordsByObjectID[drawableObjectID], !drawableRecords.isEmpty else {
+      guard let drawableRecords = recordsByObjectID[drawableObjectID], !drawableRecords.isEmpty
+      else {
         continue
       }
       let referencedObjectIDs = Set(
@@ -919,7 +917,8 @@ enum IWASetCellWriter {
         continue
       }
 
-      for tableInfoObjectID in tableInfoObjectIDs where referencedObjectIDs.contains(tableInfoObjectID) {
+      for tableInfoObjectID in tableInfoObjectIDs
+      where referencedObjectIDs.contains(tableInfoObjectID) {
         linkedTableInfoObjectIDs.insert(tableInfoObjectID)
       }
       for tableModelObjectID in referencedObjectIDs {
@@ -957,7 +956,8 @@ enum IWASetCellWriter {
     }
 
     // Include any additional tables linked by parent relationship but absent from drawableInfos.
-    let tableInfoObjectIDs = recordsByObjectID
+    let tableInfoObjectIDs =
+      recordsByObjectID
       .filter { _, records in records.contains(where: { $0.typeID == TypeID.tableInfoArchive }) }
       .map(\.key)
       .sorted()
@@ -1276,7 +1276,8 @@ enum IWASetCellWriter {
     let tileRefs = dataStore.tiles.tiles.compactMap {
       $0.tile.identifier > 0 ? $0.tile.identifier : nil
     }
-    let columnHeaderRefs = dataStore.columnHeaders.identifier > 0
+    let columnHeaderRefs =
+      dataStore.columnHeaders.identifier > 0
       ? [dataStore.columnHeaders.identifier] : []
     let stringTableDataStoreRefs =
       dataStore.stringTable.identifier > 0 ? [dataStore.stringTable.identifier] : []
@@ -1451,12 +1452,11 @@ enum IWASetCellWriter {
       return (nil, nil, nil)
     }
 
-    if
-      let directStorage: TSWP_StorageArchive = decodeAnyType(
-        objectID: captionObjectID,
-        typeIDs: [TypeID.wpStorageArchive, TypeID.wpStorageArchiveAlt],
-        recordsByObjectID: recordsByObjectID
-      ),
+    if let directStorage: TSWP_StorageArchive = decodeAnyType(
+      objectID: captionObjectID,
+      typeIDs: [TypeID.wpStorageArchive, TypeID.wpStorageArchiveAlt],
+      recordsByObjectID: recordsByObjectID
+    ),
       let storageRecord = recordsByObjectID[captionObjectID]?.first(where: { record in
         record.typeID == TypeID.wpStorageArchive || record.typeID == TypeID.wpStorageArchiveAlt
       })
@@ -1464,12 +1464,11 @@ enum IWASetCellWriter {
       return (captionObjectID, storageRecord.typeID, directStorage)
     }
 
-    if
-      let captionInfo: TSWP_CaptionInfoArchiveProxy = decodeMessage(
-        objectID: captionObjectID,
-        typeID: TypeID.captionInfoArchive,
-        recordsByObjectID: recordsByObjectID
-      ),
+    if let captionInfo: TSWP_CaptionInfoArchiveProxy = decodeMessage(
+      objectID: captionObjectID,
+      typeID: TypeID.captionInfoArchive,
+      recordsByObjectID: recordsByObjectID
+    ),
       captionInfo.hasSuper,
       captionInfo.super.hasOwnedStorage
     {
@@ -1478,12 +1477,11 @@ enum IWASetCellWriter {
         return (nil, nil, nil)
       }
 
-      if
-        let storage: TSWP_StorageArchive = decodeAnyType(
-          objectID: storageObjectID,
-          typeIDs: [TypeID.wpStorageArchive, TypeID.wpStorageArchiveAlt],
-          recordsByObjectID: recordsByObjectID
-        ),
+      if let storage: TSWP_StorageArchive = decodeAnyType(
+        objectID: storageObjectID,
+        typeIDs: [TypeID.wpStorageArchive, TypeID.wpStorageArchiveAlt],
+        recordsByObjectID: recordsByObjectID
+      ),
         let storageRecord = recordsByObjectID[storageObjectID]?.first(where: { record in
           record.typeID == TypeID.wpStorageArchive || record.typeID == TypeID.wpStorageArchiveAlt
         })
@@ -1492,7 +1490,9 @@ enum IWASetCellWriter {
       }
     }
 
-    if recordsByObjectID[captionObjectID]?.contains(where: { $0.typeID == TypeID.standinCaptionArchive })
+    if recordsByObjectID[captionObjectID]?.contains(where: {
+      $0.typeID == TypeID.standinCaptionArchive
+    })
       == true
     {
       return (nil, nil, nil)
@@ -1531,8 +1531,9 @@ enum IWASetCellWriter {
     origin.packedData = UInt32((range.startColumn << 16) | (range.startRow & 0xFFFF))
 
     var size = TST_TableSize()
-    size.packedData = UInt32(((range.endColumn - range.startColumn + 1) << 16)
-      | (range.endRow - range.startRow + 1))
+    size.packedData = UInt32(
+      ((range.endColumn - range.startColumn + 1) << 16)
+        | (range.endRow - range.startRow + 1))
 
     var encoded = TST_CellRange()
     encoded.origin = origin
@@ -1782,13 +1783,11 @@ enum IWASetCellWriter {
     recordsByObjectID: [UInt64: [IWAObjectRecord]]
   ) -> MessageType? {
     for typeID in typeIDs {
-      if
-        let decoded: MessageType = decodeMessage(
-          objectID: objectID,
-          typeID: typeID,
-          recordsByObjectID: recordsByObjectID
-        )
-      {
+      if let decoded: MessageType = decodeMessage(
+        objectID: objectID,
+        typeID: typeID,
+        recordsByObjectID: recordsByObjectID
+      ) {
         return decoded
       }
     }
@@ -2234,7 +2233,8 @@ enum IWASetCellWriter {
 
     removeRowHeader(rowIndex: rowIndex, context: &context)
 
-    let updatedMergeRanges = context.mergeRegionMap.cellRange.compactMap { encoded -> TST_CellRange? in
+    let updatedMergeRanges = context.mergeRegionMap.cellRange.compactMap {
+      encoded -> TST_CellRange? in
       guard let decoded = decodeMergeRange(encoded),
         let adjusted = mergeRangeByDeletingRow(decoded, rowIndex: rowIndex)
       else {
@@ -2265,7 +2265,8 @@ enum IWASetCellWriter {
         "IWA writer: tile object \(removedLocation.tileObjectID) not found for delete row"
       )
     }
-    guard removedLocation.rowInfoIndex >= 0, removedLocation.rowInfoIndex < tile.rowInfos.count else {
+    guard removedLocation.rowInfoIndex >= 0, removedLocation.rowInfoIndex < tile.rowInfos.count
+    else {
       throw EditableNumbersError.nativeWriteFailed(
         "IWA writer: invalid row-info index \(removedLocation.rowInfoIndex) for delete row"
       )
@@ -2326,7 +2327,8 @@ enum IWASetCellWriter {
 
     context.columnCount -= 1
 
-    let updatedMergeRanges = context.mergeRegionMap.cellRange.compactMap { encoded -> TST_CellRange? in
+    let updatedMergeRanges = context.mergeRegionMap.cellRange.compactMap {
+      encoded -> TST_CellRange? in
       guard let decoded = decodeMergeRange(encoded),
         let adjusted = mergeRangeByDeletingColumn(decoded, columnIndex: columnIndex)
       else {
@@ -2507,7 +2509,8 @@ enum IWASetCellWriter {
   private static func markTableModelDimensionsDirty(context: inout TableContext) {
     context.tableModel.numberOfRows = UInt32(clamping: max(context.rowCount, 0))
     context.tableModel.numberOfColumns = UInt32(clamping: max(context.columnCount, 0))
-    let clampedHeaderRows = min(max(Int(context.tableModel.numberOfHeaderRows), 0), context.rowCount)
+    let clampedHeaderRows = min(
+      max(Int(context.tableModel.numberOfHeaderRows), 0), context.rowCount)
     let clampedHeaderColumns = min(
       max(Int(context.tableModel.numberOfHeaderColumns), 0),
       context.columnCount
