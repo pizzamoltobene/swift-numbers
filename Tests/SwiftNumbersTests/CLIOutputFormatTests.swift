@@ -578,6 +578,27 @@ final class CLIOutputFormatTests: XCTestCase {
     }
   }
 
+  func testRefreshAppleNumbersMapDocumentsMutationProbeRowsFromFixture() throws {
+    let output = try runCLI(arguments: [
+      "refresh-apple-numbers-map",
+      "--skip-oracle",
+      "--dry-run",
+    ])
+    let expected = try String(
+      contentsOf: FixtureLocator.fileFixtureURL(
+        named: "apple-numbers-mutation-probe-rows-skipped.md"),
+      encoding: .utf8
+    )
+
+    for rawLine in expected.split(separator: "\n") {
+      let line = String(rawLine).trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !line.isEmpty else {
+        continue
+      }
+      XCTAssertTrue(output.contains(line), "Missing mutation probe row: \(line)")
+    }
+  }
+
   func testRefreshAppleNumbersMapWritesSkippedMapToRequestedOutput() throws {
     let outputURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("swift-numbers-apple-map-\(UUID().uuidString).md")

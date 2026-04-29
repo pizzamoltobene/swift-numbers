@@ -115,7 +115,7 @@ try editable.save(to: outputURL)
 | Document registries | `registerStyle`, `registeredStyles`, `registerCustomFormat`, `registeredCustomFormats` | Supported | Reusable style/custom-format registry APIs |
 | CLI inspection | `list-sheets`, `list-tables`, `list-formulas`, `read-cell`, `read-column`, `read-table`, `read-range`, `dump`, `inspect` | Supported | `text/json`, `--jsonl` on column/table/range reads, parity switches `--formulas` / `--formatting` on read-column/read-table/read-range, low-level inspection (`--redact`, `--compact`) |
 | CLI data transfer | `export-csv`, `import-csv` | Supported | Sheet/table selectors, header mode, date parsing |
-| CLI parity tooling | `refresh-apple-numbers-map` | Supported | LaunchServices/AppleScript discovery plus `sdef` dictionary parsing; generated read-probe rows for sheet/table/range/row/column/cell semantics; deterministic skipped output for CI/offline runs |
+| CLI parity tooling | `refresh-apple-numbers-map` | Supported | LaunchServices/AppleScript discovery plus `sdef` dictionary parsing; generated read/mutation probe rows for sheet/table/range/row/column/cell and safe-write parity semantics; deterministic skipped output for CI/offline runs |
 | Safety guards | Grouped/pivot-linked mutation protection (`groupedTableMutationUnsupported`, `pivotLinkedTableMutationUnsupported`) + formula write safety validation | Supported | Unsafe structural writes are blocked with clear errors; grouped delete diagnostics include operation index context; pivot-linked guard errors include linked object identifiers for triage; unsafe formula references (sheet-qualified/self-referential single-cell or range references) are rejected deterministically |
 
 ### On Roadmap

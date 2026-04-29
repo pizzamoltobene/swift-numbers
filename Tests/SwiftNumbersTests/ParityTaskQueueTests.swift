@@ -78,6 +78,32 @@ final class ParityTaskQueueTests: XCTestCase {
     XCTAssertEqual(firstFields[9], "missing")
   }
 
+  func testParityQueueUsesAppleScriptMutationProbeRowsForMutationTasks() throws {
+    let output = try runParityQueueScript(arguments: [
+      "--roadmap",
+      FixtureLocator.fileFixtureURL(named: "autopilot-apple-parity-roadmap-sim.md").path,
+      "--code-map",
+      FixtureLocator.fileFixtureURL(named: "autopilot-parity-map-sim.md").path,
+      "--apple-map",
+      FixtureLocator.fileFixtureURL(named: "autopilot-apple-mutation-probe-map-sim.md").path,
+      "--max",
+      "10",
+    ])
+
+    let lines =
+      output
+      .split(separator: "\n")
+      .map(String.init)
+    XCTAssertEqual(lines.first, "NEXT_TASK=SN-OSA04")
+
+    let firstFields = lines[2].split(separator: "|").map(String.init)
+    XCTAssertEqual(firstFields[0], "SN-OSA04")
+    XCTAssertEqual(firstFields[3], "write")
+    XCTAssertEqual(firstFields[4], "row-mutation-operation")
+    XCTAssertEqual(firstFields[8], "apple")
+    XCTAssertEqual(firstFields[9], "missing")
+  }
+
   private func runParityQueueScript(arguments: [String]) throws -> String {
     let process = Process()
     process.currentDirectoryURL = FixtureLocator.repoRoot

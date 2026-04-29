@@ -477,7 +477,9 @@ public struct NumbersContainer: Sendable {
     }
   }
 
-  private static func sanitizeMetadataReplacementFiles(_ files: [String: Data]) throws -> [String: Data] {
+  private static func sanitizeMetadataReplacementFiles(
+    _ files: [String: Data]
+  ) throws -> [String: Data] {
     if files.isEmpty {
       return files
     }

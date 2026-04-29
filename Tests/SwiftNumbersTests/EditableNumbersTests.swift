@@ -1804,8 +1804,7 @@ final class EditableNumbersDocumentTests: XCTestCase {
     )
   }
 
-  func testPivotLinkedDeleteColumnMutationUnsupportedErrorMessageIncludesColumnIndexAndSortedIDs()
-  {
+  func testPivotLinkedDeleteColumnMutationUnsupportedErrorMessageIncludesColumnIndexAndSortedIDs() {
     let error = EditableNumbersError.pivotLinkedTableMutationUnsupported(
       sheet: "Sheet 1",
       table: "Table 1",

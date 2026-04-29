@@ -1226,7 +1226,7 @@ public enum IWARealDocumentReader {
       }
 
       if let requestedSheetIndex = selector.sheetIndex,
-        (requestedSheetIndex < 0 || requestedSheetIndex >= document.sheets.count)
+        requestedSheetIndex < 0 || requestedSheetIndex >= document.sheets.count
       {
         addDiagnostic(
           .noSheetsResolved,
@@ -1265,7 +1265,7 @@ public enum IWARealDocumentReader {
         )
 
         if let requestedTableIndex = selector.tableIndex,
-          (requestedTableIndex < 0 || requestedTableIndex >= tableInfoObjectIDs.count)
+          requestedTableIndex < 0 || requestedTableIndex >= tableInfoObjectIDs.count
         {
           addDiagnostic(
             .noSheetsResolved,
@@ -2823,7 +2823,7 @@ public enum IWARealDocumentReader {
       var richTextCache: [Int32: IWAResolvedRichText?] = [:]
 
       for row in 0..<min(rowCount, rowStorageMap.count) {
-        if let cellWindow, (row < cellWindow.startRow || row > cellWindow.endRow) {
+        if let cellWindow, row < cellWindow.startRow || row > cellWindow.endRow {
           continue
         }
         guard let storageIndex = rowStorageMap[row], storageIndex >= 0,

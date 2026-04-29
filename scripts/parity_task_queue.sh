@@ -236,10 +236,13 @@ if [[ -n "$APPLE_MAP_PATH" ]]; then
       if (index(lower, "formula") > 0) {
         return "formula"
       }
+      if (index(lower, "mutation") > 0 || index(lower, "lifecycle") > 0 || index(lower, "write") > 0) {
+        return "write"
+      }
       if (index(lower, "pivot") > 0 || index(lower, "chart") > 0 || index(lower, "media") > 0 || index(lower, "shape") > 0) {
         return "pivot"
       }
-      if (index(lower, "mutation") > 0 || index(lower, "lifecycle") > 0 || index(lower, "formatting") > 0 || index(lower, "style") > 0 || index(lower, "write") > 0) {
+      if (index(lower, "formatting") > 0 || index(lower, "style") > 0) {
         return "write"
       }
       if (index(lower, "read") > 0 || index(lower, "sheet") > 0 || index(lower, "table") > 0 || index(lower, "cell") > 0 || index(lower, "range") > 0) {
@@ -294,7 +297,7 @@ if [[ -n "$APPLE_MAP_PATH" ]]; then
       appleEvidence = trim($4)
       planningTarget = trim($5)
 
-      if (area == "" || area == "Area" || area ~ /^---/) {
+      if (area == "" || area == "Area" || area == "Probe" || area ~ /^---/) {
         next
       }
       if (appleStatus == "skipped") {

@@ -62,7 +62,7 @@ Core internal modules:
 | Open single-file archive `.numbers` | Supported | Reads embedded `Index`/`Index.zip` |
 | Read sheets/tables/cells | Supported | Real-read first with deterministic merged table traversal across package/single-file archives; metadata fallback as needed |
 | Read merge ranges | Supported | Exposed via `Table.metadata.mergeRanges` |
-| CLI `dump`, `inspect`, `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, `read-range`, `export-csv`, `import-csv`, and `refresh-apple-numbers-map` | Supported | Text/JSON modes for introspection commands (`read-column/read-table/read-range` also support `--jsonl`); `inspect` supports `--redact/--compact`; CSV export/import via `export-csv` / `import-csv`; AppleScript parity map refresh via `refresh-apple-numbers-map`, including read-probe rows for sheet/table/range/row/column/cell semantics |
+| CLI `dump`, `inspect`, `list-sheets`, `list-tables`, `list-formulas`, `read-column`, `read-table`, `read-cell`, `read-range`, `export-csv`, `import-csv`, and `refresh-apple-numbers-map` | Supported | Text/JSON modes for introspection commands (`read-column/read-table/read-range` also support `--jsonl`); `inspect` supports `--redact/--compact`; CSV export/import via `export-csv` / `import-csv`; AppleScript parity map refresh via `refresh-apple-numbers-map`, including read/mutation probe rows for sheet/table/range/row/column/cell and safe-write parity semantics |
 | Edit cell values | Supported | `string`, `formula`, `number`, `bool`, `empty`, `date` |
 | Append/insert rows | Supported | Low-level IWA path; grouped-table unsafe structural edits fail fast with deterministic guidance |
 | Append columns | Supported | Low-level IWA path; grouped-table unsafe structural edits fail fast with deterministic guidance |
@@ -1699,8 +1699,9 @@ swiftnumbers refresh-apple-numbers-map [--output docs/apple-numbers-applescript-
 
 - Discovers Numbers through LaunchServices/AppleScript, never by assuming `/Applications/Numbers.app`.
 - Reads the scripting dictionary with Apple `sdef` when Numbers.app is available.
-- Normalizes dictionary suites, commands, classes, capability rows, and read-semantics probe rows into stable Markdown.
+- Normalizes dictionary suites, commands, classes, capability rows, and read/mutation-semantics probe rows into stable Markdown.
 - Read probe rows map AppleScript sheet/table/range/row/column/cell evidence to the matching SwiftNumbers public read surfaces.
+- Mutation probe rows map AppleScript document/sheet/table/row/column/cell-range operations to supported SwiftNumbers APIs and safe-write backlog gaps.
 - Omits timestamps and redacts local app paths to avoid noisy or machine-specific diffs.
 - Does not add a Numbers.app dependency to the shipped SwiftNumbers library.
 

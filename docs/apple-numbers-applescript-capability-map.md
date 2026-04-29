@@ -43,6 +43,21 @@ They are generated from the local Numbers scripting dictionary or deterministic 
 | cell-value-read | available | `cell`, `cell.value`, `cell.formatted value` | `NumbersDocument.readCell(...)`, `swiftnumbers read-cell` |
 | table-selection-range-read | available | `table`, `table.selection range`, `table.cell range` | `TableModel.usedRange`, table/range diagnostics |
 
+## Mutation Semantics Probe Rows
+
+These rows keep AppleScript/OSAScript document, sheet, table, row, and column mutation semantics visible to the roadmap conveyor.
+They map Apple-visible write operations to SwiftNumbers supported APIs or safe-write backlog gaps.
+
+| Probe | AppleScript status | Evidence | SwiftNumbers parity target |
+|---|---|---|---|
+| document-export-operation | available | `export` | safe export is CLI-level (`export-csv`); native document export remains a roadmap gap |
+| sheet-create-delete-operation | available | `make`, `delete`, `sheet` | `EditableNumbersDocument.addSheet`; sheet delete/rename parity remains a backlog gap |
+| table-create-delete-operation | available | `make`, `delete`, `table` | `EditableSheet.addTable`; table delete/duplicate parity remains a backlog gap |
+| row-mutation-operation | available | `add row above`, `add row below`, `delete`, `row` | `appendRow`, `insertRow`, `deleteRow` with grouped/pivot-linked safety guards |
+| column-mutation-operation | available | `add column before`, `add column after`, `delete`, `column` | `appendColumn`, `deleteColumn`; insert-column parity remains a backlog gap |
+| cell-range-clear-set-operation | available | `clear`, `set`, `cell`, `range` | `setValue`; range clear/fill parity remains a safe-write backlog gap |
+| table-structure-transform-operation | available | `merge`, `unmerge`, `sort`, `transpose` | `mergeCells`, `unmergeCells`; sort/transpose parity remains a backlog gap |
+
 ## Scripting Dictionary Inventory
 
 - Suites: 4

@@ -207,6 +207,23 @@ private struct AppleNumbersCapabilityMapRefresher {
     }
 
     lines.append("")
+    lines.append("## Mutation Semantics Probe Rows")
+    lines.append("")
+    lines.append(
+      "These rows keep AppleScript/OSAScript document, sheet, table, row, and column mutation semantics visible to the roadmap conveyor."
+    )
+    lines.append(
+      "They map Apple-visible write operations to SwiftNumbers supported APIs or safe-write backlog gaps."
+    )
+    lines.append("")
+    lines.append("| Probe | AppleScript status | Evidence | SwiftNumbers parity target |")
+    lines.append("|---|---|---|---|")
+
+    for row in mutationProbeRows(from: dictionary, oracleStatus: oracleStatus) {
+      lines.append("| \(row.probe) | \(row.status) | \(row.evidence) | \(row.swiftTarget) |")
+    }
+
+    lines.append("")
     lines.append("## Scripting Dictionary Inventory")
     lines.append("")
     lines.append("- Suites: \(dictionary.suites.count)")
@@ -441,6 +458,102 @@ private struct AppleNumbersCapabilityMapRefresher {
       )
     }
   }
+
+  private func mutationProbeRows(
+    from dictionary: AppleNumbersSDEFDictionary,
+    oracleStatus: String
+  ) -> [AppleNumbersMutationProbeRow] {
+    let definitions = [
+      AppleNumbersMutationProbeDefinition(
+        probe: "document-export-operation",
+        requirements: [
+          .command("export")
+        ],
+        swiftTarget:
+          "safe export is CLI-level (`export-csv`); native document export remains a roadmap gap"
+      ),
+      AppleNumbersMutationProbeDefinition(
+        probe: "sheet-create-delete-operation",
+        requirements: [
+          .command("make"),
+          .command("delete"),
+          .class("sheet"),
+        ],
+        swiftTarget:
+          "`EditableNumbersDocument.addSheet`; sheet delete/rename parity remains a backlog gap"
+      ),
+      AppleNumbersMutationProbeDefinition(
+        probe: "table-create-delete-operation",
+        requirements: [
+          .command("make"),
+          .command("delete"),
+          .class("table"),
+        ],
+        swiftTarget: "`EditableSheet.addTable`; table delete/duplicate parity remains a backlog gap"
+      ),
+      AppleNumbersMutationProbeDefinition(
+        probe: "row-mutation-operation",
+        requirements: [
+          .command("add row above"),
+          .command("add row below"),
+          .command("delete"),
+          .class("row"),
+        ],
+        swiftTarget: "`appendRow`, `insertRow`, `deleteRow` with grouped/pivot-linked safety guards"
+      ),
+      AppleNumbersMutationProbeDefinition(
+        probe: "column-mutation-operation",
+        requirements: [
+          .command("add column before"),
+          .command("add column after"),
+          .command("delete"),
+          .class("column"),
+        ],
+        swiftTarget: "`appendColumn`, `deleteColumn`; insert-column parity remains a backlog gap"
+      ),
+      AppleNumbersMutationProbeDefinition(
+        probe: "cell-range-clear-set-operation",
+        requirements: [
+          .command("clear"),
+          .command("set"),
+          .class("cell"),
+          .class("range"),
+        ],
+        swiftTarget: "`setValue`; range clear/fill parity remains a safe-write backlog gap"
+      ),
+      AppleNumbersMutationProbeDefinition(
+        probe: "table-structure-transform-operation",
+        requirements: [
+          .command("merge"),
+          .command("unmerge"),
+          .command("sort"),
+          .command("transpose"),
+        ],
+        swiftTarget: "`mergeCells`, `unmergeCells`; sort/transpose parity remains a backlog gap"
+      ),
+    ]
+
+    return definitions.map { definition in
+      guard oracleStatus != "skipped" else {
+        return AppleNumbersMutationProbeRow(
+          probe: definition.probe,
+          status: "skipped",
+          evidence: "<not-probed>",
+          swiftTarget: definition.swiftTarget
+        )
+      }
+
+      let missing = definition.requirements.filter { !dictionary.satisfies($0) }
+      return AppleNumbersMutationProbeRow(
+        probe: definition.probe,
+        status: missing.isEmpty ? "available" : "missing",
+        evidence: missing.isEmpty
+          ? definition.requirements.map { "`\($0.evidence)`" }.joined(separator: ", ")
+          : missing.map { "missing `\($0.evidence)`" }.joined(separator: ", "),
+        swiftTarget: definition.swiftTarget
+      )
+    }
+  }
 }
 
 private struct AppleToolResult {
@@ -469,17 +582,26 @@ private struct AppleNumbersCapabilityRow {
 
 private struct AppleNumbersReadProbeDefinition {
   let probe: String
-  let requirements: [AppleNumbersReadProbeRequirement]
+  let requirements: [AppleNumbersSDEFRequirement]
   let swiftSurface: String
 }
 
-private enum AppleNumbersReadProbeRequirement {
+private struct AppleNumbersMutationProbeDefinition {
+  let probe: String
+  let requirements: [AppleNumbersSDEFRequirement]
+  let swiftTarget: String
+}
+
+private enum AppleNumbersSDEFRequirement {
+  case command(String)
   case `class`(String)
   case property(className: String, property: String)
   case element(className: String, element: String)
 
   var evidence: String {
     switch self {
+    case .command(let name):
+      return name
     case .class(let name):
       return name
     case .property(let className, let property):
@@ -495,6 +617,13 @@ private struct AppleNumbersReadProbeRow {
   let status: String
   let evidence: String
   let swiftSurface: String
+}
+
+private struct AppleNumbersMutationProbeRow {
+  let probe: String
+  let status: String
+  let evidence: String
+  let swiftTarget: String
 }
 
 private struct AppleNumbersSDEFDictionary {
@@ -535,8 +664,10 @@ private struct AppleNumbersSDEFDictionary {
     return terms.sorted()
   }
 
-  func satisfies(_ requirement: AppleNumbersReadProbeRequirement) -> Bool {
+  func satisfies(_ requirement: AppleNumbersSDEFRequirement) -> Bool {
     switch requirement {
+    case .command(let name):
+      return commands.contains(name)
     case .class(let name):
       return classNamed(name) != nil
     case .property(let className, let property):

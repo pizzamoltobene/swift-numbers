@@ -189,7 +189,10 @@ public enum IWAInventoryBuilder {
     for blob in blobs {
       if let parsed = try parseIWAArchiveBlob(blob, includePayloadForType: includePayloadForType) {
         records.append(contentsOf: parsed)
-      } else if let parsed = try parseCustomBlob(blob, includePayloadForType: includePayloadForType) {
+      } else if let parsed = try parseCustomBlob(
+        blob,
+        includePayloadForType: includePayloadForType
+      ) {
         records.append(contentsOf: parsed)
       } else {
         unparsed.append(blob.path)
@@ -199,11 +202,15 @@ public enum IWAInventoryBuilder {
     return IWAInventory(records: records, unparsedBlobPaths: unparsed.sorted())
   }
 
-  public static func buildSheetSummaryInventory(from blobs: [ContainerBlob]) throws -> IWAInventory {
+  public static func buildSheetSummaryInventory(
+    from blobs: [ContainerBlob]
+  ) throws -> IWAInventory {
     try build(from: blobs, includingPayloadForTypeIDs: sheetSummaryPayloadTypeIDs)
   }
 
-  public static func buildTableSummaryInventory(from blobs: [ContainerBlob]) throws -> IWAInventory {
+  public static func buildTableSummaryInventory(
+    from blobs: [ContainerBlob]
+  ) throws -> IWAInventory {
     try build(from: blobs, includingPayloadForTypeIDs: tableSummaryPayloadTypeIDs)
   }
 

@@ -420,7 +420,7 @@ AppleScript/OSAScript is a planning and verification oracle only; shipped `Swift
   - Definition of done: local probes capture Apple-visible sheet, table, range, row, column, and cell read semantics into stable capability rows.
   - Validation: probe fixtures document expected rows and Swift tests cover matching public read surfaces.
 
-- [TODO] `SN-OSA04` Add document, sheet, table, row, and column mutation parity probes from AppleScript.
+- [DONE] (2026-04-29) `SN-OSA04` Add document, sheet, table, row, and column mutation parity probes from AppleScript.
   - Definition of done: local probes capture Apple-visible mutation operations and map each supported/unsupported operation to a SwiftNumbers API gap.
   - Validation: mutation capability rows generate roadmap candidates for missing safe-write behavior.
 

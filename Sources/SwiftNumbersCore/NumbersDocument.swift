@@ -773,7 +773,11 @@ public struct NumbersDocument: Sendable {
     return lines.joined(separator: "\n") + "\n"
   }
 
-  private static func csvCellString(readCell: ReadCell, table: Table, mode: CSVExportMode) -> String {
+  private static func csvCellString(
+    readCell: ReadCell,
+    table: Table,
+    mode: CSVExportMode
+  ) -> String {
     switch mode {
     case .value:
       return csvCellString(from: readCell.readValue)

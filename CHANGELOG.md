@@ -6,7 +6,9 @@ All notable changes to this project are documented in this file.
 
 ### Summary
 
-- Pending.
+- Added AppleScript mutation parity probe rows to the generated capability map, covering document,
+  sheet, table, row, column, cell/range, and table transform write semantics with deterministic
+  mapping to supported SwiftNumbers APIs and backlog gaps.
 
 ### Breaking Changes
 

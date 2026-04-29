@@ -461,7 +461,8 @@ Refresh the checked-in Apple Numbers AppleScript capability map used by the pari
 
 This is a development/planning oracle command only. It discovers Numbers through
 LaunchServices/AppleScript, reads the scripting dictionary with `sdef`, and writes a normalized
-Markdown map with capability summary rows, read-semantics probe rows, and dictionary inventory.
+Markdown map with capability summary rows, read/mutation-semantics probe rows, and dictionary
+inventory.
 It does not add a Numbers.app dependency to the SwiftNumbers library.
 
 ### Usage
@@ -480,7 +481,7 @@ swiftnumbers refresh-apple-numbers-map [--output docs/apple-numbers-applescript-
 
 ### Output behavior
 
-- Available oracle: records LaunchServices discovery method, `sdef` parse status, capability rows, read-probe rows, and stable dictionary inventory.
+- Available oracle: records LaunchServices discovery method, `sdef` parse status, capability rows, read/mutation probe rows, and stable dictionary inventory.
 - Unavailable oracle: records deterministic skipped metadata so CI/offline validation can still pass.
 - Timestamp metadata is intentionally omitted to avoid noisy diffs.
 
