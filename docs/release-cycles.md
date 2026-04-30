@@ -20,3 +20,4 @@ This file tracks successful autonomous release cycles.
 | `v0.3.12` | 2026-04-28 | `3fe637e` | pass | Official GitHub release published. |
 | `v0.4.1` | 2026-04-29 | `3db514b` | pass | Official GitHub release published. |
 | `v0.4.2` | 2026-04-29 | `99beb33` | pass | Official GitHub release published. |
+| `v0.4.3` | 2026-04-30 | `0a3ce15` | pass | Official GitHub release published. |
