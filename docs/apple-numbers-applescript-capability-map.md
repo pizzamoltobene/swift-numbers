@@ -58,6 +58,34 @@ They map Apple-visible write operations to SwiftNumbers supported APIs or safe-w
 | cell-range-clear-set-operation | available | `clear`, `set`, `cell`, `range` | `setValue`; range clear/fill parity remains a safe-write backlog gap |
 | table-structure-transform-operation | available | `merge`, `unmerge`, `sort`, `transpose` | `mergeCells`, `unmergeCells`; sort/transpose parity remains a backlog gap |
 
+## Formula Semantics Probe Rows
+
+These rows keep AppleScript/OSAScript formula text, result, range-reference, function-call, and write semantics visible to the roadmap conveyor.
+They map Apple-visible formula operations to SwiftNumbers formula read APIs and guarded formula-write behavior.
+
+| Probe | AppleScript status | Evidence | SwiftNumbers parity target |
+|---|---|---|---|
+| formula-text-read | available | `cell`, `cell.formula` | `TableModel.formula(...)`, `TableModel.formulas()`, `swiftnumbers list-formulas` |
+| formula-result-read | available | `cell`, `cell.formula`, `cell.value`, `cell.formatted value` | `TableModel.formulaResult(...)`, `NumbersDocument.readCell(...)` formula result payloads |
+| formula-range-reference-read | available | `cell.formula`, `range`, `range.cell` | formula AST/range-reference rendering and `--formulas` parity output |
+| formula-function-call-read | available | `cell.formula`, `table`, `table.cell` | formula AST function-call rendering with deterministic fallback summaries |
+| formula-set-operation | available | `set`, `cell`, `cell.formula` | `EditableTable.setValue(.formula(...))` with strict unsafe-reference guards |
+| formula-clear-operation | available | `clear`, `cell`, `cell.formula` | formula clear/write parity; native range clear remains a safe-write backlog gap |
+
+## Advanced Object Discovery Probe Rows
+
+These rows keep AppleScript/OSAScript chart, pivot, style, media, shape, and text-object surfaces visible to the roadmap conveyor.
+Each row classifies the current SwiftNumbers stance as supported, safe-read-only, safe-write-blocked, or unsupported.
+
+| Probe | AppleScript status | Evidence | SwiftNumbers classification | SwiftNumbers parity target |
+|---|---|---|---|---|
+| chart-object-discovery | available | `chart` | safe-read-only | chart inventory and read-only diagnostics; native chart writes remain unsupported |
+| pivot-object-discovery | missing | missing `pivot` | safe-write-blocked | pivot-like object diagnostics and write blocking for linked analytical drawables |
+| range-formatting-style-discovery | available | `range`, `range.format`, `range.font name`, `range.font size`, `range.background color`, `range.text color`, `range.alignment`, `range.vertical alignment` | safe-read-only | format/style/rich-text read surfaces and guarded style-write backlog gaps |
+| media-object-discovery | available | `image`, `movie`, `audio clip` | safe-read-only | media object inventory with unsupported-object diagnostics |
+| shape-line-text-object-discovery | available | `shape`, `line`, `text item` | safe-read-only | shape/line/text object inventory and no unsafe native mutation support |
+| rich-text-style-discovery | available | `rich text`, `rich text.color`, `rich text.font`, `rich text.size` | safe-read-only | rich text style inspection and deterministic display-value parity |
+
 ## Scripting Dictionary Inventory
 
 - Suites: 4

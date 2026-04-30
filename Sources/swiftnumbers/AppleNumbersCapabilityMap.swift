@@ -224,6 +224,44 @@ private struct AppleNumbersCapabilityMapRefresher {
     }
 
     lines.append("")
+    lines.append("## Formula Semantics Probe Rows")
+    lines.append("")
+    lines.append(
+      "These rows keep AppleScript/OSAScript formula text, result, range-reference, function-call, and write semantics visible to the roadmap conveyor."
+    )
+    lines.append(
+      "They map Apple-visible formula operations to SwiftNumbers formula read APIs and guarded formula-write behavior."
+    )
+    lines.append("")
+    lines.append("| Probe | AppleScript status | Evidence | SwiftNumbers parity target |")
+    lines.append("|---|---|---|---|")
+
+    for row in formulaProbeRows(from: dictionary, oracleStatus: oracleStatus) {
+      lines.append("| \(row.probe) | \(row.status) | \(row.evidence) | \(row.swiftTarget) |")
+    }
+
+    lines.append("")
+    lines.append("## Advanced Object Discovery Probe Rows")
+    lines.append("")
+    lines.append(
+      "These rows keep AppleScript/OSAScript chart, pivot, style, media, shape, and text-object surfaces visible to the roadmap conveyor."
+    )
+    lines.append(
+      "Each row classifies the current SwiftNumbers stance as supported, safe-read-only, safe-write-blocked, or unsupported."
+    )
+    lines.append("")
+    lines.append(
+      "| Probe | AppleScript status | Evidence | SwiftNumbers classification | SwiftNumbers parity target |"
+    )
+    lines.append("|---|---|---|---|---|")
+
+    for row in advancedObjectProbeRows(from: dictionary, oracleStatus: oracleStatus) {
+      lines.append(
+        "| \(row.probe) | \(row.status) | \(row.evidence) | \(row.classification) | \(row.swiftTarget) |"
+      )
+    }
+
+    lines.append("")
     lines.append("## Scripting Dictionary Inventory")
     lines.append("")
     lines.append("- Suites: \(dictionary.suites.count)")
@@ -554,6 +592,187 @@ private struct AppleNumbersCapabilityMapRefresher {
       )
     }
   }
+
+  private func formulaProbeRows(
+    from dictionary: AppleNumbersSDEFDictionary,
+    oracleStatus: String
+  ) -> [AppleNumbersFormulaProbeRow] {
+    let definitions = [
+      AppleNumbersFormulaProbeDefinition(
+        probe: "formula-text-read",
+        requirements: [
+          .class("cell"),
+          .property(className: "cell", property: "formula"),
+        ],
+        swiftTarget:
+          "`TableModel.formula(...)`, `TableModel.formulas()`, `swiftnumbers list-formulas`"
+      ),
+      AppleNumbersFormulaProbeDefinition(
+        probe: "formula-result-read",
+        requirements: [
+          .class("cell"),
+          .property(className: "cell", property: "formula"),
+          .property(className: "cell", property: "value"),
+          .property(className: "cell", property: "formatted value"),
+        ],
+        swiftTarget:
+          "`TableModel.formulaResult(...)`, `NumbersDocument.readCell(...)` formula result payloads"
+      ),
+      AppleNumbersFormulaProbeDefinition(
+        probe: "formula-range-reference-read",
+        requirements: [
+          .property(className: "cell", property: "formula"),
+          .class("range"),
+          .element(className: "range", element: "cell"),
+        ],
+        swiftTarget: "formula AST/range-reference rendering and `--formulas` parity output"
+      ),
+      AppleNumbersFormulaProbeDefinition(
+        probe: "formula-function-call-read",
+        requirements: [
+          .property(className: "cell", property: "formula"),
+          .class("table"),
+          .element(className: "table", element: "cell"),
+        ],
+        swiftTarget: "formula AST function-call rendering with deterministic fallback summaries"
+      ),
+      AppleNumbersFormulaProbeDefinition(
+        probe: "formula-set-operation",
+        requirements: [
+          .command("set"),
+          .class("cell"),
+          .property(className: "cell", property: "formula"),
+        ],
+        swiftTarget: "`EditableTable.setValue(.formula(...))` with strict unsafe-reference guards"
+      ),
+      AppleNumbersFormulaProbeDefinition(
+        probe: "formula-clear-operation",
+        requirements: [
+          .command("clear"),
+          .class("cell"),
+          .property(className: "cell", property: "formula"),
+        ],
+        swiftTarget:
+          "formula clear/write parity; native range clear remains a safe-write backlog gap"
+      ),
+    ]
+
+    return definitions.map { definition in
+      guard oracleStatus != "skipped" else {
+        return AppleNumbersFormulaProbeRow(
+          probe: definition.probe,
+          status: "skipped",
+          evidence: "<not-probed>",
+          swiftTarget: definition.swiftTarget
+        )
+      }
+
+      let missing = definition.requirements.filter { !dictionary.satisfies($0) }
+      return AppleNumbersFormulaProbeRow(
+        probe: definition.probe,
+        status: missing.isEmpty ? "available" : "missing",
+        evidence: missing.isEmpty
+          ? definition.requirements.map { "`\($0.evidence)`" }.joined(separator: ", ")
+          : missing.map { "missing `\($0.evidence)`" }.joined(separator: ", "),
+        swiftTarget: definition.swiftTarget
+      )
+    }
+  }
+
+  private func advancedObjectProbeRows(
+    from dictionary: AppleNumbersSDEFDictionary,
+    oracleStatus: String
+  ) -> [AppleNumbersAdvancedObjectProbeRow] {
+    let definitions = [
+      AppleNumbersAdvancedObjectProbeDefinition(
+        probe: "chart-object-discovery",
+        requirements: [
+          .class("chart")
+        ],
+        classification: "safe-read-only",
+        swiftTarget:
+          "chart inventory and read-only diagnostics; native chart writes remain unsupported"
+      ),
+      AppleNumbersAdvancedObjectProbeDefinition(
+        probe: "pivot-object-discovery",
+        requirements: [
+          .class("pivot")
+        ],
+        classification: "safe-write-blocked",
+        swiftTarget:
+          "pivot-like object diagnostics and write blocking for linked analytical drawables"
+      ),
+      AppleNumbersAdvancedObjectProbeDefinition(
+        probe: "range-formatting-style-discovery",
+        requirements: [
+          .class("range"),
+          .property(className: "range", property: "format"),
+          .property(className: "range", property: "font name"),
+          .property(className: "range", property: "font size"),
+          .property(className: "range", property: "background color"),
+          .property(className: "range", property: "text color"),
+          .property(className: "range", property: "alignment"),
+          .property(className: "range", property: "vertical alignment"),
+        ],
+        classification: "safe-read-only",
+        swiftTarget: "format/style/rich-text read surfaces and guarded style-write backlog gaps"
+      ),
+      AppleNumbersAdvancedObjectProbeDefinition(
+        probe: "media-object-discovery",
+        requirements: [
+          .class("image"),
+          .class("movie"),
+          .class("audio clip"),
+        ],
+        classification: "safe-read-only",
+        swiftTarget: "media object inventory with unsupported-object diagnostics"
+      ),
+      AppleNumbersAdvancedObjectProbeDefinition(
+        probe: "shape-line-text-object-discovery",
+        requirements: [
+          .class("shape"),
+          .class("line"),
+          .class("text item"),
+        ],
+        classification: "safe-read-only",
+        swiftTarget: "shape/line/text object inventory and no unsafe native mutation support"
+      ),
+      AppleNumbersAdvancedObjectProbeDefinition(
+        probe: "rich-text-style-discovery",
+        requirements: [
+          .class("rich text"),
+          .property(className: "rich text", property: "color"),
+          .property(className: "rich text", property: "font"),
+          .property(className: "rich text", property: "size"),
+        ],
+        classification: "safe-read-only",
+        swiftTarget: "rich text style inspection and deterministic display-value parity"
+      ),
+    ]
+
+    return definitions.map { definition in
+      guard oracleStatus != "skipped" else {
+        return AppleNumbersAdvancedObjectProbeRow(
+          probe: definition.probe,
+          status: "skipped",
+          evidence: "<not-probed>",
+          classification: definition.classification,
+          swiftTarget: definition.swiftTarget
+        )
+      }
+
+      let missing = definition.requirements.filter { !dictionary.satisfies($0) }
+      return AppleNumbersAdvancedObjectProbeRow(
+        probe: definition.probe,
+        status: missing.isEmpty ? "available" : "missing",
+        evidence: missing.isEmpty
+          ? definition.requirements.map { "`\($0.evidence)`" }.joined(separator: ", ")
+          : missing.map { "missing `\($0.evidence)`" }.joined(separator: ", "),
+        classification: definition.classification,
+        swiftTarget: definition.swiftTarget
+      )
+    }
+  }
 }
 
 private struct AppleToolResult {
@@ -592,6 +811,19 @@ private struct AppleNumbersMutationProbeDefinition {
   let swiftTarget: String
 }
 
+private struct AppleNumbersFormulaProbeDefinition {
+  let probe: String
+  let requirements: [AppleNumbersSDEFRequirement]
+  let swiftTarget: String
+}
+
+private struct AppleNumbersAdvancedObjectProbeDefinition {
+  let probe: String
+  let requirements: [AppleNumbersSDEFRequirement]
+  let classification: String
+  let swiftTarget: String
+}
+
 private enum AppleNumbersSDEFRequirement {
   case command(String)
   case `class`(String)
@@ -623,6 +855,21 @@ private struct AppleNumbersMutationProbeRow {
   let probe: String
   let status: String
   let evidence: String
+  let swiftTarget: String
+}
+
+private struct AppleNumbersFormulaProbeRow {
+  let probe: String
+  let status: String
+  let evidence: String
+  let swiftTarget: String
+}
+
+private struct AppleNumbersAdvancedObjectProbeRow {
+  let probe: String
+  let status: String
+  let evidence: String
+  let classification: String
   let swiftTarget: String
 }
 

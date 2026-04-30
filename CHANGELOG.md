@@ -16,6 +16,24 @@ All notable changes to this project are documented in this file.
 
 - Revert to the previous stable tag and redeploy package artifacts.
 
+## [0.4.3] - 2026-04-30
+
+### Summary
+
+- Added AppleScript formula parity probe rows to the generated capability map, covering formula text reads, result reads, range references, function-call surfaces, and guarded formula writes.
+- Added advanced object discovery probe rows for charts, pivots, styles, media, shapes, and rich text with explicit safe-read-only and safe-write-blocked classifications.
+- Added deterministic parity-queue regression coverage for AppleScript read probe rows so sheet/table/cell read evidence selects read-priority roadmap work.
+- Added deterministic parity-queue regression coverage for AppleScript document/table/row/column mutation rows so mutation evidence selects write-priority roadmap work.
+- Added deterministic parity-queue regression coverage for AppleScript formula rows so formula text/result/write evidence selects formula-priority roadmap work.
+
+### Breaking Changes
+
+- None.
+
+### Rollback Hint
+
+- Revert to the previous stable tag and redeploy package artifacts.
+
 ## [0.4.2] - 2026-04-29
 
 ### Summary

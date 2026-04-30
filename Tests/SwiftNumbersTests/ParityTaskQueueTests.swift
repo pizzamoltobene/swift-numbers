@@ -104,6 +104,84 @@ final class ParityTaskQueueTests: XCTestCase {
     XCTAssertEqual(firstFields[9], "missing")
   }
 
+  func testParityQueueUsesAppleScriptReadProbeRowsForReadTasks() throws {
+    let output = try runParityQueueScript(arguments: [
+      "--roadmap",
+      FixtureLocator.fileFixtureURL(named: "autopilot-apple-read-probe-roadmap-sim.md").path,
+      "--code-map",
+      FixtureLocator.fileFixtureURL(named: "autopilot-parity-map-sim.md").path,
+      "--apple-map",
+      FixtureLocator.fileFixtureURL(named: "autopilot-apple-read-probe-map-sim.md").path,
+      "--max",
+      "10",
+    ])
+
+    let lines =
+      output
+      .split(separator: "\n")
+      .map(String.init)
+    XCTAssertEqual(lines.first, "NEXT_TASK=SN-AUTO-20260430-01")
+
+    let firstFields = lines[2].split(separator: "|").map(String.init)
+    XCTAssertEqual(firstFields[0], "SN-AUTO-20260430-01")
+    XCTAssertEqual(firstFields[3], "read")
+    XCTAssertEqual(firstFields[4], "cell-read-surface")
+    XCTAssertEqual(firstFields[8], "apple")
+    XCTAssertEqual(firstFields[9], "missing")
+  }
+
+  func testParityQueueUsesAppleScriptDocumentAndTableMutationRowsForRenewalTasks() throws {
+    let output = try runParityQueueScript(arguments: [
+      "--roadmap",
+      FixtureLocator.fileFixtureURL(named: "autopilot-apple-mutation-renewal-roadmap-sim.md").path,
+      "--code-map",
+      FixtureLocator.fileFixtureURL(named: "autopilot-parity-map-sim.md").path,
+      "--apple-map",
+      FixtureLocator.fileFixtureURL(named: "autopilot-apple-mutation-renewal-map-sim.md").path,
+      "--max",
+      "10",
+    ])
+
+    let lines =
+      output
+      .split(separator: "\n")
+      .map(String.init)
+    XCTAssertEqual(lines.first, "NEXT_TASK=SN-AUTO-20260430-02")
+
+    let firstFields = lines[2].split(separator: "|").map(String.init)
+    XCTAssertEqual(firstFields[0], "SN-AUTO-20260430-02")
+    XCTAssertEqual(firstFields[3], "write")
+    XCTAssertEqual(firstFields[4], "table-mutation-operation")
+    XCTAssertEqual(firstFields[8], "apple")
+    XCTAssertEqual(firstFields[9], "missing")
+  }
+
+  func testParityQueueUsesAppleScriptFormulaRowsForFormulaRenewalTasks() throws {
+    let output = try runParityQueueScript(arguments: [
+      "--roadmap",
+      FixtureLocator.fileFixtureURL(named: "autopilot-apple-formula-renewal-roadmap-sim.md").path,
+      "--code-map",
+      FixtureLocator.fileFixtureURL(named: "autopilot-parity-map-sim.md").path,
+      "--apple-map",
+      FixtureLocator.fileFixtureURL(named: "autopilot-apple-formula-renewal-map-sim.md").path,
+      "--max",
+      "10",
+    ])
+
+    let lines =
+      output
+      .split(separator: "\n")
+      .map(String.init)
+    XCTAssertEqual(lines.first, "NEXT_TASK=SN-AUTO-20260430-03")
+
+    let firstFields = lines[2].split(separator: "|").map(String.init)
+    XCTAssertEqual(firstFields[0], "SN-AUTO-20260430-03")
+    XCTAssertEqual(firstFields[3], "formula")
+    XCTAssertEqual(firstFields[4], "formula-write-operation")
+    XCTAssertEqual(firstFields[8], "apple")
+    XCTAssertEqual(firstFields[9], "missing")
+  }
+
   private func runParityQueueScript(arguments: [String]) throws -> String {
     let environment = ProcessInfo.processInfo.environment
     guard let scriptPath = environment["SWIFT_NUMBERS_PARITY_QUEUE_SCRIPT"],
