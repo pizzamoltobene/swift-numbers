@@ -304,6 +304,39 @@ final class EditableNumbersDocumentTests: XCTestCase {
     )
   }
 
+  func testClearValueRoundTripOnStringCell() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    table.setValue(.string("clear-me"), at: CellAddress(row: 0, column: 0))
+    table.clearValue(at: CellAddress(row: 0, column: 0))
+
+    let output = temporaryArchiveOutputURL("editable-clear-value-string-roundtrip.numbers")
+    try editable.save(to: output)
+
+    let reopened = try EditableNumbersDocument.open(at: output)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    XCTAssertNil(reopenedTable.cell(at: CellAddress(row: 0, column: 0)))
+  }
+
+  func testClearValueRoundTripOnFormulaCellByA1Reference() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    try table.setValue(.formula("=SUM(B1:B3)"), at: "A1")
+    try table.clearValue(at: "A1")
+
+    let output = temporaryArchiveOutputURL("editable-clear-value-formula-roundtrip.numbers")
+    try editable.save(to: output)
+
+    let reopened = try NumbersDocument.open(at: output)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    XCTAssertNil(reopenedTable.cell("A1"))
+    XCTAssertNil(reopenedTable.formula("A1"))
+  }
+
   func testSetValueStringRoundTripOnPackageArchive() throws {
     try assertSetValueRoundTrip(
       archiveForm: .package,

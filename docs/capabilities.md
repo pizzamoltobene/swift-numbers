@@ -140,6 +140,7 @@ table.setValue(.number(1499.95), at: "C1")
 table.setValue(.bool(true), at: "D1")
 table.setValue(.date(Date()), at: "E1")
 table.setValue(.empty, at: "F1")
+try table.clearValue(at: "G1")
 try table.setStyle(ReadCellStyle(fontName: "HelveticaNeue", isBold: true), at: "A1")
 ```
 
@@ -167,7 +168,7 @@ This section gives operation-by-operation examples with:
 | Read open/introspection | `open`, `sheets`, `firstSheet`, `sheet(named:)`, `sheet(at:)`, `tables`, `firstTable`, `table(named:)`, `table(at:)`, `metadata`, `cell(at:)`, `cell(row:column:)`, `cell("A1")`, `readCell(...)`, `readValue(...)`, `formula(...)`, `formulas()`, `formulaResult(...)`, `rows()/rows(valuesOnly:)/rows(lazy:)`, `readRows()/readRows(lazy:)`, `readValues()/readValues(lazy:)`, `categorizedRows(by:)`, `categorizedValues(by:)`, `column(named:)`, `values(in:)`, `decodeRows(as:)`, typed `value(_:at:)`, `formattedValue(...)`, `rowHeight(...)`, `columnWidth(...)`, `cellGeometry(...)`, `mergeRange(...)`, `isMergedCell(...)`, `dump`, `renderDump` |
 | Editable open/navigation | `EditableNumbersDocument.open`, `sheet(named:)`, `table(named:)`, `cell(_:)`, `cell(at: CellReference)` |
 | Editable registries | `registerStyle`, `registeredStyles`, `registeredStyle(id:)`, `registerCustomFormat`, `registeredCustomFormats`, `registeredCustomFormat(id:)` |
-| Editable mutation | `setValue`, `setStyle`, `setBorder`, `applyStyle(id:at:)`, `setFormat`, `applyCustomFormat(id:at:)`, `setHeaderRowCount`, `setHeaderColumnCount`, `setRowHeight`, `setColumnWidth`, `setTableNameVisible`, `setCaptionVisible`, `setCaptionText`, `appendRow`, `insertRow`, `appendColumn`, `deleteRow`, `deleteColumn`, `mergeCells`, `unmergeCells`, `addTable`, `addSheet` |
+| Editable mutation | `setValue`, `clearValue`, `setStyle`, `setBorder`, `applyStyle(id:at:)`, `setFormat`, `applyCustomFormat(id:at:)`, `setHeaderRowCount`, `setHeaderColumnCount`, `setRowHeight`, `setColumnWidth`, `setTableNameVisible`, `setCaptionVisible`, `setCaptionText`, `appendRow`, `insertRow`, `appendColumn`, `deleteRow`, `deleteColumn`, `mergeCells`, `unmergeCells`, `addTable`, `addSheet` |
 | Save | `save(to:)`, `saveInPlace()` |
 | Runtime capability/state | `canSaveEditableDocuments`, `hasChanges`, `dirtyState`, `firstSheet`, `firstTable` |
 | CLI | `swiftnumbers list-sheets`, `swiftnumbers list-tables`, `swiftnumbers list-formulas`, `swiftnumbers read-column`, `swiftnumbers read-table`, `swiftnumbers read-cell`, `swiftnumbers read-range`, `swiftnumbers export-csv`, `swiftnumbers import-csv`, `swiftnumbers refresh-apple-numbers-map`, `swiftnumbers inspect`, `swiftnumbers dump` |
@@ -696,6 +697,8 @@ Set a cell value at coordinate or A1 reference.
 ```swift
 func setValue(_ value: CellValue, at address: CellAddress)
 func setValue(_ value: CellValue, at reference: String) throws
+func clearValue(at address: CellAddress)
+func clearValue(at reference: String) throws
 ```
 
 **Attributes**
@@ -712,7 +715,7 @@ func setValue(_ value: CellValue, at reference: String) throws
 
 **Behavior**
 
-- `value == .empty` removes the stored value entry for that address.
+- `value == .empty` and `clearValue(at:)` remove the stored value entry for that address.
 - negative `row`/`column` addresses are ignored (no mutation, no dirty mark).
 
 **Side Effects**

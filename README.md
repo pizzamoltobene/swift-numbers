@@ -109,7 +109,7 @@ try editable.save(to: outputURL)
 | Typed decode and formatting | `value(_:at:)`, `optionalValue(_:at:)`, `decodeRows(as:)`, `formattedValue(...)` | Supported | Deterministic formatting modes and typed access |
 | Grouped read surface | `categorizedRows(by:)`, `categorizedValues(by:)` | Supported | Read-only grouped/category output |
 | Editable document lifecycle | `EditableNumbersDocument.open`, `save(to:)`, `saveInPlace()`, `addSheet`, `addTable` | Supported | Native save path with dirty-state tracking |
-| Cell-level mutations | `setValue`, `setStyle`, `setFormat`, `setBorder`, `applyStyle`, `applyCustomFormat` | Supported | Includes style/format/border roundtrip paths |
+| Cell-level mutations | `setValue`, `clearValue`, `setStyle`, `setFormat`, `setBorder`, `applyStyle`, `applyCustomFormat` | Supported | Includes clear/style/format/border roundtrip paths |
 | Table structure and layout mutations | `appendRow`, `insertRow`, `appendColumn`, `deleteRow`, `deleteColumn`, `setHeaderRowCount`, `setHeaderColumnCount`, `setRowHeight`, `setColumnWidth` | Supported | Bounds validation and deterministic updates |
 | Merge and presentation metadata | `mergeCells`, `unmergeCells`, `setTableNameVisible`, `setCaptionVisible`, `setCaptionText` | Supported | Presentation metadata persisted where storage exists |
 | Document registries | `registerStyle`, `registeredStyles`, `registerCustomFormat`, `registeredCustomFormats` | Supported | Reusable style/custom-format registry APIs |

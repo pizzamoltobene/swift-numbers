@@ -616,6 +616,8 @@ public final class EditableTable {
 
   public func setValue(_ value: CellValue, at address: CellAddress)
   public func setValue(_ value: CellValue, at reference: String) throws
+  public func clearValue(at address: CellAddress)
+  public func clearValue(at reference: String) throws
   public func setStyle(_ style: ReadCellStyle?, at address: CellAddress)
   public func setStyle(_ style: ReadCellStyle?, at reference: String) throws
   public func setBorder(_ isVisible: Bool, side: EditableBorderSide, at address: CellAddress)
@@ -692,6 +694,8 @@ public enum EditableBorderSide: String, CaseIterable, Hashable, Sendable {
 - `CellReference` uses A1 notation.
 - `setValue(..., at: CellAddress)` does not throw and ignores negative row/column indices.
 - `setValue(..., at: String)` throws for invalid A1.
+- `clearValue(at:)` is equivalent to writing `.empty` and uses the same validation rules as
+  `setValue`.
 - `setStyle(..., at: CellAddress)` does not throw and ignores negative row/column indices.
 - `setStyle(..., at: String)` throws for invalid A1.
 - `setBorder(..., at: CellAddress)` does not throw and ignores negative row/column indices.

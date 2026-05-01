@@ -13,6 +13,8 @@ Set a cell value at coordinate or A1 reference.
 ```swift
 func setValue(_ value: CellValue, at address: CellAddress)
 func setValue(_ value: CellValue, at reference: String) throws
+func clearValue(at address: CellAddress)
+func clearValue(at reference: String) throws
 ```
 
 **Attributes**
@@ -29,7 +31,7 @@ func setValue(_ value: CellValue, at reference: String) throws
 
 **Behavior**
 
-- `value == .empty` removes the stored value entry for that address.
+- `value == .empty` and `clearValue(at:)` remove the stored value entry for that address.
 - negative `row`/`column` addresses are ignored (no mutation, no dirty mark).
 
 **Side Effects**
@@ -51,6 +53,7 @@ Operation:
 
 ```swift
 table.setValue(.bool(true), at: CellAddress(row: 2, column: 2))
+try table.clearValue(at: "A2")
 ```
 
 After:
@@ -58,7 +61,7 @@ After:
 |   | A | B | C |
 |---|---|---|---|
 | 1 | Item | Qty | Done |
-| 2 | Pen | 5 | false |
+| 2 |  | 5 | false |
 | 3 | Pencil | 10 | true |
 
 ---

@@ -1615,6 +1615,14 @@ public final class EditableTable {
     setValue(value, at: parsed.address)
   }
 
+  public func clearValue(at address: CellAddress) {
+    setValue(.empty, at: address)
+  }
+
+  public func clearValue(at reference: String) throws {
+    try setValue(.empty, at: reference)
+  }
+
   public func setStyle(_ style: ReadCellStyle?, at address: CellAddress) {
     guard address.row >= 0, address.column >= 0 else {
       return
