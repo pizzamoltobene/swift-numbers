@@ -8,6 +8,7 @@ All notable changes to this project are documented in this file.
 
 - Added deterministic parity-queue regression coverage for AppleScript advanced-object rows so chart, pivot, style, media, and shape evidence selects pivot-priority roadmap work.
 - Added package-vs-single-file real-read traversal snapshot coverage for multi-sheet archives, including stable table order and duplicate table-info guards.
+- Scoped pivot-linked write guard linked-object payloads to the blocked target table for clearer triage when a sheet has multiple pivot-linked tables.
 
 ### Breaking Changes
 

@@ -708,7 +708,8 @@ public enum EditableBorderSide: String, CaseIterable, Hashable, Sendable {
 - `setHeaderRowCount(_:)` throws `invalidHeaderRowCount` when count is negative or exceeds current row count.
 - `setHeaderColumnCount(_:)` throws `invalidHeaderColumnCount` when count is negative or exceeds current column count.
 - Structural mutations on grouped tables throw `groupedTableMutationUnsupported`.
-- Structural/data mutations on pivot-linked tables throw `pivotLinkedTableMutationUnsupported`.
+- Structural/data mutations on pivot-linked tables throw `pivotLinkedTableMutationUnsupported`
+  with target-scoped linked object identifiers.
 - `setRowHeight(_:at:)` throws `invalidRowIndex` for out-of-bounds row and `nativeWriteFailed` for negative/non-finite sizes.
 - `setColumnWidth(_:at:)` throws `invalidColumnIndex` for out-of-bounds column and `nativeWriteFailed` for negative/non-finite sizes.
 - `deleteRow(at:)` throws `invalidRowIndex` when index is out of bounds and shifts remaining rows deterministically.

@@ -2181,7 +2181,7 @@ Common failure sources:
 - `pivotLinkedTableMutationUnsupported`
 - `nativeWriteFailed`
 
-`pivotLinkedTableMutationUnsupported` payloads include deterministic linked object identifiers and operation context (for example `deleteRow(rowIndex: N)`) to improve operator triage of pivot-linked write blocks.
+`pivotLinkedTableMutationUnsupported` payloads include deterministic target-scoped linked object identifiers and operation context (for example `deleteRow(rowIndex: N)`) to improve operator triage of pivot-linked write blocks.
 
 ## 9) Quality and Delivery Baseline
 

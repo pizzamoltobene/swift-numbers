@@ -295,6 +295,18 @@ enum IWASetCellWriter {
     }
   }
 
+  static func pivotLinkedMutationLinkedObjectIDs(
+    tableInfoObjectID: UInt64,
+    tableModelObjectID: UInt64,
+    pivotLinkedTableInfoObjectIDs: Set<UInt64>
+  ) -> [UInt64] {
+    guard pivotLinkedTableInfoObjectIDs.contains(tableInfoObjectID) else {
+      return []
+    }
+
+    return Set([tableInfoObjectID, tableModelObjectID].filter { $0 > 0 }).sorted()
+  }
+
   static func save(
     sourceURL: URL,
     destinationURL: URL,
@@ -397,7 +409,11 @@ enum IWASetCellWriter {
             sheet: names.sheet,
             table: names.table,
             operation: groupedMutationOperationName(for: operation),
-            linkedObjectIDs: pivotLinkedTableInfoObjectIDs.sorted()
+            linkedObjectIDs: pivotLinkedMutationLinkedObjectIDs(
+              tableInfoObjectID: context.tableInfoObjectID,
+              tableModelObjectID: context.tableModelObjectID,
+              pivotLinkedTableInfoObjectIDs: pivotLinkedTableInfoObjectIDs
+            )
           )
         }
 

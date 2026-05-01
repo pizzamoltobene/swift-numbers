@@ -2231,6 +2231,25 @@ final class IWASetCellWriterTests: XCTestCase {
     )
   }
 
+  func testPivotLinkedMutationGuardPayloadScopesObjectIDsToTargetTable() {
+    XCTAssertEqual(
+      IWASetCellWriter.pivotLinkedMutationLinkedObjectIDs(
+        tableInfoObjectID: 300,
+        tableModelObjectID: 400,
+        pivotLinkedTableInfoObjectIDs: Set([300, 301, 302])
+      ),
+      [300, 400]
+    )
+    XCTAssertEqual(
+      IWASetCellWriter.pivotLinkedMutationLinkedObjectIDs(
+        tableInfoObjectID: 303,
+        tableModelObjectID: 403,
+        pivotLinkedTableInfoObjectIDs: Set([300, 301, 302])
+      ),
+      []
+    )
+  }
+
   private func reference(_ objectID: UInt64) -> TSP_Reference {
     var reference = TSP_Reference()
     reference.identifier = objectID
