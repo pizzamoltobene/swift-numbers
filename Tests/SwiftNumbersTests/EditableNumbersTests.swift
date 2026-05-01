@@ -125,6 +125,22 @@ final class EditableNumbersDocumentTests: XCTestCase {
     }
   }
 
+  private func assertFormulaCleared(
+    in table: Table,
+    reference: String,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) throws {
+    let readCell = try XCTUnwrap(table.readCell(reference), file: file, line: line)
+    XCTAssertEqual(readCell.kind, .empty, file: file, line: line)
+    XCTAssertEqual(readCell.value, .empty, file: file, line: line)
+    XCTAssertNil(readCell.formulaID, file: file, line: line)
+    XCTAssertNil(readCell.formulaResult, file: file, line: line)
+    XCTAssertNil(table.cell(reference), file: file, line: line)
+    XCTAssertNil(table.formula(reference), file: file, line: line)
+    XCTAssertNil(table.formulaResult(reference), file: file, line: line)
+  }
+
   private func assertSetValueRoundTrip(
     archiveForm: EditableArchiveForm,
     value: CellValue,
@@ -333,8 +349,7 @@ final class EditableNumbersDocumentTests: XCTestCase {
 
     let reopened = try NumbersDocument.open(at: output)
     let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
-    XCTAssertNil(reopenedTable.cell("A1"))
-    XCTAssertNil(reopenedTable.formula("A1"))
+    try assertFormulaCleared(in: reopenedTable, reference: "A1")
   }
 
   func testClearValuesInRangeRoundTripByA1Reference() throws {
@@ -361,7 +376,7 @@ final class EditableNumbersDocumentTests: XCTestCase {
     XCTAssertNil(reopenedTable.cell("B1"))
     XCTAssertNil(reopenedTable.cell("A2"))
     XCTAssertNil(reopenedTable.cell("B2"))
-    XCTAssertNil(reopenedTable.formula("A2"))
+    try assertFormulaCleared(in: reopenedTable, reference: "A2")
   }
 
   func testClearValuesInEmptyRangeIsSaveStable() throws {

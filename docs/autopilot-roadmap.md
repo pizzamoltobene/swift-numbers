@@ -486,7 +486,7 @@ Generated from `docs/autopilot-policy.md`, `docs/apple-numbers-applescript-capab
   - Definition of done: editable tables can clear a validated rectangular range without unsafe structural mutation.
   - Validation: range clear tests cover A1 ranges, invalid ranges, empty ranges, and save/reopen behavior.
   - Policy scoring: impact=5, risk=2, effort=3, confidence=5, priorityScore=20, area=write.
-- [TODO] `SN-AUTO-20260501-03` Add formula clear parity coverage.
+- [DONE] (2026-05-01) `SN-AUTO-20260501-03` Add formula clear parity coverage.
   - Definition of done: formula cells cleared through the edit API remove formula text/result payloads without leaving stale formula markers.
   - Validation: formula clear roundtrip tests assert no stale formula marker remains after reopen.
   - Policy scoring: impact=5, risk=2, effort=2, confidence=5, priorityScore=21, area=formula.

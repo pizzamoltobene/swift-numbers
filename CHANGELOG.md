@@ -6,7 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Summary
 
-- Pending.
+- Added formula-clear parity regression coverage that verifies cleared formulas leave no stale formula text, formula result, or marker-backed read payload after save/reopen.
 
 ### Breaking Changes
 
