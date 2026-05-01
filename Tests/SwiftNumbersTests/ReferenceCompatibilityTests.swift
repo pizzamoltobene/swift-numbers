@@ -198,6 +198,35 @@ final class ReferenceCompatibilityTests: XCTestCase {
     }
   }
 
+  func testMultiSheetTraversalSnapshotMatchesBetweenPackageAndSingleFileArchive() throws {
+    let archiveFixture = StrictFixtureFactory.fixtureURL(named: "multi-sheet.numbers")
+    let packageFixture = try makePackageFixture(fromSingleFileArchive: archiveFixture)
+    defer { try? FileManager.default.removeItem(at: packageFixture) }
+
+    let archiveDocument = try NumbersDocument.open(at: archiveFixture)
+    let packageDocument = try NumbersDocument.open(at: packageFixture)
+    let archiveSnapshot = traversalSnapshot(for: archiveDocument)
+    let packageSnapshot = traversalSnapshot(for: packageDocument)
+
+    XCTAssertEqual(
+      archiveSnapshot.map(\.displayPath),
+      [
+        "0:Sheet 1/0:Table 1",
+        "1:Sheet B/0:Table 1",
+        "1:Sheet B/1:Table B2",
+      ]
+    )
+    XCTAssertEqual(packageSnapshot, archiveSnapshot)
+    XCTAssertEqual(
+      Set(archiveSnapshot.compactMap(\.tableInfoObjectID)).count,
+      archiveSnapshot.count
+    )
+    XCTAssertEqual(
+      Set(packageSnapshot.compactMap(\.tableInfoObjectID)).count,
+      packageSnapshot.count
+    )
+  }
+
   private func makeTemporaryNumbersDirectory(encrypted: Bool) throws -> URL {
     let fixture = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
       .appendingPathComponent("swift-numbers-\(UUID().uuidString).numbers", isDirectory: true)
@@ -239,5 +268,27 @@ final class ReferenceCompatibilityTests: XCTestCase {
     }
 
     return packageURL
+  }
+
+  private struct TraversalSnapshotRow: Equatable {
+    let displayPath: String
+    let tableInfoObjectID: UInt64?
+    let tableModelObjectID: UInt64?
+    let rowCount: Int
+    let columnCount: Int
+  }
+
+  private func traversalSnapshot(for document: NumbersDocument) -> [TraversalSnapshotRow] {
+    document.sheets.enumerated().flatMap { sheetIndex, sheet in
+      sheet.tables.enumerated().map { tableIndex, table in
+        TraversalSnapshotRow(
+          displayPath: "\(sheetIndex):\(sheet.name)/\(tableIndex):\(table.name)",
+          tableInfoObjectID: table.metadata.objectIdentifiers?.tableInfoObjectID,
+          tableModelObjectID: table.metadata.objectIdentifiers?.tableModelObjectID,
+          rowCount: table.metadata.rowCount,
+          columnCount: table.metadata.columnCount
+        )
+      }
+    }
   }
 }
