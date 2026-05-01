@@ -55,7 +55,7 @@ They map Apple-visible write operations to SwiftNumbers supported APIs or safe-w
 | table-create-delete-operation | available | `make`, `delete`, `table` | `EditableSheet.addTable`; table delete/duplicate parity remains a backlog gap |
 | row-mutation-operation | available | `add row above`, `add row below`, `delete`, `row` | `appendRow`, `insertRow`, `deleteRow` with grouped/pivot-linked safety guards |
 | column-mutation-operation | available | `add column before`, `add column after`, `delete`, `column` | `appendColumn`, `deleteColumn`; insert-column parity remains a backlog gap |
-| cell-range-clear-set-operation | available | `clear`, `set`, `cell`, `range` | `setValue`; range clear/fill parity remains a safe-write backlog gap |
+| cell-range-clear-set-operation | available | `clear`, `set`, `cell`, `range` | `setValue`, `clearValue`, `clearValues`; range fill parity remains a safe-write backlog gap |
 | table-structure-transform-operation | available | `merge`, `unmerge`, `sort`, `transpose` | `mergeCells`, `unmergeCells`; sort/transpose parity remains a backlog gap |
 
 ## Formula Semantics Probe Rows
@@ -70,7 +70,7 @@ They map Apple-visible formula operations to SwiftNumbers formula read APIs and 
 | formula-range-reference-read | available | `cell.formula`, `range`, `range.cell` | formula AST/range-reference rendering and `--formulas` parity output |
 | formula-function-call-read | available | `cell.formula`, `table`, `table.cell` | formula AST function-call rendering with deterministic fallback summaries |
 | formula-set-operation | available | `set`, `cell`, `cell.formula` | `EditableTable.setValue(.formula(...))` with strict unsafe-reference guards |
-| formula-clear-operation | available | `clear`, `cell`, `cell.formula` | formula clear/write parity; native range clear remains a safe-write backlog gap |
+| formula-clear-operation | available | `clear`, `cell`, `cell.formula` | formula clear is covered by `clearValue`/`clearValues`; richer formula write parity remains a backlog gap |
 
 ## Advanced Object Discovery Probe Rows
 

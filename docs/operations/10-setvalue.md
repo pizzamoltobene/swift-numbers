@@ -15,6 +15,8 @@ func setValue(_ value: CellValue, at address: CellAddress)
 func setValue(_ value: CellValue, at reference: String) throws
 func clearValue(at address: CellAddress)
 func clearValue(at reference: String) throws
+func clearValues(in range: MergeRange) throws
+func clearValues(in rangeReference: String) throws
 ```
 
 **Attributes**
@@ -24,14 +26,19 @@ func clearValue(at reference: String) throws
 | `value` | `CellValue` | Yes | Any supported value type |
 | `address` | `CellAddress` | Yes | Zero-based coordinate |
 | `reference` | `String` | Yes | A1 coordinate (alt overload) |
+| `range` | `MergeRange` | Yes | Zero-based rectangular range for `clearValues` |
+| `rangeReference` | `String` | Yes | A1 range such as `A2:C4` for `clearValues` |
 
 **Throws**
 
 - `CellReferenceError.invalidFormat(String)` when `reference` is not valid A1 syntax
+- `EditableNumbersError.invalidRangeReference(String)` when `rangeReference` is malformed or
+  outside the current table bounds
 
 **Behavior**
 
 - `value == .empty` and `clearValue(at:)` remove the stored value entry for that address.
+- `clearValues(in:)` removes stored values across an in-bounds rectangular range.
 - negative `row`/`column` addresses are ignored (no mutation, no dirty mark).
 
 **Side Effects**
@@ -54,6 +61,7 @@ Operation:
 ```swift
 table.setValue(.bool(true), at: CellAddress(row: 2, column: 2))
 try table.clearValue(at: "A2")
+try table.clearValues(in: "B2:C2")
 ```
 
 After:
@@ -61,7 +69,7 @@ After:
 |   | A | B | C |
 |---|---|---|---|
 | 1 | Item | Qty | Done |
-| 2 |  | 5 | false |
+| 2 |  |  |  |
 | 3 | Pencil | 10 | true |
 
 ---

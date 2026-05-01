@@ -6,10 +6,25 @@ All notable changes to this project are documented in this file.
 
 ### Summary
 
+- Pending.
+
+### Breaking Changes
+
+- None.
+
+### Rollback Hint
+
+- Revert to the previous stable tag and redeploy package artifacts.
+
+## [0.4.4] - 2026-05-01
+
+### Summary
+
 - Added deterministic parity-queue regression coverage for AppleScript advanced-object rows so chart, pivot, style, media, and shape evidence selects pivot-priority roadmap work.
 - Added package-vs-single-file real-read traversal snapshot coverage for multi-sheet archives, including stable table order and duplicate table-info guards.
 - Scoped pivot-linked write guard linked-object payloads to the blocked target table for clearer triage when a sheet has multiple pivot-linked tables.
 - Added `EditableTable.clearValue(at:)` convenience APIs for AppleScript-style single-cell clear parity over the existing safe `.empty` write path.
+- Added bounded `EditableTable.clearValues(in:)` APIs for AppleScript-style rectangular range clear parity without unsafe table expansion.
 
 ### Breaking Changes
 

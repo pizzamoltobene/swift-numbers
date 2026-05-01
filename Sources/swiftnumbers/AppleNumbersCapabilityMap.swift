@@ -557,7 +557,8 @@ private struct AppleNumbersCapabilityMapRefresher {
           .class("cell"),
           .class("range"),
         ],
-        swiftTarget: "`setValue`; range clear/fill parity remains a safe-write backlog gap"
+        swiftTarget: "`setValue`, `clearValue`, `clearValues`; "
+          + "range fill parity remains a safe-write backlog gap"
       ),
       AppleNumbersMutationProbeDefinition(
         probe: "table-structure-transform-operation",
@@ -653,7 +654,7 @@ private struct AppleNumbersCapabilityMapRefresher {
           .property(className: "cell", property: "formula"),
         ],
         swiftTarget:
-          "formula clear/write parity; native range clear remains a safe-write backlog gap"
+          "formula clear is covered by `clearValue`/`clearValues`; richer formula write parity remains a backlog gap"
       ),
     ]
 

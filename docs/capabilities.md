@@ -141,6 +141,7 @@ table.setValue(.bool(true), at: "D1")
 table.setValue(.date(Date()), at: "E1")
 table.setValue(.empty, at: "F1")
 try table.clearValue(at: "G1")
+try table.clearValues(in: "A2:C4")
 try table.setStyle(ReadCellStyle(fontName: "HelveticaNeue", isBold: true), at: "A1")
 ```
 
@@ -168,7 +169,7 @@ This section gives operation-by-operation examples with:
 | Read open/introspection | `open`, `sheets`, `firstSheet`, `sheet(named:)`, `sheet(at:)`, `tables`, `firstTable`, `table(named:)`, `table(at:)`, `metadata`, `cell(at:)`, `cell(row:column:)`, `cell("A1")`, `readCell(...)`, `readValue(...)`, `formula(...)`, `formulas()`, `formulaResult(...)`, `rows()/rows(valuesOnly:)/rows(lazy:)`, `readRows()/readRows(lazy:)`, `readValues()/readValues(lazy:)`, `categorizedRows(by:)`, `categorizedValues(by:)`, `column(named:)`, `values(in:)`, `decodeRows(as:)`, typed `value(_:at:)`, `formattedValue(...)`, `rowHeight(...)`, `columnWidth(...)`, `cellGeometry(...)`, `mergeRange(...)`, `isMergedCell(...)`, `dump`, `renderDump` |
 | Editable open/navigation | `EditableNumbersDocument.open`, `sheet(named:)`, `table(named:)`, `cell(_:)`, `cell(at: CellReference)` |
 | Editable registries | `registerStyle`, `registeredStyles`, `registeredStyle(id:)`, `registerCustomFormat`, `registeredCustomFormats`, `registeredCustomFormat(id:)` |
-| Editable mutation | `setValue`, `clearValue`, `setStyle`, `setBorder`, `applyStyle(id:at:)`, `setFormat`, `applyCustomFormat(id:at:)`, `setHeaderRowCount`, `setHeaderColumnCount`, `setRowHeight`, `setColumnWidth`, `setTableNameVisible`, `setCaptionVisible`, `setCaptionText`, `appendRow`, `insertRow`, `appendColumn`, `deleteRow`, `deleteColumn`, `mergeCells`, `unmergeCells`, `addTable`, `addSheet` |
+| Editable mutation | `setValue`, `clearValue`, `clearValues`, `setStyle`, `setBorder`, `applyStyle(id:at:)`, `setFormat`, `applyCustomFormat(id:at:)`, `setHeaderRowCount`, `setHeaderColumnCount`, `setRowHeight`, `setColumnWidth`, `setTableNameVisible`, `setCaptionVisible`, `setCaptionText`, `appendRow`, `insertRow`, `appendColumn`, `deleteRow`, `deleteColumn`, `mergeCells`, `unmergeCells`, `addTable`, `addSheet` |
 | Save | `save(to:)`, `saveInPlace()` |
 | Runtime capability/state | `canSaveEditableDocuments`, `hasChanges`, `dirtyState`, `firstSheet`, `firstTable` |
 | CLI | `swiftnumbers list-sheets`, `swiftnumbers list-tables`, `swiftnumbers list-formulas`, `swiftnumbers read-column`, `swiftnumbers read-table`, `swiftnumbers read-cell`, `swiftnumbers read-range`, `swiftnumbers export-csv`, `swiftnumbers import-csv`, `swiftnumbers refresh-apple-numbers-map`, `swiftnumbers inspect`, `swiftnumbers dump` |
@@ -202,6 +203,7 @@ This section gives operation-by-operation examples with:
 | Detect merged cells | `mergeRange(...)`, `isMergedCell(...)` | Uses `Table.metadata.mergeRanges` |
 | Edit one value by A1 | `setValue(_:at: String)` | Throws on invalid A1 |
 | Edit one value by indices | `setValue(_:at: CellAddress)` | Zero-based row/column |
+| Clear values | `clearValue(at:)`, `clearValues(in:)` | Single-cell clear and bounded rectangular range clear; range clears reject malformed/out-of-bounds ranges |
 | Apply style bundle | `setStyle(_:at:)` | Style writes currently persist via metadata-overlay path |
 | Set one border side | `setBorder(_:side:at:)` | Side-specific border mutation; merged ranges apply deterministically to the full merged edge |
 | Apply registered style by identifier | `applyStyle(id:at:)` | Uses `registerStyle`/`registeredStyles` definitions and persists via metadata overlay |
@@ -699,6 +701,8 @@ func setValue(_ value: CellValue, at address: CellAddress)
 func setValue(_ value: CellValue, at reference: String) throws
 func clearValue(at address: CellAddress)
 func clearValue(at reference: String) throws
+func clearValues(in range: MergeRange) throws
+func clearValues(in rangeReference: String) throws
 ```
 
 **Attributes**
@@ -716,6 +720,8 @@ func clearValue(at reference: String) throws
 **Behavior**
 
 - `value == .empty` and `clearValue(at:)` remove the stored value entry for that address.
+- `clearValues(in:)` removes stored values over a validated rectangular range without expanding
+  table bounds.
 - negative `row`/`column` addresses are ignored (no mutation, no dirty mark).
 
 **Side Effects**

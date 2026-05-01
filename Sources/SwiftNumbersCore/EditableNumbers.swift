@@ -1623,6 +1623,15 @@ public final class EditableTable {
     try setValue(.empty, at: reference)
   }
 
+  public func clearValues(in range: MergeRange) throws {
+    try clearValues(in: range, rawReference: Self.mergeRangeDescription(range))
+  }
+
+  public func clearValues(in rangeReference: String) throws {
+    let range = try Self.parseMergeRange(rangeReference)
+    try clearValues(in: range, rawReference: rangeReference)
+  }
+
   public func setStyle(_ style: ReadCellStyle?, at address: CellAddress) {
     guard address.row >= 0, address.column >= 0 else {
       return
@@ -2065,6 +2074,25 @@ public final class EditableTable {
     )
   }
 
+  private func clearValues(in range: MergeRange, rawReference: String) throws {
+    try validateClearRange(range, rawReference: rawReference)
+
+    for row in range.startRow...range.endRow {
+      for column in range.startColumn...range.endColumn {
+        clearValue(at: CellAddress(row: row, column: column))
+      }
+    }
+  }
+
+  private func validateClearRange(_ range: MergeRange, rawReference: String) throws {
+    guard range.startRow >= 0, range.startColumn >= 0,
+      range.endRow >= range.startRow, range.endColumn >= range.startColumn,
+      range.endRow < rowCount, range.endColumn < columnCount
+    else {
+      throw EditableNumbersError.invalidRangeReference(rawReference)
+    }
+  }
+
   private static func parseMergeRange(_ raw: String) throws -> MergeRange {
     let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else {
@@ -2185,6 +2213,10 @@ public final class EditableTable {
       .a1
     let end = CellReference(address: CellAddress(row: range.endRow, column: range.endColumn)).a1
     return "\(start):\(end)"
+  }
+
+  private static func mergeRangeDescription(_ range: MergeRange) -> String {
+    "\(range.startRow),\(range.startColumn):\(range.endRow),\(range.endColumn)"
   }
 
   private func markDirty(address: CellAddress? = nil, structureChanged: Bool) {

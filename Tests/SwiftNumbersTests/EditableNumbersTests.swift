@@ -337,6 +337,79 @@ final class EditableNumbersDocumentTests: XCTestCase {
     XCTAssertNil(reopenedTable.formula("A1"))
   }
 
+  func testClearValuesInRangeRoundTripByA1Reference() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    try table.setValue(.string("clear-string"), at: "A1")
+    try table.setValue(.number(42), at: "B1")
+    try table.setValue(.formula("=SUM(B1:B1)"), at: "A2")
+
+    let rowCountBeforeClear = table.metadata.rowCount
+    let columnCountBeforeClear = table.metadata.columnCount
+    try table.clearValues(in: "A1:B2")
+    XCTAssertEqual(table.metadata.rowCount, rowCountBeforeClear)
+    XCTAssertEqual(table.metadata.columnCount, columnCountBeforeClear)
+
+    let output = temporaryArchiveOutputURL("editable-clear-values-range-roundtrip.numbers")
+    try editable.save(to: output)
+
+    let reopened = try NumbersDocument.open(at: output)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    XCTAssertNil(reopenedTable.cell("A1"))
+    XCTAssertNil(reopenedTable.cell("B1"))
+    XCTAssertNil(reopenedTable.cell("A2"))
+    XCTAssertNil(reopenedTable.cell("B2"))
+    XCTAssertNil(reopenedTable.formula("A2"))
+  }
+
+  func testClearValuesInEmptyRangeIsSaveStable() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    try table.setValue(.string("keep"), at: "C2")
+    try table.clearValues(in: "A1:B2")
+
+    let output = temporaryArchiveOutputURL("editable-clear-empty-range-roundtrip.numbers")
+    try editable.save(to: output)
+
+    let reopened = try NumbersDocument.open(at: output)
+    let reopenedTable = try XCTUnwrap(reopened.firstSheet?.firstTable)
+    XCTAssertNil(reopenedTable.cell("A1"))
+    XCTAssertNil(reopenedTable.cell("B2"))
+    XCTAssertEqual(reopenedTable.cell("C2"), .string("keep"))
+  }
+
+  func testClearValuesRejectsInvalidRangeReference() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    XCTAssertThrowsError(try table.clearValues(in: "A1::B2")) { error in
+      guard case .invalidRangeReference(let raw) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(raw, "A1::B2")
+    }
+    XCTAssertFalse(editable.hasChanges)
+  }
+
+  func testClearValuesRejectsOutOfBoundsRangeWithoutDirtyingDocument() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    XCTAssertThrowsError(try table.clearValues(in: "A1:ZZ999")) { error in
+      guard case .invalidRangeReference(let raw) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(raw, "A1:ZZ999")
+    }
+    XCTAssertFalse(editable.hasChanges)
+  }
+
   func testSetValueStringRoundTripOnPackageArchive() throws {
     try assertSetValueRoundTrip(
       archiveForm: .package,
