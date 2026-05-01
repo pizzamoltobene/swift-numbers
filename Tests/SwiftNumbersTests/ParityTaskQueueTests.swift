@@ -211,6 +211,65 @@ final class ParityTaskQueueTests: XCTestCase {
     XCTAssertEqual(firstFields[9], "missing")
   }
 
+  func testParityQueueUsesAppleScriptAdvancedObjectRowsForRowSpecificBacklogCandidates()
+    throws
+  {
+    let output = try runParityQueueScript(arguments: [
+      "--roadmap",
+      FixtureLocator.fileFixtureURL(
+        named: "autopilot-apple-advanced-object-diagnostics-roadmap-sim.md"
+      ).path,
+      "--code-map",
+      FixtureLocator.fileFixtureURL(named: "autopilot-parity-map-sim.md").path,
+      "--apple-map",
+      FixtureLocator.fileFixtureURL(named: "autopilot-apple-advanced-object-renewal-map-sim.md")
+        .path,
+      "--max",
+      "10",
+    ])
+
+    let lines =
+      output
+      .split(separator: "\n")
+      .map(String.init)
+    XCTAssertEqual(lines.first, "NEXT_TASK=SN-AUTO-20260501-06")
+    XCTAssertEqual(lines.dropFirst().first, "QUEUE_SIZE=4")
+
+    let rowsByTaskID = Dictionary(
+      uniqueKeysWithValues: lines.dropFirst(2).map { line in
+        let fields = line.split(separator: "|").map(String.init)
+        return (fields[0], fields)
+      }
+    )
+
+    let pivot = try XCTUnwrap(rowsByTaskID["SN-AUTO-20260501-06"])
+    XCTAssertEqual(pivot[3], "pivot")
+    XCTAssertEqual(pivot[4], "pivot-object-discovery")
+    XCTAssertEqual(pivot[8], "apple")
+    XCTAssertEqual(pivot[9], "missing")
+
+    let chart = try XCTUnwrap(rowsByTaskID["SN-AUTO-20260501-07"])
+    XCTAssertEqual(chart[3], "pivot")
+    XCTAssertEqual(chart[4], "chart-object-discovery")
+    XCTAssertEqual(chart[8], "apple")
+    XCTAssertEqual(chart[9], "available")
+    XCTAssertTrue(chart[10].contains("chart"))
+
+    let media = try XCTUnwrap(rowsByTaskID["SN-AUTO-20260501-08"])
+    XCTAssertEqual(media[3], "pivot")
+    XCTAssertEqual(media[4], "media-object-discovery")
+    XCTAssertEqual(media[8], "apple")
+    XCTAssertEqual(media[9], "available")
+    XCTAssertTrue(media[10].contains("image"))
+
+    let shape = try XCTUnwrap(rowsByTaskID["SN-AUTO-20260501-09"])
+    XCTAssertEqual(shape[3], "pivot")
+    XCTAssertEqual(shape[4], "shape-line-text-object-discovery")
+    XCTAssertEqual(shape[8], "apple")
+    XCTAssertEqual(shape[9], "available")
+    XCTAssertTrue(shape[10].contains("shape"))
+  }
+
   func testParityQueueUsesAppleScriptFormattingStyleRowsForReadRenewalTasks() throws {
     let output = try runParityQueueScript(arguments: [
       "--roadmap",

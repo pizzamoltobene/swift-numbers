@@ -498,7 +498,7 @@ Generated from `docs/autopilot-policy.md`, `docs/apple-numbers-applescript-capab
   - Definition of done: AppleScript formatting/style rows map to explicit SwiftNumbers read surfaces and remaining gaps.
   - Validation: simulated capability-map tests produce deterministic formatting/style queue entries.
   - Policy scoring: impact=4, risk=2, effort=2, confidence=5, priorityScore=16, area=read.
-- [TODO] `SN-AUTO-20260501-06` Expand advanced object diagnostics backlog for pivot-adjacent objects.
+- [DONE] (2026-05-01) `SN-AUTO-20260501-06` Expand advanced object diagnostics backlog for pivot-adjacent objects.
   - Definition of done: chart/media/shape/pivot-like object rows produce deterministic safe-read-only or safe-write-blocked backlog candidates.
   - Validation: advanced-object queue tests cover chart, media, shape, and pivot-like rows without unsafe write support.
   - Policy scoring: impact=4, risk=2, effort=2, confidence=5, priorityScore=16, area=pivot.

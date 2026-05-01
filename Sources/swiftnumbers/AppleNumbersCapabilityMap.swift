@@ -693,7 +693,7 @@ private struct AppleNumbersCapabilityMapRefresher {
         ],
         classification: "safe-read-only",
         swiftTarget:
-          "chart inventory and read-only diagnostics; native chart writes remain unsupported"
+          "`swiftnumbers inspect` chart inventory diagnostics; native chart writes remain unsupported"
       ),
       AppleNumbersAdvancedObjectProbeDefinition(
         probe: "pivot-object-discovery",
@@ -728,7 +728,8 @@ private struct AppleNumbersCapabilityMapRefresher {
           .class("audio clip"),
         ],
         classification: "safe-read-only",
-        swiftTarget: "media object inventory with unsupported-object diagnostics"
+        swiftTarget:
+          "`swiftnumbers inspect` media object inventory diagnostics; native media writes remain unsupported"
       ),
       AppleNumbersAdvancedObjectProbeDefinition(
         probe: "shape-line-text-object-discovery",
@@ -738,7 +739,8 @@ private struct AppleNumbersCapabilityMapRefresher {
           .class("text item"),
         ],
         classification: "safe-read-only",
-        swiftTarget: "shape/line/text object inventory and no unsafe native mutation support"
+        swiftTarget:
+          "`swiftnumbers inspect` shape/line/text inventory diagnostics; native object writes remain unsupported"
       ),
       AppleNumbersAdvancedObjectProbeDefinition(
         probe: "rich-text-style-discovery",
