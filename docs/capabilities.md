@@ -66,6 +66,7 @@ Core internal modules:
 | Edit cell values | Supported | `string`, `formula`, `number`, `bool`, `empty`, `date` |
 | Append/insert rows | Supported | Low-level IWA path; grouped-table unsafe structural edits fail fast with deterministic guidance |
 | Append columns | Supported | Low-level IWA path; grouped-table unsafe structural edits fail fast with deterministic guidance |
+| Insert columns | Guarded unsupported | `insertColumn(_:at:)` validates `0...columnCount`, throws a deterministic unsupported-write error for currently valid insert requests, and leaves table state unchanged |
 | Delete rows/columns | Supported | `deleteRow` / `deleteColumn` with deterministic index shifting and bounds validation; grouped-table blocks include actionable operation index context |
 | Merge/unmerge ranges | Supported | Editable API supports `mergeCells` and `unmergeCells` with deterministic merge metadata persistence and exact-range unmerge semantics |
 | Header and geometry mutations | Supported | `setHeaderRowCount` / `setHeaderColumnCount`, `setRowHeight`, `setColumnWidth` persist through low-level IWA path |
@@ -169,7 +170,7 @@ This section gives operation-by-operation examples with:
 | Read open/introspection | `open`, `sheets`, `firstSheet`, `sheet(named:)`, `sheet(at:)`, `tables`, `firstTable`, `table(named:)`, `table(at:)`, `metadata`, `cell(at:)`, `cell(row:column:)`, `cell("A1")`, `readCell(...)`, `readValue(...)`, `formula(...)`, `formulas()`, `formulaResult(...)`, `rows()/rows(valuesOnly:)/rows(lazy:)`, `readRows()/readRows(lazy:)`, `readValues()/readValues(lazy:)`, `categorizedRows(by:)`, `categorizedValues(by:)`, `column(named:)`, `values(in:)`, `decodeRows(as:)`, typed `value(_:at:)`, `formattedValue(...)`, `rowHeight(...)`, `columnWidth(...)`, `cellGeometry(...)`, `mergeRange(...)`, `isMergedCell(...)`, `dump`, `renderDump` |
 | Editable open/navigation | `EditableNumbersDocument.open`, `sheet(named:)`, `table(named:)`, `cell(_:)`, `cell(at: CellReference)` |
 | Editable registries | `registerStyle`, `registeredStyles`, `registeredStyle(id:)`, `registerCustomFormat`, `registeredCustomFormats`, `registeredCustomFormat(id:)` |
-| Editable mutation | `setValue`, `clearValue`, `clearValues`, `setStyle`, `setBorder`, `applyStyle(id:at:)`, `setFormat`, `applyCustomFormat(id:at:)`, `setHeaderRowCount`, `setHeaderColumnCount`, `setRowHeight`, `setColumnWidth`, `setTableNameVisible`, `setCaptionVisible`, `setCaptionText`, `appendRow`, `insertRow`, `appendColumn`, `deleteRow`, `deleteColumn`, `mergeCells`, `unmergeCells`, `addTable`, `addSheet` |
+| Editable mutation | `setValue`, `clearValue`, `clearValues`, `setStyle`, `setBorder`, `applyStyle(id:at:)`, `setFormat`, `applyCustomFormat(id:at:)`, `setHeaderRowCount`, `setHeaderColumnCount`, `setRowHeight`, `setColumnWidth`, `setTableNameVisible`, `setCaptionVisible`, `setCaptionText`, `appendRow`, `insertRow`, `appendColumn`, `insertColumn`, `deleteRow`, `deleteColumn`, `mergeCells`, `unmergeCells`, `addTable`, `addSheet` |
 | Save | `save(to:)`, `saveInPlace()` |
 | Runtime capability/state | `canSaveEditableDocuments`, `hasChanges`, `dirtyState`, `firstSheet`, `firstTable` |
 | CLI | `swiftnumbers list-sheets`, `swiftnumbers list-tables`, `swiftnumbers list-formulas`, `swiftnumbers read-column`, `swiftnumbers read-table`, `swiftnumbers read-cell`, `swiftnumbers read-range`, `swiftnumbers export-csv`, `swiftnumbers import-csv`, `swiftnumbers refresh-apple-numbers-map`, `swiftnumbers inspect`, `swiftnumbers dump` |
@@ -212,6 +213,7 @@ This section gives operation-by-operation examples with:
 | Add more records | `appendRow(_:)` | Grows row count |
 | Insert records at position | `insertRow(_:at:)` | Shifts rows below |
 | Add a derived column | `appendColumn(_:)` | Grows column count |
+| Insert a field at position | `insertColumn(_:at:)` | Guarded unsupported: validates bounds and leaves the table unchanged until native column shifting lands |
 | Delete records/fields | `deleteRow(at:)`, `deleteColumn(at:)` | Removes selected index and shifts remaining data |
 | Merge or unmerge a range | `mergeCells(...)`, `unmergeCells(...)` | Updates `Table.metadata.mergeRanges` deterministically; unmerge requires exact range match |
 | Add a new report table | `addTable(...)` | Target sheet must exist; duplicate table names in the same sheet are rejected |
@@ -1029,6 +1031,9 @@ func appendColumn(_ values: [CellValue])
 
 - `values.isEmpty` still appends one blank column.
 - only non-`.empty` values are materialized into cell storage (sparse representation).
+- inserting a column at a specific position is tracked separately: `insertColumn(_:at:)`
+  currently validates bounds and throws a deterministic unsupported-write error without mutation
+  until native column shifting lands.
 
 **Side Effects**
 

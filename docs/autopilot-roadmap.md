@@ -490,7 +490,7 @@ Generated from `docs/autopilot-policy.md`, `docs/apple-numbers-applescript-capab
   - Definition of done: formula cells cleared through the edit API remove formula text/result payloads without leaving stale formula markers.
   - Validation: formula clear roundtrip tests assert no stale formula marker remains after reopen.
   - Policy scoring: impact=5, risk=2, effort=2, confidence=5, priorityScore=21, area=formula.
-- [TODO] `SN-AUTO-20260501-04` Add insert-column parity planning guardrails.
+- [DONE] (2026-05-01) `SN-AUTO-20260501-04` Add insert-column parity planning guardrails.
   - Definition of done: insert-column parity gap has deterministic API/error semantics before low-level writer expansion.
   - Validation: tests document current append/delete support and deterministic insert-column unsupported behavior.
   - Policy scoring: impact=4, risk=2, effort=3, confidence=4, priorityScore=15, area=write.

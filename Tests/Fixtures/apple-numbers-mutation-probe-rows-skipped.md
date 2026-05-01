@@ -4,6 +4,6 @@
 | sheet-create-delete-operation | skipped | <not-probed> | `EditableNumbersDocument.addSheet`; sheet delete/rename parity remains a backlog gap |
 | table-create-delete-operation | skipped | <not-probed> | `EditableSheet.addTable`; table delete/duplicate parity remains a backlog gap |
 | row-mutation-operation | skipped | <not-probed> | `appendRow`, `insertRow`, `deleteRow` with grouped/pivot-linked safety guards |
-| column-mutation-operation | skipped | <not-probed> | `appendColumn`, `deleteColumn`; insert-column parity remains a backlog gap |
+| column-mutation-operation | skipped | <not-probed> | `appendColumn`, `deleteColumn`; `insertColumn` has a deterministic unsupported guard until native column shifting lands |
 | cell-range-clear-set-operation | skipped | <not-probed> | `setValue`, `clearValue`, `clearValues`; range fill parity remains a safe-write backlog gap |
 | table-structure-transform-operation | skipped | <not-probed> | `mergeCells`, `unmergeCells`; sort/transpose parity remains a backlog gap |

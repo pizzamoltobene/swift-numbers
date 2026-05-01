@@ -54,7 +54,7 @@ They map Apple-visible write operations to SwiftNumbers supported APIs or safe-w
 | sheet-create-delete-operation | available | `make`, `delete`, `sheet` | `EditableNumbersDocument.addSheet`; sheet delete/rename parity remains a backlog gap |
 | table-create-delete-operation | available | `make`, `delete`, `table` | `EditableSheet.addTable`; table delete/duplicate parity remains a backlog gap |
 | row-mutation-operation | available | `add row above`, `add row below`, `delete`, `row` | `appendRow`, `insertRow`, `deleteRow` with grouped/pivot-linked safety guards |
-| column-mutation-operation | available | `add column before`, `add column after`, `delete`, `column` | `appendColumn`, `deleteColumn`; insert-column parity remains a backlog gap |
+| column-mutation-operation | available | `add column before`, `add column after`, `delete`, `column` | `appendColumn`, `deleteColumn`; `insertColumn` has a deterministic unsupported guard until native column shifting lands |
 | cell-range-clear-set-operation | available | `clear`, `set`, `cell`, `range` | `setValue`, `clearValue`, `clearValues`; range fill parity remains a safe-write backlog gap |
 | table-structure-transform-operation | available | `merge`, `unmerge`, `sort`, `transpose` | `mergeCells`, `unmergeCells`; sort/transpose parity remains a backlog gap |
 

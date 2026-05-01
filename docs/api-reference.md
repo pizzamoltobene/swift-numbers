@@ -638,6 +638,7 @@ public final class EditableTable {
   public func appendRow(_ values: [CellValue])
   public func insertRow(_ values: [CellValue], at rowIndex: Int) throws
   public func appendColumn(_ values: [CellValue])
+  public func insertColumn(_ values: [CellValue], at columnIndex: Int) throws
   public func deleteRow(at rowIndex: Int) throws
   public func deleteColumn(at columnIndex: Int) throws
   public func mergeCells(_ rangeReference: String) throws
@@ -722,6 +723,9 @@ public enum EditableBorderSide: String, CaseIterable, Hashable, Sendable {
 - `setColumnWidth(_:at:)` throws `invalidColumnIndex` for out-of-bounds column and `nativeWriteFailed` for negative/non-finite sizes.
 - `deleteRow(at:)` throws `invalidRowIndex` when index is out of bounds and shifts remaining rows deterministically.
 - `deleteColumn(at:)` throws `invalidColumnIndex` when index is out of bounds and shifts remaining columns deterministically.
+- `insertColumn(_:at:)` validates `0...columnCount`, then throws a deterministic
+  `nativeWriteFailed` unsupported-write error without mutating table state until native column
+  shifting lands.
 - `mergeCells(...)` / `unmergeCells(...)` throw for invalid range references and preserve deterministic sorted merge metadata.
 - `unmergeCells(...)` removes only exact merged-range matches; partially overlapping ranges are left unchanged.
 - `addSheet(named:)` auto-suffixes duplicate names (`Name`, `Name (2)`, ...).

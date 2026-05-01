@@ -24,6 +24,9 @@ func appendColumn(_ values: [CellValue])
 
 - `values.isEmpty` still appends one blank column.
 - only non-`.empty` values are materialized into cell storage (sparse representation).
+- inserting a column at a specific position is tracked separately: `insertColumn(_:at:)`
+  currently validates bounds and throws a deterministic unsupported-write error without mutation
+  until native column shifting lands.
 
 **Side Effects**
 

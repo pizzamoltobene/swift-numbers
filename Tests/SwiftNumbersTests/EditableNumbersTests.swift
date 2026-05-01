@@ -1178,6 +1178,53 @@ final class EditableNumbersDocumentTests: XCTestCase {
     XCTAssertEqual(editable.dirtyState, .clean)
   }
 
+  func testInsertColumnCurrentlyRejectsValidIndexWithoutMutation() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+    let rowCount = table.metadata.rowCount
+    let columnCount = table.metadata.columnCount
+    let expectedMessage = [
+      "insertColumn(_:at:) is not yet supported by the Swift-native low-level writer.",
+      "Requested column index: 0.",
+      "Use appendColumn(_:) for end insertion until insert-column parity is implemented.",
+    ].joined(separator: " ")
+
+    XCTAssertThrowsError(try table.insertColumn([.string("Inserted")], at: 0)) { error in
+      guard case .nativeWriteFailed(let details) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(details, expectedMessage)
+    }
+
+    XCTAssertEqual(table.metadata.rowCount, rowCount)
+    XCTAssertEqual(table.metadata.columnCount, columnCount)
+    XCTAssertFalse(editable.hasChanges)
+    XCTAssertEqual(editable.dirtyState, .clean)
+  }
+
+  func testInsertColumnRejectsOutOfBoundsIndicesBeforeUnsupportedGuard() throws {
+    let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
+    let editable = try EditableNumbersDocument.open(at: fixture)
+    let table = try XCTUnwrap(editable.firstSheet?.firstTable)
+
+    XCTAssertThrowsError(try table.insertColumn([], at: -1)) { error in
+      guard case .invalidColumnIndex(let index) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(index, -1)
+    }
+    XCTAssertThrowsError(try table.insertColumn([], at: table.metadata.columnCount + 1)) { error in
+      guard case .invalidColumnIndex(let index) = error as? EditableNumbersError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(index, table.metadata.columnCount + 1)
+    }
+
+    XCTAssertFalse(editable.hasChanges)
+    XCTAssertEqual(editable.dirtyState, .clean)
+  }
+
   func testHeaderCountsMutationPersistsAndSupportsHeaderSelectionSemantics() throws {
     let fixture = FixtureLocator.fileFixtureURL(named: "reference-empty.numbers")
     let editable = try EditableNumbersDocument.open(at: fixture)

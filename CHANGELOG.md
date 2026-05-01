@@ -7,6 +7,7 @@ All notable changes to this project are documented in this file.
 ### Summary
 
 - Added formula-clear parity regression coverage that verifies cleared formulas leave no stale formula text, formula result, or marker-backed read payload after save/reopen.
+- Added deterministic `insertColumn(_:at:)` guardrail coverage so insert-column parity validates indices, reports a stable unsupported-write error, and leaves editable tables unmodified until native column shifting lands.
 
 ### Breaking Changes
 

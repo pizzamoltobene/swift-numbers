@@ -547,7 +547,8 @@ private struct AppleNumbersCapabilityMapRefresher {
           .command("delete"),
           .class("column"),
         ],
-        swiftTarget: "`appendColumn`, `deleteColumn`; insert-column parity remains a backlog gap"
+        swiftTarget: "`appendColumn`, `deleteColumn`; "
+          + "`insertColumn` has a deterministic unsupported guard until native column shifting lands"
       ),
       AppleNumbersMutationProbeDefinition(
         probe: "cell-range-clear-set-operation",

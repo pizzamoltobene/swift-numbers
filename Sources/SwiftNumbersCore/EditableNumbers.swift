@@ -1870,6 +1870,22 @@ public final class EditableTable {
     )
   }
 
+  public func insertColumn(_ values: [CellValue], at columnIndex: Int) throws {
+    _ = values
+    guard columnIndex >= 0, columnIndex <= columnCount else {
+      throw EditableNumbersError.invalidColumnIndex(columnIndex)
+    }
+
+    let message = [
+      "insertColumn(_:at:) is not yet supported by the Swift-native low-level writer.",
+      "Requested column index: \(columnIndex).",
+      "Use appendColumn(_:) for end insertion until insert-column parity is implemented.",
+    ].joined(separator: " ")
+    throw EditableNumbersError.nativeWriteFailed(
+      message
+    )
+  }
+
   public func deleteRow(at rowIndex: Int) throws {
     guard rowIndex >= 0, rowIndex < rowCount else {
       throw EditableNumbersError.invalidRowIndex(rowIndex)
