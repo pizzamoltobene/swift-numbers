@@ -717,7 +717,8 @@ private struct AppleNumbersCapabilityMapRefresher {
           .property(className: "range", property: "vertical alignment"),
         ],
         classification: "safe-read-only",
-        swiftTarget: "format/style/rich-text read surfaces and guarded style-write backlog gaps"
+        swiftTarget: "`ReadCell.style`, `ReadCell.formatted`, `formattedValue(...)`, "
+          + "CLI `--formatting`; richer write parity remains guarded"
       ),
       AppleNumbersAdvancedObjectProbeDefinition(
         probe: "media-object-discovery",
@@ -748,7 +749,8 @@ private struct AppleNumbersCapabilityMapRefresher {
           .property(className: "rich text", property: "size"),
         ],
         classification: "safe-read-only",
-        swiftTarget: "rich text style inspection and deterministic display-value parity"
+        swiftTarget: "`ReadCell.richText`, `ReadCell.style`, `formattedValue(...)`; "
+          + "richer rich-text writes remain a backlog gap"
       ),
     ]
 

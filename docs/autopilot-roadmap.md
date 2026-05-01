@@ -494,7 +494,7 @@ Generated from `docs/autopilot-policy.md`, `docs/apple-numbers-applescript-capab
   - Definition of done: insert-column parity gap has deterministic API/error semantics before low-level writer expansion.
   - Validation: tests document current append/delete support and deterministic insert-column unsupported behavior.
   - Policy scoring: impact=4, risk=2, effort=3, confidence=4, priorityScore=15, area=write.
-- [TODO] `SN-AUTO-20260501-05` Expand formatting/style read parity evidence.
+- [DONE] (2026-05-01) `SN-AUTO-20260501-05` Expand formatting/style read parity evidence.
   - Definition of done: AppleScript formatting/style rows map to explicit SwiftNumbers read surfaces and remaining gaps.
   - Validation: simulated capability-map tests produce deterministic formatting/style queue entries.
   - Policy scoring: impact=4, risk=2, effort=2, confidence=5, priorityScore=16, area=read.

@@ -211,6 +211,35 @@ final class ParityTaskQueueTests: XCTestCase {
     XCTAssertEqual(firstFields[9], "missing")
   }
 
+  func testParityQueueUsesAppleScriptFormattingStyleRowsForReadRenewalTasks() throws {
+    let output = try runParityQueueScript(arguments: [
+      "--roadmap",
+      FixtureLocator.fileFixtureURL(named: "autopilot-apple-formatting-style-roadmap-sim.md")
+        .path,
+      "--code-map",
+      FixtureLocator.fileFixtureURL(named: "autopilot-parity-map-sim.md").path,
+      "--apple-map",
+      FixtureLocator.fileFixtureURL(named: "autopilot-apple-formatting-style-map-sim.md").path,
+      "--max",
+      "10",
+    ])
+
+    let lines =
+      output
+      .split(separator: "\n")
+      .map(String.init)
+    XCTAssertEqual(lines.first, "NEXT_TASK=SN-AUTO-20260501-05")
+
+    let firstFields = lines[2].split(separator: "|").map(String.init)
+    XCTAssertEqual(firstFields[0], "SN-AUTO-20260501-05")
+    XCTAssertEqual(firstFields[3], "read")
+    XCTAssertEqual(firstFields[4], "range-formatting-style-discovery")
+    XCTAssertEqual(firstFields[5], "apple-oracle")
+    XCTAssertEqual(firstFields[8], "apple")
+    XCTAssertEqual(firstFields[9], "available")
+    XCTAssertTrue(firstFields[10].contains("range.format"))
+  }
+
   private func runParityQueueScript(arguments: [String]) throws -> String {
     let environment = ProcessInfo.processInfo.environment
     guard let scriptPath = environment["SWIFT_NUMBERS_PARITY_QUEUE_SCRIPT"],
