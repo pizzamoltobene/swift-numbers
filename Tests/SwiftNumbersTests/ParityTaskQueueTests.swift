@@ -182,6 +182,35 @@ final class ParityTaskQueueTests: XCTestCase {
     XCTAssertEqual(firstFields[9], "missing")
   }
 
+  func testParityQueueUsesAppleScriptAdvancedObjectRowsForPivotRenewalTasks() throws {
+    let output = try runParityQueueScript(arguments: [
+      "--roadmap",
+      FixtureLocator.fileFixtureURL(
+        named: "autopilot-apple-advanced-object-renewal-roadmap-sim.md"
+      ).path,
+      "--code-map",
+      FixtureLocator.fileFixtureURL(named: "autopilot-parity-map-sim.md").path,
+      "--apple-map",
+      FixtureLocator.fileFixtureURL(named: "autopilot-apple-advanced-object-renewal-map-sim.md")
+        .path,
+      "--max",
+      "10",
+    ])
+
+    let lines =
+      output
+      .split(separator: "\n")
+      .map(String.init)
+    XCTAssertEqual(lines.first, "NEXT_TASK=SN-AUTO-20260430-04")
+
+    let firstFields = lines[2].split(separator: "|").map(String.init)
+    XCTAssertEqual(firstFields[0], "SN-AUTO-20260430-04")
+    XCTAssertEqual(firstFields[3], "pivot")
+    XCTAssertEqual(firstFields[4], "pivot-object-discovery")
+    XCTAssertEqual(firstFields[8], "apple")
+    XCTAssertEqual(firstFields[9], "missing")
+  }
+
   private func runParityQueueScript(arguments: [String]) throws -> String {
     let environment = ProcessInfo.processInfo.environment
     guard let scriptPath = environment["SWIFT_NUMBERS_PARITY_QUEUE_SCRIPT"],
